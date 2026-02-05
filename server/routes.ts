@@ -547,7 +547,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Office not found" });
       }
 
-      const invoice = await storage.getInvoiceByShipment(id);
+      // Get or create invoice
+      let invoice = await storage.getInvoiceByShipment(id);
+      if (!invoice) {
+        const invoiceNumber = `INV${Date.now().toString(36).toUpperCase()}`;
+        invoice = await storage.createInvoice({
+          shipmentId: id,
+          invoiceNumber,
+          subtotal: shipment.baseAmount || "0",
+          gstAmount: shipment.gstAmount || "0",
+          totalAmount: shipment.totalAmount,
+        });
+      }
+      
       const payment = await storage.getPaymentByShipment(id);
       
       res.json({ invoice, shipment, office, payment });
@@ -860,75 +872,6 @@ export async function registerRoutes(
       }
       console.error("Error creating booking request:", error);
       res.status(500).json({ message: "Failed to submit booking request" });
-    }
-  });
-
-  // Invoice generation route
-  app.get("/api/shipments/:id/invoice", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const { id } = req.params;
-      const officeId = await getOrCreateOffice(userId);
-      
-      const shipment = await storage.getShipment(id);
-      if (!shipment || shipment.officeId !== officeId) {
-        return res.status(404).json({ message: "Shipment not found" });
-      }
-      
-      // Check if invoice exists, if not create one
-      let invoice = await storage.getInvoiceByShipment(id);
-      if (!invoice) {
-        const invoiceNumber = `INV${Date.now().toString(36).toUpperCase()}`;
-        invoice = await storage.createInvoice({
-          shipmentId: id,
-          invoiceNumber,
-          subtotal: shipment.baseAmount || "0",
-          gstAmount: shipment.gstAmount || "0",
-          totalAmount: shipment.totalAmount,
-        });
-      }
-      
-      // Get office details for invoice
-      const office = await storage.getOfficeByUserId(userId);
-      
-      res.json({
-        invoice,
-        shipment,
-        office,
-      });
-    } catch (error) {
-      console.error("Error generating invoice:", error);
-      res.status(500).json({ message: "Failed to generate invoice" });
-    }
-  });
-
-  // Parcel label route
-  app.get("/api/shipments/:id/label", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const { id } = req.params;
-      const officeId = await getOrCreateOffice(userId);
-      
-      const shipment = await storage.getShipment(id);
-      if (!shipment || shipment.officeId !== officeId) {
-        return res.status(404).json({ message: "Shipment not found" });
-      }
-      
-      const office = await storage.getOfficeByUserId(userId);
-      
-      res.json({
-        shipment,
-        office,
-        qrData: JSON.stringify({
-          bookingNumber: shipment.bookingNumber,
-          awb: shipment.awbNumber,
-          from: `${shipment.senderCity}, ${shipment.senderState}`,
-          to: `${shipment.receiverCity}, ${shipment.receiverState}`,
-        }),
-      });
-    } catch (error) {
-      console.error("Error fetching label data:", error);
-      res.status(500).json({ message: "Failed to fetch label data" });
     }
   });
 
