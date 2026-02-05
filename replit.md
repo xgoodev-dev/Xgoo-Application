@@ -6,6 +6,13 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 **Target**: Booking entry under 60 seconds, 90% digital bookings, clear end-of-day revenue visibility.
 
 ## Recent Changes
+- **2026-02-05**: Added quotations, public booking portal, invoices, and parcel labels
+  - Quotations system for creating and sharing price quotes with customers
+  - Public booking portal at /book/:slug for customer self-service
+  - Booking requests review page for approving/rejecting customer submissions
+  - Invoice generation with print and share (WhatsApp, Email)
+  - Parcel label component with QR code for printing on packages
+  - Database updates: quotations and booking_requests tables, publicSlug on offices
 - **2026-02-05**: Complete MVP implementation with all features
   - Database schema with offices, customers, shipments, courier partners, payments, invoices
   - Replit Auth integration for secure authentication
@@ -26,7 +33,7 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 ### Directory Structure
 ```
 ├── client/src/
-│   ├── components/       # UI components (app-sidebar, ThemeProvider, etc.)
+│   ├── components/       # UI components (app-sidebar, ThemeProvider, ParcelLabel)
 │   ├── hooks/            # Custom React hooks (use-auth, use-toast)
 │   ├── lib/              # Utilities (queryClient, auth-utils)
 │   ├── pages/            # Page components
@@ -34,6 +41,11 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 │   │   ├── dashboard.tsx # Main dashboard with KPIs
 │   │   ├── bookings/new.tsx # New booking form
 │   │   ├── shipments.tsx # Shipment list and management
+│   │   ├── shipments/label.tsx # Parcel label with QR code
+│   │   ├── shipments/invoice.tsx # Invoice view with sharing
+│   │   ├── quotations.tsx # Quotation management
+│   │   ├── booking-requests.tsx # Review customer booking requests
+│   │   ├── public-booking.tsx # Public booking portal (no auth)
 │   │   ├── customers.tsx # Customer CRUD
 │   │   ├── partners.tsx  # Courier partner CRUD
 │   │   ├── reports.tsx   # Analytics and exports
@@ -50,12 +62,14 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 ```
 
 ### Data Models
-- **Offices**: One per authenticated user, contains all business data
+- **Offices**: One per authenticated user, contains all business data (publicSlug for sharing)
 - **Customers**: Walk-in or business customers with credit limits
 - **Courier Partners**: DTDC, FedEx, Blue Dart, etc. with rate cards
 - **Shipments**: Bookings with sender/receiver details, tracking, billing
 - **Payments**: Cash, UPI, bank transfer, or credit
 - **Invoices**: Generated per shipment
+- **Quotations**: Price quotes with status (draft/sent/accepted/rejected/expired)
+- **Booking Requests**: Customer-submitted requests from public portal
 
 ### Key Features
 1. **Fast Booking Entry**: POS-style interface for quick shipment creation
@@ -65,6 +79,10 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 5. **Status Tracking**: Booked → Picked Up → In Transit → Delivered
 6. **Reports & Analytics**: Date-wise, customer-wise, partner-wise reports
 7. **CSV Export**: Download reports for Excel analysis
+8. **Quotations**: Create and share price quotes via WhatsApp/Email/Print
+9. **Public Booking Portal**: Shareable link (/book/:slug) for customer self-service
+10. **Invoice Generation**: Professional invoices with print and share options
+11. **Parcel Labels**: QR code labels for packages (4x6 thermal printer format)
 
 ## Running the Project
 The project uses a single workflow that starts both the Express backend and Vite frontend:
@@ -78,7 +96,7 @@ The app runs on port 5000 with:
 - Authentication at `/api/login` and `/api/logout`
 
 ## API Endpoints
-All endpoints require authentication (except auth routes):
+All endpoints require authentication (except auth and public routes):
 
 - `GET /api/office` - Get current user's office
 - `POST /api/office` - Create office (first login)
@@ -97,10 +115,26 @@ All endpoints require authentication (except auth routes):
 - `GET /api/shipments` - List shipments
 - `POST /api/shipments` - Create shipment (booking)
 - `PATCH /api/shipments/:id/status` - Update shipment status
+- `GET /api/shipments/:id/label` - Get label data for printing
+- `GET /api/shipments/:id/invoice` - Get/create invoice for shipment
+
+- `GET /api/quotations` - List quotations
+- `POST /api/quotations` - Create quotation
+- `PATCH /api/quotations/:id` - Update quotation
+- `DELETE /api/quotations/:id` - Delete quotation
+
+- `GET /api/booking-requests` - List booking requests
+- `GET /api/booking-requests/:id` - Get single booking request
+- `PATCH /api/booking-requests/:id/status` - Update request status
 
 - `GET /api/dashboard/stats` - Dashboard statistics
 - `GET /api/reports` - Report data (requires from/to params)
 - `GET /api/reports/export` - CSV export
+
+### Public Endpoints (no auth required)
+- `GET /api/public/office/:slug` - Get public office info
+- `GET /api/public/office/:slug/partners` - Get active partners
+- `POST /api/public/office/:slug/booking-request` - Submit booking request
 
 ## User Preferences
 - Mobile-first design approach
