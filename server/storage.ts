@@ -5,6 +5,8 @@ import {
   shipments,
   payments,
   invoices,
+  quotations,
+  bookingRequests,
   type Office,
   type InsertOffice,
   type Customer,
@@ -17,6 +19,10 @@ import {
   type InsertPayment,
   type Invoice,
   type InsertInvoice,
+  type Quotation,
+  type InsertQuotation,
+  type BookingRequest,
+  type InsertBookingRequest,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -51,9 +57,27 @@ export interface IStorage {
 
   // Payment operations
   createPayment(payment: InsertPayment): Promise<Payment>;
+  getPaymentByShipment(shipmentId: string): Promise<Payment | undefined>;
 
   // Invoice operations
   createInvoice(invoice: InsertInvoice): Promise<Invoice>;
+  getInvoiceByShipment(shipmentId: string): Promise<Invoice | undefined>;
+
+  // Quotation operations
+  getQuotationsByOffice(officeId: string): Promise<Quotation[]>;
+  getQuotation(id: string): Promise<Quotation | undefined>;
+  createQuotation(quotation: InsertQuotation): Promise<Quotation>;
+  updateQuotation(id: string, quotation: Partial<InsertQuotation>): Promise<Quotation | undefined>;
+  deleteQuotation(id: string): Promise<boolean>;
+
+  // Booking Request operations
+  getBookingRequestsByOffice(officeId: string): Promise<BookingRequest[]>;
+  getBookingRequest(id: string): Promise<BookingRequest | undefined>;
+  createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest>;
+  updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined>;
+  
+  // Office lookup
+  getOfficeBySlug(slug: string): Promise<Office | undefined>;
 
   // Dashboard stats
   getDashboardStats(officeId: string): Promise<{
@@ -226,10 +250,94 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async getPaymentByShipment(shipmentId: string): Promise<Payment | undefined> {
+    const [payment] = await db.select().from(payments).where(eq(payments.shipmentId, shipmentId));
+    return payment;
+  }
+
   // Invoice operations
   async createInvoice(invoice: InsertInvoice): Promise<Invoice> {
     const [created] = await db.insert(invoices).values(invoice).returning();
     return created;
+  }
+
+  async getInvoiceByShipment(shipmentId: string): Promise<Invoice | undefined> {
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.shipmentId, shipmentId));
+    return invoice;
+  }
+
+  // Quotation operations
+  async getQuotationsByOffice(officeId: string): Promise<Quotation[]> {
+    return db.select().from(quotations).where(eq(quotations.officeId, officeId)).orderBy(desc(quotations.createdAt));
+  }
+
+  async getQuotation(id: string): Promise<Quotation | undefined> {
+    const [quotation] = await db.select().from(quotations).where(eq(quotations.id, id));
+    return quotation;
+  }
+
+  async createQuotation(quotation: InsertQuotation): Promise<Quotation> {
+    const quotationNumber = `QT${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
+    const [created] = await db
+      .insert(quotations)
+      .values({ ...quotation, quotationNumber })
+      .returning();
+    return created;
+  }
+
+  async updateQuotation(id: string, quotation: Partial<InsertQuotation>): Promise<Quotation | undefined> {
+    const [updated] = await db
+      .update(quotations)
+      .set({ ...quotation, updatedAt: new Date() })
+      .where(eq(quotations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteQuotation(id: string): Promise<boolean> {
+    await db.delete(quotations).where(eq(quotations.id, id));
+    return true;
+  }
+
+  // Booking Request operations
+  async getBookingRequestsByOffice(officeId: string): Promise<BookingRequest[]> {
+    return db.select().from(bookingRequests).where(eq(bookingRequests.officeId, officeId)).orderBy(desc(bookingRequests.createdAt));
+  }
+
+  async getBookingRequest(id: string): Promise<BookingRequest | undefined> {
+    const [request] = await db.select().from(bookingRequests).where(eq(bookingRequests.id, id));
+    return request;
+  }
+
+  async createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest> {
+    const requestNumber = `BR${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
+    const [created] = await db
+      .insert(bookingRequests)
+      .values({ ...request, requestNumber })
+      .returning();
+    return created;
+  }
+
+  async updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined> {
+    const updates: any = {
+      status,
+      reviewedAt: new Date(),
+    };
+    if (convertedShipmentId) {
+      updates.convertedShipmentId = convertedShipmentId;
+    }
+    const [updated] = await db
+      .update(bookingRequests)
+      .set(updates)
+      .where(eq(bookingRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Office lookup by slug
+  async getOfficeBySlug(slug: string): Promise<Office | undefined> {
+    const [office] = await db.select().from(offices).where(eq(offices.publicSlug, slug));
+    return office;
   }
 
   // Dashboard stats

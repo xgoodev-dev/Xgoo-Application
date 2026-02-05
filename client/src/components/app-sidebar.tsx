@@ -8,6 +8,8 @@ import {
   Settings,
   LogOut,
   Building2,
+  FileSpreadsheet,
+  Inbox,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -40,6 +42,16 @@ const mainNavItems = [
     title: "Shipments",
     url: "/shipments",
     icon: Package,
+  },
+  {
+    title: "Quotations",
+    url: "/quotations",
+    icon: FileSpreadsheet,
+  },
+  {
+    title: "Booking Requests",
+    url: "/booking-requests",
+    icon: Inbox,
   },
   {
     title: "Customers",

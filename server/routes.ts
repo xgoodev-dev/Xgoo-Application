@@ -6,6 +6,18 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { z } from "zod";
 
 // Validation schemas
+const officeCreateSchema = z.object({
+  name: z.string().min(1, "Office name is required"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  gstNumber: z.string().optional(),
+  publicSlug: z.string().optional(),
+});
+
 const officeUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().optional(),
@@ -15,6 +27,7 @@ const officeUpdateSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   gstNumber: z.string().optional(),
+  publicSlug: z.string().optional(),
 });
 
 const customerCreateSchema = z.object({
@@ -84,6 +97,54 @@ const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YY
 
 const reportTypeSchema = z.enum(["date_wise", "customer_wise", "partner_wise"]);
 
+const quotationCreateSchema = z.object({
+  customerName: z.string().min(1, "Customer name required"),
+  customerPhone: z.string().optional(),
+  customerEmail: z.string().email().optional().or(z.literal("")),
+  senderCity: z.string().optional(),
+  senderState: z.string().optional(),
+  senderPincode: z.string().optional(),
+  receiverCity: z.string().optional(),
+  receiverState: z.string().optional(),
+  receiverPincode: z.string().optional(),
+  weight: z.string().min(1, "Weight required"),
+  numberOfPieces: z.number().int().positive().default(1),
+  contentDescription: z.string().optional(),
+  declaredValue: z.string().optional().nullable(),
+  serviceType: z.enum(["air", "surface"]),
+  courierPartnerId: z.string().optional().nullable(),
+  baseAmount: z.string().default("0"),
+  additionalCharges: z.string().optional(),
+  gstAmount: z.string().optional(),
+  totalAmount: z.string().min(1),
+  status: z.enum(["draft", "sent", "accepted", "rejected", "expired"]).default("draft"),
+  validUntil: z.string().optional().nullable(),
+  notes: z.string().optional(),
+});
+
+const bookingRequestCreateSchema = z.object({
+  senderName: z.string().min(1, "Sender name required"),
+  senderPhone: z.string().min(10, "Valid phone required"),
+  senderEmail: z.string().email().optional().or(z.literal("")),
+  senderAddress: z.string().min(1, "Address required"),
+  senderCity: z.string().optional(),
+  senderState: z.string().optional(),
+  senderPincode: z.string().optional(),
+  receiverName: z.string().min(1, "Receiver name required"),
+  receiverPhone: z.string().min(10, "Valid phone required"),
+  receiverAddress: z.string().min(1, "Address required"),
+  receiverCity: z.string().optional(),
+  receiverState: z.string().optional(),
+  receiverPincode: z.string().optional(),
+  weight: z.string().optional(),
+  numberOfPieces: z.number().int().positive().default(1),
+  contentDescription: z.string().optional(),
+  declaredValue: z.string().optional().nullable(),
+  serviceType: z.enum(["air", "surface"]).default("surface"),
+  courierPreference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -129,7 +190,7 @@ export async function registerRoutes(
       if (existing) {
         return res.status(400).json({ message: "Office already exists" });
       }
-      const validated = officeUpdateSchema.parse(req.body);
+      const validated = officeCreateSchema.parse(req.body);
       const office = await storage.createOffice({ ...validated, userId });
       await storage.seedData(office.id);
       res.json(office);
@@ -447,6 +508,55 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/shipments/:id/label", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      
+      res.json({ shipment, office });
+    } catch (error) {
+      console.error("Error fetching label data:", error);
+      res.status(500).json({ message: "Failed to fetch label data" });
+    }
+  });
+
+  app.get("/api/shipments/:id/invoice", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const invoice = await storage.getInvoiceByShipment(id);
+      const payment = await storage.getPaymentByShipment(id);
+      
+      res.json({ invoice, shipment, office, payment });
+    } catch (error) {
+      console.error("Error fetching invoice data:", error);
+      res.status(500).json({ message: "Failed to fetch invoice data" });
+    }
+  });
+
   // Reports routes
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
@@ -522,6 +632,303 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error exporting report:", error);
       res.status(500).json({ message: "Failed to export report" });
+    }
+  });
+
+  // Quotation routes
+  app.get("/api/quotations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const officeId = await getOrCreateOffice(userId);
+      const quotations = await storage.getQuotationsByOffice(officeId);
+      res.json(quotations);
+    } catch (error) {
+      console.error("Error fetching quotations:", error);
+      res.status(500).json({ message: "Failed to fetch quotations" });
+    }
+  });
+
+  app.get("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const quotation = await storage.getQuotation(id);
+      if (!quotation || quotation.officeId !== officeId) {
+        return res.status(404).json({ message: "Quotation not found" });
+      }
+      res.json(quotation);
+    } catch (error) {
+      console.error("Error fetching quotation:", error);
+      res.status(500).json({ message: "Failed to fetch quotation" });
+    }
+  });
+
+  app.post("/api/quotations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const validated = quotationCreateSchema.parse(req.body);
+      
+      // Verify courierPartnerId if provided
+      if (validated.courierPartnerId) {
+        const partner = await storage.getPartner(validated.courierPartnerId);
+        if (!partner || partner.officeId !== officeId) {
+          return res.status(400).json({ message: "Invalid courier partner" });
+        }
+      }
+      
+      const quotation = await storage.createQuotation({
+        ...validated,
+        officeId,
+        validUntil: validated.validUntil ? new Date(validated.validUntil) : null,
+      });
+      res.json(quotation);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating quotation:", error);
+      res.status(500).json({ message: "Failed to create quotation" });
+    }
+  });
+
+  app.patch("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const existing = await storage.getQuotation(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const validated = quotationCreateSchema.partial().parse(req.body);
+      const quotation = await storage.updateQuotation(id, {
+        ...validated,
+        validUntil: validated.validUntil ? new Date(validated.validUntil) : undefined,
+      });
+      res.json(quotation);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating quotation:", error);
+      res.status(500).json({ message: "Failed to update quotation" });
+    }
+  });
+
+  app.delete("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const existing = await storage.getQuotation(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      await storage.deleteQuotation(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting quotation:", error);
+      res.status(500).json({ message: "Failed to delete quotation" });
+    }
+  });
+
+  // Booking Request routes (for authenticated users)
+  app.get("/api/booking-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const officeId = await getOrCreateOffice(userId);
+      const requests = await storage.getBookingRequestsByOffice(officeId);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching booking requests:", error);
+      res.status(500).json({ message: "Failed to fetch booking requests" });
+    }
+  });
+
+  app.get("/api/booking-requests/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const request = await storage.getBookingRequest(id);
+      if (!request || request.officeId !== officeId) {
+        return res.status(404).json({ message: "Booking request not found" });
+      }
+      res.json(request);
+    } catch (error) {
+      console.error("Error fetching booking request:", error);
+      res.status(500).json({ message: "Failed to fetch booking request" });
+    }
+  });
+
+  app.patch("/api/booking-requests/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const { status, convertedShipmentId } = req.body;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const existing = await storage.getBookingRequest(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const updated = await storage.updateBookingRequestStatus(id, status, convertedShipmentId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating booking request:", error);
+      res.status(500).json({ message: "Failed to update booking request" });
+    }
+  });
+
+  // Public booking portal routes (no auth required)
+  app.get("/api/public/office/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      // Return limited public info
+      res.json({
+        id: office.id,
+        name: office.name,
+        city: office.city,
+        state: office.state,
+        phone: office.phone,
+        email: office.email,
+      });
+    } catch (error) {
+      console.error("Error fetching public office:", error);
+      res.status(500).json({ message: "Failed to fetch office" });
+    }
+  });
+
+  app.get("/api/public/office/:slug/partners", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      const partners = await storage.getPartnersByOffice(office.id);
+      // Return limited partner info for public view
+      res.json(partners.filter(p => p.isActive).map(p => ({
+        id: p.id,
+        name: p.name,
+        code: p.code,
+      })));
+    } catch (error) {
+      console.error("Error fetching partners:", error);
+      res.status(500).json({ message: "Failed to fetch partners" });
+    }
+  });
+
+  app.post("/api/public/office/:slug/booking-request", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      
+      const validated = bookingRequestCreateSchema.parse(req.body);
+      
+      const request = await storage.createBookingRequest({
+        ...validated,
+        officeId: office.id,
+        status: "pending",
+      });
+      
+      res.json({ 
+        success: true, 
+        requestNumber: request.requestNumber,
+        message: "Your booking request has been submitted. The office will contact you shortly."
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating booking request:", error);
+      res.status(500).json({ message: "Failed to submit booking request" });
+    }
+  });
+
+  // Invoice generation route
+  app.get("/api/shipments/:id/invoice", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      
+      // Check if invoice exists, if not create one
+      let invoice = await storage.getInvoiceByShipment(id);
+      if (!invoice) {
+        const invoiceNumber = `INV${Date.now().toString(36).toUpperCase()}`;
+        invoice = await storage.createInvoice({
+          shipmentId: id,
+          invoiceNumber,
+          subtotal: shipment.baseAmount || "0",
+          gstAmount: shipment.gstAmount || "0",
+          totalAmount: shipment.totalAmount,
+        });
+      }
+      
+      // Get office details for invoice
+      const office = await storage.getOfficeByUserId(userId);
+      
+      res.json({
+        invoice,
+        shipment,
+        office,
+      });
+    } catch (error) {
+      console.error("Error generating invoice:", error);
+      res.status(500).json({ message: "Failed to generate invoice" });
+    }
+  });
+
+  // Parcel label route
+  app.get("/api/shipments/:id/label", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+      
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      
+      const office = await storage.getOfficeByUserId(userId);
+      
+      res.json({
+        shipment,
+        office,
+        qrData: JSON.stringify({
+          bookingNumber: shipment.bookingNumber,
+          awb: shipment.awbNumber,
+          from: `${shipment.senderCity}, ${shipment.senderState}`,
+          to: `${shipment.receiverCity}, ${shipment.receiverState}`,
+        }),
+      });
+    } catch (error) {
+      console.error("Error fetching label data:", error);
+      res.status(500).json({ message: "Failed to fetch label data" });
     }
   });
 

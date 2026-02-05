@@ -18,9 +18,12 @@ export const offices = pgTable("offices", {
   email: varchar("email", { length: 255 }),
   gstNumber: varchar("gst_number", { length: 20 }),
   logoUrl: varchar("logo_url", { length: 500 }),
+  publicSlug: varchar("public_slug", { length: 50 }).unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_offices_slug").on(table.publicSlug),
+]);
 
 export const officesRelations = relations(offices, ({ many }) => ({
   customers: many(customers),
@@ -214,6 +217,122 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   }),
 }));
 
+// Quotations table
+export const quotations = pgTable("quotations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  quotationNumber: varchar("quotation_number", { length: 50 }).notNull(),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  customerPhone: varchar("customer_phone", { length: 20 }),
+  customerEmail: varchar("customer_email", { length: 255 }),
+  
+  // Sender details
+  senderCity: varchar("sender_city", { length: 100 }),
+  senderState: varchar("sender_state", { length: 100 }),
+  senderPincode: varchar("sender_pincode", { length: 10 }),
+  
+  // Receiver details
+  receiverCity: varchar("receiver_city", { length: 100 }),
+  receiverState: varchar("receiver_state", { length: 100 }),
+  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  
+  // Package details
+  weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
+  numberOfPieces: integer("number_of_pieces").default(1),
+  contentDescription: text("content_description"),
+  declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  
+  // Service details
+  serviceType: varchar("service_type", { length: 20 }).notNull().default("surface"),
+  courierPartnerId: varchar("courier_partner_id").references(() => courierPartners.id),
+  
+  // Pricing
+  baseAmount: decimal("base_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  additionalCharges: decimal("additional_charges", { precision: 12, scale: 2 }).default("0"),
+  gstAmount: decimal("gst_amount", { precision: 12, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft, sent, accepted, rejected, expired
+  validUntil: timestamp("valid_until"),
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_quotations_office").on(table.officeId),
+  index("idx_quotations_number").on(table.quotationNumber),
+  index("idx_quotations_status").on(table.status),
+]);
+
+export const quotationsRelations = relations(quotations, ({ one }) => ({
+  office: one(offices, {
+    fields: [quotations.officeId],
+    references: [offices.id],
+  }),
+  courierPartner: one(courierPartners, {
+    fields: [quotations.courierPartnerId],
+    references: [courierPartners.id],
+  }),
+}));
+
+// Booking Requests table - for public booking submissions
+export const bookingRequests = pgTable("booking_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  requestNumber: varchar("request_number", { length: 50 }).notNull(),
+  
+  // Sender details
+  senderName: varchar("sender_name", { length: 255 }).notNull(),
+  senderPhone: varchar("sender_phone", { length: 20 }).notNull(),
+  senderEmail: varchar("sender_email", { length: 255 }),
+  senderAddress: text("sender_address").notNull(),
+  senderCity: varchar("sender_city", { length: 100 }),
+  senderState: varchar("sender_state", { length: 100 }),
+  senderPincode: varchar("sender_pincode", { length: 10 }),
+  
+  // Receiver details
+  receiverName: varchar("receiver_name", { length: 255 }).notNull(),
+  receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
+  receiverAddress: text("receiver_address").notNull(),
+  receiverCity: varchar("receiver_city", { length: 100 }),
+  receiverState: varchar("receiver_state", { length: 100 }),
+  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  
+  // Package details
+  weight: decimal("weight", { precision: 10, scale: 2 }),
+  numberOfPieces: integer("number_of_pieces").default(1),
+  contentDescription: text("content_description"),
+  declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  
+  // Service preference
+  serviceType: varchar("service_type", { length: 20 }).default("surface"),
+  courierPreference: varchar("courier_preference", { length: 255 }),
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, reviewed, approved, rejected, converted
+  notes: text("notes"),
+  convertedShipmentId: varchar("converted_shipment_id").references(() => shipments.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+}, (table) => [
+  index("idx_booking_requests_office").on(table.officeId),
+  index("idx_booking_requests_status").on(table.status),
+  index("idx_booking_requests_number").on(table.requestNumber),
+]);
+
+export const bookingRequestsRelations = relations(bookingRequests, ({ one }) => ({
+  office: one(offices, {
+    fields: [bookingRequests.officeId],
+    references: [offices.id],
+  }),
+  convertedShipment: one(shipments, {
+    fields: [bookingRequests.convertedShipmentId],
+    references: [shipments.id],
+  }),
+}));
+
 // Insert schemas
 export const insertOfficeSchema = createInsertSchema(offices).omit({
   id: true,
@@ -250,6 +369,20 @@ export const insertInvoiceSchema = createInsertSchema(invoices).omit({
   createdAt: true,
 });
 
+export const insertQuotationSchema = createInsertSchema(quotations).omit({
+  id: true,
+  quotationNumber: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBookingRequestSchema = createInsertSchema(bookingRequests).omit({
+  id: true,
+  requestNumber: true,
+  createdAt: true,
+  reviewedAt: true,
+});
+
 // Types
 export type Office = typeof offices.$inferSelect;
 export type InsertOffice = z.infer<typeof insertOfficeSchema>;
@@ -268,6 +401,12 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+
+export type Quotation = typeof quotations.$inferSelect;
+export type InsertQuotation = z.infer<typeof insertQuotationSchema>;
+
+export type BookingRequest = typeof bookingRequests.$inferSelect;
+export type InsertBookingRequest = z.infer<typeof insertBookingRequestSchema>;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

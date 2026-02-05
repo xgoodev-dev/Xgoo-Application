@@ -14,10 +14,15 @@ import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import NewBookingPage from "@/pages/bookings/new";
 import ShipmentsPage from "@/pages/shipments";
+import ShipmentLabelPage from "@/pages/shipments/label";
+import ShipmentInvoicePage from "@/pages/shipments/invoice";
+import QuotationsPage from "@/pages/quotations";
+import BookingRequestsPage from "@/pages/booking-requests";
 import CustomersPage from "@/pages/customers";
 import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
+import PublicBookingPage from "@/pages/public-booking";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedApp() {
@@ -40,6 +45,10 @@ function AuthenticatedApp() {
               <Route path="/" component={DashboardPage} />
               <Route path="/bookings/new" component={NewBookingPage} />
               <Route path="/shipments" component={ShipmentsPage} />
+              <Route path="/shipments/:id/label" component={ShipmentLabelPage} />
+              <Route path="/shipments/:id/invoice" component={ShipmentInvoicePage} />
+              <Route path="/quotations" component={QuotationsPage} />
+              <Route path="/booking-requests" component={BookingRequestsPage} />
               <Route path="/customers" component={CustomersPage} />
               <Route path="/partners" component={PartnersPage} />
               <Route path="/reports" component={ReportsPage} />
@@ -81,15 +90,20 @@ function LoadingScreen() {
 function Router() {
   const { isLoading, isAuthenticated } = useAuth();
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
-
-  if (!isAuthenticated) {
-    return <LandingPage />;
-  }
-
-  return <AuthenticatedApp />;
+  return (
+    <Switch>
+      <Route path="/book/:slug" component={PublicBookingPage} />
+      <Route>
+        {isLoading ? (
+          <LoadingScreen />
+        ) : !isAuthenticated ? (
+          <LandingPage />
+        ) : (
+          <AuthenticatedApp />
+        )}
+      </Route>
+    </Switch>
+  );
 }
 
 function App() {

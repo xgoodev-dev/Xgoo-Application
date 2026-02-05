@@ -12,6 +12,8 @@ import {
   FileText,
   Truck,
   CheckCircle,
+  Printer,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -242,9 +244,17 @@ export default function ShipmentsPage() {
                                 View Details
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <FileText className="mr-2 h-4 w-4" />
-                              Generate Invoice
+                            <DropdownMenuItem asChild>
+                              <Link href={`/shipments/${shipment.id}/label`}>
+                                <Printer className="mr-2 h-4 w-4" />
+                                Print Label
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/shipments/${shipment.id}/invoice`}>
+                                <Receipt className="mr-2 h-4 w-4" />
+                                View Invoice
+                              </Link>
                             </DropdownMenuItem>
                             {shipment.status !== "delivered" && nextStatus[shipment.status] && (
                               <DropdownMenuItem
