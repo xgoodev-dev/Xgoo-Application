@@ -106,8 +106,11 @@ All endpoints require authentication (except auth routes):
 - Mobile-first design approach
 - Professional POS-style interface
 - Inter font for clean typography
-- Blue (#0079F2) as primary color
-- Support for light/dark mode
+- XGoo brand colors:
+  - Primary Orange: #FF4907 (vibrant orange for buttons/actions)
+  - Dark Brown: #391305 (dark mode background)
+  - Medium Brown: #9B320B (accent color)
+- Support for light/dark mode matching brand identity
 
 ## Security
 - All routes protected by Replit Auth middleware
