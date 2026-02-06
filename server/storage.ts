@@ -7,6 +7,8 @@ import {
   invoices,
   quotations,
   bookingRequests,
+  customerUsers,
+  customerSessions,
   type Office,
   type InsertOffice,
   type Customer,
@@ -23,6 +25,10 @@ import {
   type InsertQuotation,
   type BookingRequest,
   type InsertBookingRequest,
+  type CustomerUser,
+  type InsertCustomerUser,
+  type CustomerSession,
+  type InsertCustomerSession,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -76,6 +82,22 @@ export interface IStorage {
   createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest>;
   updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined>;
   
+  // Customer User operations
+  getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
+  getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined>;
+  getCustomerUser(id: string): Promise<CustomerUser | undefined>;
+  createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser>;
+  updateCustomerUser(id: string, data: Partial<InsertCustomerUser>): Promise<CustomerUser | undefined>;
+
+  // Customer Session operations
+  createCustomerSession(session: InsertCustomerSession): Promise<CustomerSession>;
+  getCustomerSessionByToken(token: string): Promise<CustomerSession | undefined>;
+  deleteCustomerSession(token: string): Promise<boolean>;
+  deleteExpiredSessions(): Promise<void>;
+
+  // Customer booking requests (by customer user)
+  getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]>;
+
   // Office lookup
   getOfficeBySlug(slug: string): Promise<Office | undefined>;
 
@@ -332,6 +354,69 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bookingRequests.id, id))
       .returning();
     return updated;
+  }
+
+  // Customer User operations
+  async getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined> {
+    const [user] = await db.select().from(customerUsers).where(
+      and(eq(customerUsers.officeId, officeId), eq(customerUsers.phone, phone))
+    );
+    return user;
+  }
+
+  async getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined> {
+    const [user] = await db.select().from(customerUsers).where(
+      and(eq(customerUsers.officeId, officeId), eq(customerUsers.email, email))
+    );
+    return user;
+  }
+
+  async getCustomerUser(id: string): Promise<CustomerUser | undefined> {
+    const [user] = await db.select().from(customerUsers).where(eq(customerUsers.id, id));
+    return user;
+  }
+
+  async createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser> {
+    const [created] = await db.insert(customerUsers).values(user).returning();
+    return created;
+  }
+
+  async updateCustomerUser(id: string, data: Partial<InsertCustomerUser>): Promise<CustomerUser | undefined> {
+    const [updated] = await db
+      .update(customerUsers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(customerUsers.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Customer Session operations
+  async createCustomerSession(session: InsertCustomerSession): Promise<CustomerSession> {
+    const [created] = await db.insert(customerSessions).values(session).returning();
+    return created;
+  }
+
+  async getCustomerSessionByToken(token: string): Promise<CustomerSession | undefined> {
+    const [session] = await db.select().from(customerSessions).where(
+      and(eq(customerSessions.token, token), gte(customerSessions.expiresAt, new Date()))
+    );
+    return session;
+  }
+
+  async deleteCustomerSession(token: string): Promise<boolean> {
+    await db.delete(customerSessions).where(eq(customerSessions.token, token));
+    return true;
+  }
+
+  async deleteExpiredSessions(): Promise<void> {
+    await db.delete(customerSessions).where(lte(customerSessions.expiresAt, new Date()));
+  }
+
+  // Customer booking requests
+  async getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]> {
+    return db.select().from(bookingRequests)
+      .where(eq(bookingRequests.customerUserId, customerUserId))
+      .orderBy(desc(bookingRequests.createdAt));
   }
 
   // Office lookup by slug

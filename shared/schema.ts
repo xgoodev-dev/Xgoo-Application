@@ -309,6 +309,14 @@ export const bookingRequests = pgTable("booking_requests", {
   serviceType: varchar("service_type", { length: 20 }).default("surface"),
   courierPreference: varchar("courier_preference", { length: 255 }),
   
+  // Pickup location
+  pickupLat: decimal("pickup_lat", { precision: 10, scale: 7 }),
+  pickupLng: decimal("pickup_lng", { precision: 10, scale: 7 }),
+  pickupLocationName: varchar("pickup_location_name", { length: 500 }),
+  
+  // Customer user link
+  customerUserId: varchar("customer_user_id").references(() => customerUsers.id),
+  
   // Status
   status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, reviewed, approved, rejected, converted
   notes: text("notes"),
@@ -320,6 +328,7 @@ export const bookingRequests = pgTable("booking_requests", {
   index("idx_booking_requests_office").on(table.officeId),
   index("idx_booking_requests_status").on(table.status),
   index("idx_booking_requests_number").on(table.requestNumber),
+  index("idx_booking_requests_customer_user").on(table.customerUserId),
 ]);
 
 export const bookingRequestsRelations = relations(bookingRequests, ({ one }) => ({
@@ -330,6 +339,54 @@ export const bookingRequestsRelations = relations(bookingRequests, ({ one }) => 
   convertedShipment: one(shipments, {
     fields: [bookingRequests.convertedShipmentId],
     references: [shipments.id],
+  }),
+}));
+
+// Customer Users table - for public portal registration
+export const customerUsers = pgTable("customer_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  pincode: varchar("pincode", { length: 10 }),
+  defaultPickupLat: decimal("default_pickup_lat", { precision: 10, scale: 7 }),
+  defaultPickupLng: decimal("default_pickup_lng", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_customer_users_office").on(table.officeId),
+  index("idx_customer_users_phone").on(table.phone),
+  index("idx_customer_users_email").on(table.email),
+]);
+
+export const customerUsersRelations = relations(customerUsers, ({ one, many }) => ({
+  office: one(offices, {
+    fields: [customerUsers.officeId],
+    references: [offices.id],
+  }),
+}));
+
+// Customer Sessions table
+export const customerSessions = pgTable("customer_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_customer_sessions_token").on(table.token),
+  index("idx_customer_sessions_user").on(table.customerUserId),
+]);
+
+export const customerSessionsRelations = relations(customerSessions, ({ one }) => ({
+  customerUser: one(customerUsers, {
+    fields: [customerSessions.customerUserId],
+    references: [customerUsers.id],
   }),
 }));
 
@@ -383,6 +440,17 @@ export const insertBookingRequestSchema = createInsertSchema(bookingRequests).om
   reviewedAt: true,
 });
 
+export const insertCustomerUserSchema = createInsertSchema(customerUsers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCustomerSessionSchema = createInsertSchema(customerSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Office = typeof offices.$inferSelect;
 export type InsertOffice = z.infer<typeof insertOfficeSchema>;
@@ -407,6 +475,12 @@ export type InsertQuotation = z.infer<typeof insertQuotationSchema>;
 
 export type BookingRequest = typeof bookingRequests.$inferSelect;
 export type InsertBookingRequest = z.infer<typeof insertBookingRequestSchema>;
+
+export type CustomerUser = typeof customerUsers.$inferSelect;
+export type InsertCustomerUser = z.infer<typeof insertCustomerUserSchema>;
+
+export type CustomerSession = typeof customerSessions.$inferSelect;
+export type InsertCustomerSession = z.infer<typeof insertCustomerSessionSchema>;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

@@ -11,6 +11,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -429,6 +430,32 @@ export default function BookingRequestsPage() {
                   </div>
                 </div>
               </div>
+
+              {selectedRequest.pickupLocationName && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                      Pickup Location
+                    </h4>
+                    <p className="text-sm flex items-start gap-1">
+                      <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
+                      {selectedRequest.pickupLocationName}
+                    </p>
+                    {selectedRequest.pickupLat && selectedRequest.pickupLng && (
+                      <a
+                        href={`https://www.google.com/maps?q=${selectedRequest.pickupLat},${selectedRequest.pickupLng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline"
+                        data-testid="link-pickup-map"
+                      >
+                        Open in Google Maps
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
 
               {selectedRequest.notes && (
                 <>

@@ -1,0 +1,1302 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Package,
+  User,
+  MapPin,
+  Scale,
+  Truck,
+  Loader2,
+  CheckCircle,
+  Building2,
+  Send,
+  LogOut,
+  ClipboardList,
+  Search,
+  Clock,
+  ArrowLeft,
+  Navigation,
+  UserCircle,
+  Plus,
+  Eye,
+  LocateFixed,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface OfficeInfo {
+  id: string;
+  name: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  email?: string;
+}
+
+interface PartnerInfo {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface CustomerUserInfo {
+  id: string;
+  officeId: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  defaultPickupLat?: string | null;
+  defaultPickupLng?: string | null;
+}
+
+interface BookingRequestInfo {
+  id: string;
+  requestNumber: string;
+  senderName: string;
+  senderPhone: string;
+  receiverName: string;
+  receiverCity?: string | null;
+  status: string;
+  serviceType?: string | null;
+  createdAt: string;
+  convertedShipmentId?: string | null;
+  pickupLocationName?: string | null;
+}
+
+interface ShipmentTrackingInfo {
+  bookingNumber: string;
+  awbNumber?: string | null;
+  status: string;
+  senderCity?: string | null;
+  receiverCity?: string | null;
+  serviceType: string;
+  weight: string;
+  bookedAt: string;
+  pickedUpAt?: string | null;
+  deliveredAt?: string | null;
+}
+
+function useCustomerAuth(slug: string) {
+  const [user, setUser] = useState<CustomerUserInfo | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem(`xgoo_customer_token_${slug}`);
+    const savedUser = localStorage.getItem(`xgoo_customer_user_${slug}`);
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
+      fetch("/api/customer/me", {
+        headers: { "x-customer-token": savedToken },
+      }).then((res) => {
+        if (res.ok) {
+          return res.json().then((data) => {
+            setUser(data);
+            localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(data));
+          });
+        } else {
+          localStorage.removeItem(`xgoo_customer_token_${slug}`);
+          localStorage.removeItem(`xgoo_customer_user_${slug}`);
+          setToken(null);
+          setUser(null);
+        }
+      }).catch(() => {}).finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
+    }
+  }, [slug]);
+
+  const login = useCallback((userData: CustomerUserInfo, authToken: string) => {
+    setUser(userData);
+    setToken(authToken);
+    localStorage.setItem(`xgoo_customer_token_${slug}`, authToken);
+    localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(userData));
+  }, [slug]);
+
+  const logout = useCallback(async () => {
+    if (token) {
+      await fetch("/api/customer/logout", {
+        method: "POST",
+        headers: { "x-customer-token": token },
+      }).catch(() => {});
+    }
+    localStorage.removeItem(`xgoo_customer_token_${slug}`);
+    localStorage.removeItem(`xgoo_customer_user_${slug}`);
+    setUser(null);
+    setToken(null);
+  }, [slug, token]);
+
+  return { user, token, isLoading, isAuthenticated: !!user && !!token, login, logout, setUser };
+}
+
+const registerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  phone: z.string().min(10, "Valid phone number required"),
+  email: z.string().email("Valid email required").optional().or(z.literal("")),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+});
+
+const loginSchema = z.object({
+  phone: z.string().min(10, "Valid phone number required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const bookingSchema = z.object({
+  senderName: z.string().min(1, "Sender name is required"),
+  senderPhone: z.string().min(10, "Valid phone number required"),
+  senderEmail: z.string().email().optional().or(z.literal("")),
+  senderAddress: z.string().min(1, "Sender address is required"),
+  senderCity: z.string().optional(),
+  senderState: z.string().optional(),
+  senderPincode: z.string().optional(),
+  receiverName: z.string().min(1, "Receiver name is required"),
+  receiverPhone: z.string().min(10, "Valid phone number required"),
+  receiverAddress: z.string().min(1, "Receiver address is required"),
+  receiverCity: z.string().optional(),
+  receiverState: z.string().optional(),
+  receiverPincode: z.string().optional(),
+  weight: z.string().optional(),
+  numberOfPieces: z.string().default("1"),
+  contentDescription: z.string().optional(),
+  declaredValue: z.string().optional(),
+  serviceType: z.enum(["air", "surface"]).default("surface"),
+  courierPreference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const profileSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  phone: z.string().min(10, "Valid phone required"),
+  email: z.string().email().optional().or(z.literal("")),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+});
+
+function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
+  onLocationSelect: (lat: number, lng: number, name: string) => void;
+  initialLat?: number;
+  initialLng?: number;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [locationName, setLocationName] = useState("");
+
+  useEffect(() => {
+    if (!mapRef.current || leafletMapRef.current) return;
+
+    const loadLeaflet = async () => {
+      const L = await import("leaflet");
+      await import("leaflet/dist/leaflet.css");
+
+      const defaultIcon = L.icon({
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      const lat = initialLat || 20.5937;
+      const lng = initialLng || 78.9629;
+      const zoom = initialLat ? 15 : 5;
+
+      const map = L.map(mapRef.current!, { zoomControl: true }).setView([lat, lng], zoom);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      if (initialLat && initialLng) {
+        markerRef.current = L.marker([initialLat, initialLng], { icon: defaultIcon, draggable: true }).addTo(map);
+        markerRef.current.on("dragend", async () => {
+          const pos = markerRef.current.getLatLng();
+          const name = await reverseGeocode(pos.lat, pos.lng);
+          setLocationName(name);
+          onLocationSelect(pos.lat, pos.lng, name);
+        });
+      }
+
+      map.on("click", async (e: any) => {
+        const { lat, lng } = e.latlng;
+        if (markerRef.current) {
+          markerRef.current.setLatLng([lat, lng]);
+        } else {
+          markerRef.current = L.marker([lat, lng], { icon: defaultIcon, draggable: true }).addTo(map);
+          markerRef.current.on("dragend", async () => {
+            const pos = markerRef.current.getLatLng();
+            const name = await reverseGeocode(pos.lat, pos.lng);
+            setLocationName(name);
+            onLocationSelect(pos.lat, pos.lng, name);
+          });
+        }
+        const name = await reverseGeocode(lat, lng);
+        setLocationName(name);
+        onLocationSelect(lat, lng, name);
+      });
+
+      leafletMapRef.current = map;
+    };
+
+    loadLeaflet();
+
+    return () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+      }
+    };
+  }, []);
+
+  async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    } catch {
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }
+
+  async function searchLocation() {
+    if (!searchQuery.trim()) return;
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&countrycodes=in`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const results = await res.json();
+      if (results.length > 0) {
+        const { lat, lon, display_name } = results[0];
+        const latNum = parseFloat(lat);
+        const lngNum = parseFloat(lon);
+        if (leafletMapRef.current) {
+          leafletMapRef.current.setView([latNum, lngNum], 16);
+          const L = await import("leaflet");
+          const defaultIcon = L.icon({
+            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41],
+          });
+          if (markerRef.current) {
+            markerRef.current.setLatLng([latNum, lngNum]);
+          } else {
+            markerRef.current = L.marker([latNum, lngNum], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
+            markerRef.current.on("dragend", async () => {
+              const pos = markerRef.current.getLatLng();
+              const name = await reverseGeocode(pos.lat, pos.lng);
+              setLocationName(name);
+              onLocationSelect(pos.lat, pos.lng, name);
+            });
+          }
+        }
+        setLocationName(display_name);
+        onLocationSelect(latNum, lngNum, display_name);
+      }
+    } catch {}
+  }
+
+  async function detectLocation() {
+    if (!navigator.geolocation) return;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        if (leafletMapRef.current) {
+          leafletMapRef.current.setView([latitude, longitude], 16);
+          const L = await import("leaflet");
+          const defaultIcon = L.icon({
+            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41],
+          });
+          if (markerRef.current) {
+            markerRef.current.setLatLng([latitude, longitude]);
+          } else {
+            markerRef.current = L.marker([latitude, longitude], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
+            markerRef.current.on("dragend", async () => {
+              const pos = markerRef.current.getLatLng();
+              const name = await reverseGeocode(pos.lat, pos.lng);
+              setLocationName(name);
+              onLocationSelect(pos.lat, pos.lng, name);
+            });
+          }
+        }
+        const name = await reverseGeocode(latitude, longitude);
+        setLocationName(name);
+        onLocationSelect(latitude, longitude, name);
+        setIsLocating(false);
+      },
+      () => setIsLocating(false),
+      { enableHighAccuracy: true }
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search location..."
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchLocation())}
+          data-testid="input-map-search"
+        />
+        <Button type="button" variant="outline" size="icon" onClick={searchLocation} data-testid="button-map-search">
+          <Search className="h-4 w-4" />
+        </Button>
+        <Button type="button" variant="outline" size="icon" onClick={detectLocation} disabled={isLocating} data-testid="button-detect-location">
+          {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+        </Button>
+      </div>
+      <div ref={mapRef} className="h-[250px] rounded-md border" data-testid="map-container" />
+      {locationName && (
+        <p className="text-xs text-muted-foreground flex items-start gap-1">
+          <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+          <span data-testid="text-location-name">{locationName}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LoginForm({ slug, office, onLogin, onToggle }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void; onToggle: () => void }) {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const form = useForm<z.infer<typeof loginSchema>>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { phone: "", password: "" },
+  });
+
+  async function handleLogin(data: z.infer<typeof loginSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/public/office/${slug}/customer/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      onLogin(result.user, result.token);
+      toast({ title: "Welcome back!", description: `Logged in as ${result.user.name}` });
+    } catch (err: any) {
+      toast({ title: "Login Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-md px-4 py-8">
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl" data-testid="text-auth-title">Welcome Back</CardTitle>
+          <CardDescription>Sign in to book with {office.name}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
+              <FormField control={form.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone Number</FormLabel>
+                  <FormControl><Input {...field} placeholder="10-digit phone" data-testid="input-login-phone" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl><Input {...field} type="password" placeholder="Your password" data-testid="input-login-password" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-login">
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Sign In
+              </Button>
+            </form>
+          </Form>
+          <div className="mt-4 text-center">
+            <Button variant="link" onClick={onToggle} data-testid="button-toggle-auth-mode">
+              Don't have an account? Register
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RegisterForm({ slug, office, onLogin, onToggle }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void; onToggle: () => void }) {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const form = useForm<z.infer<typeof registerSchema>>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { name: "", phone: "", email: "", password: "", address: "", city: "", state: "", pincode: "" },
+  });
+
+  async function handleRegister(data: z.infer<typeof registerSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/public/office/${slug}/customer/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      onLogin(result.user, result.token);
+      toast({ title: "Account Created!", description: `Welcome, ${result.user.name}` });
+    } catch (err: any) {
+      toast({ title: "Registration Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-md px-4 py-8">
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl" data-testid="text-auth-title">Create Account</CardTitle>
+          <CardDescription>Register to book courier services with {office.name}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-4">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input {...field} placeholder="Your name" data-testid="input-register-name" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid gap-4 grid-cols-2">
+                <FormField control={form.control} name="phone" render={({ field }) => (
+                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} placeholder="10-digit" data-testid="input-register-phone" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="email" render={({ field }) => (
+                  <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" placeholder="email" data-testid="input-register-email" /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="password" render={({ field }) => (
+                <FormItem><FormLabel>Password *</FormLabel><FormControl><Input {...field} type="password" placeholder="Min 6 chars" data-testid="input-register-password" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="address" render={({ field }) => (
+                <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} placeholder="Your address" data-testid="input-register-address" /></FormControl></FormItem>
+              )} />
+              <div className="grid gap-4 grid-cols-3">
+                <FormField control={form.control} name="city" render={({ field }) => (
+                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} placeholder="City" data-testid="input-register-city" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="state" render={({ field }) => (
+                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} placeholder="State" data-testid="input-register-state" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="pincode" render={({ field }) => (
+                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} placeholder="Pincode" data-testid="input-register-pincode" /></FormControl></FormItem>
+                )} />
+              </div>
+              <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-register">
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Create Account
+              </Button>
+            </form>
+          </Form>
+          <div className="mt-4 text-center">
+            <Button variant="link" onClick={onToggle} data-testid="button-toggle-auth-mode">
+              Already have an account? Sign In
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AuthPage({ slug, office, onLogin }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const toggle = useCallback(() => setMode((m) => (m === "login" ? "register" : "login")), []);
+
+  if (mode === "register") {
+    return <RegisterForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} />;
+  }
+  return <LoginForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} />;
+}
+
+function BookingTab({ token, user, slug, partners }: {
+  token: string;
+  user: CustomerUserInfo;
+  slug: string;
+  partners: PartnerInfo[];
+}) {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState<{ requestNumber: string } | null>(null);
+  const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
+
+  const form = useForm<z.infer<typeof bookingSchema>>({
+    resolver: zodResolver(bookingSchema),
+    defaultValues: {
+      senderName: user.name || "",
+      senderPhone: user.phone || "",
+      senderEmail: user.email || "",
+      senderAddress: user.address || "",
+      senderCity: user.city || "",
+      senderState: user.state || "",
+      senderPincode: user.pincode || "",
+      receiverName: "",
+      receiverPhone: "",
+      receiverAddress: "",
+      receiverCity: "",
+      receiverState: "",
+      receiverPincode: "",
+      weight: "",
+      numberOfPieces: "1",
+      contentDescription: "",
+      declaredValue: "",
+      serviceType: "surface",
+      courierPreference: "",
+      notes: "",
+    },
+  });
+
+  async function onSubmit(data: z.infer<typeof bookingSchema>) {
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        ...data,
+        numberOfPieces: parseInt(data.numberOfPieces) || 1,
+        declaredValue: data.declaredValue || null,
+        courierPreference: data.courierPreference || null,
+        pickupLat: pickupLocation?.lat?.toString() || null,
+        pickupLng: pickupLocation?.lng?.toString() || null,
+        pickupLocationName: pickupLocation?.name || null,
+      };
+      const res = await fetch("/api/customer/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-customer-token": token },
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      setSubmitted({ requestNumber: result.requestNumber });
+      toast({ title: "Booking Submitted!", description: `Request #${result.requestNumber}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="mx-auto max-w-lg py-8">
+        <Card className="text-center">
+          <CardContent className="pt-8 pb-8">
+            <div className="flex justify-center mb-6">
+              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold mb-2" data-testid="text-booking-success">Booking Submitted!</h2>
+            <p className="text-muted-foreground mb-6">Your booking request has been sent for processing.</p>
+            <div className="bg-muted rounded-md p-4 mb-6">
+              <p className="text-sm text-muted-foreground mb-1">Request Number</p>
+              <p className="text-2xl font-mono font-bold text-primary" data-testid="text-booking-request-number">{submitted.requestNumber}</p>
+            </div>
+            <Button variant="outline" onClick={() => { setSubmitted(null); form.reset({ ...form.getValues(), receiverName: "", receiverPhone: "", receiverAddress: "", receiverCity: "", receiverState: "", receiverPincode: "", weight: "", contentDescription: "", declaredValue: "", notes: "" }); setPickupLocation(null); }} data-testid="button-book-another">
+              Book Another Shipment
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl py-4 pb-12">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold" data-testid="text-booking-title">Book a Shipment</h2>
+        <p className="text-muted-foreground text-sm">Fill in details below. Your sender info is pre-filled from your profile.</p>
+      </div>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Sender Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField control={form.control} name="senderName" render={({ field }) => (
+                  <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-sender-name" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="senderPhone" render={({ field }) => (
+                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} data-testid="input-sender-phone" /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="senderEmail" render={({ field }) => (
+                <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" data-testid="input-sender-email" /></FormControl></FormItem>
+              )} />
+              <FormField control={form.control} name="senderAddress" render={({ field }) => (
+                <FormItem><FormLabel>Address *</FormLabel><FormControl><Textarea {...field} className="resize-none" data-testid="input-sender-address" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <FormField control={form.control} name="senderCity" render={({ field }) => (
+                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-sender-city" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="senderState" render={({ field }) => (
+                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} data-testid="input-sender-state" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="senderPincode" render={({ field }) => (
+                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-sender-pincode" /></FormControl></FormItem>
+                )} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Pickup Location</CardTitle>
+              <CardDescription>Pin your pickup location on the map or use GPS</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PickupMapComponent
+                onLocationSelect={(lat, lng, name) => setPickupLocation({ lat, lng, name })}
+                initialLat={user.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
+                initialLng={user.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Receiver Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField control={form.control} name="receiverName" render={({ field }) => (
+                  <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-receiver-name" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="receiverPhone" render={({ field }) => (
+                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} data-testid="input-receiver-phone" /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="receiverAddress" render={({ field }) => (
+                <FormItem><FormLabel>Address *</FormLabel><FormControl><Textarea {...field} className="resize-none" data-testid="input-receiver-address" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <FormField control={form.control} name="receiverCity" render={({ field }) => (
+                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-receiver-city" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="receiverState" render={({ field }) => (
+                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} data-testid="input-receiver-state" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="receiverPincode" render={({ field }) => (
+                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-receiver-pincode" /></FormControl></FormItem>
+                )} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><Scale className="h-4 w-4" /> Package Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField control={form.control} name="weight" render={({ field }) => (
+                  <FormItem><FormLabel>Approx. Weight (kg)</FormLabel><FormControl><Input {...field} type="number" step="0.1" data-testid="input-weight" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="numberOfPieces" render={({ field }) => (
+                  <FormItem><FormLabel>No. of Pieces</FormLabel><FormControl><Input {...field} type="number" min="1" data-testid="input-pieces" /></FormControl></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="contentDescription" render={({ field }) => (
+                <FormItem><FormLabel>Content Description</FormLabel><FormControl><Input {...field} placeholder="e.g., Documents, Electronics" data-testid="input-content" /></FormControl></FormItem>
+              )} />
+              <FormField control={form.control} name="declaredValue" render={({ field }) => (
+                <FormItem><FormLabel>Declared Value (Rs.)</FormLabel><FormControl><Input {...field} type="number" data-testid="input-declared-value" /></FormControl></FormItem>
+              )} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4" /> Service Preference</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <FormField control={form.control} name="serviceType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Service Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-service-type"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="surface">Surface (Standard)</SelectItem>
+                      <SelectItem value="air">Air (Express)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )} />
+              {partners.length > 0 && (
+                <FormField control={form.control} name="courierPreference" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Preferred Courier (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl><SelectTrigger data-testid="select-courier"><SelectValue placeholder="No preference" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">No preference</SelectItem>
+                        {partners.map((p) => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+              )}
+              <FormField control={form.control} name="notes" render={({ field }) => (
+                <FormItem><FormLabel>Additional Notes</FormLabel><FormControl><Textarea {...field} className="resize-none" placeholder="Any special instructions" data-testid="input-notes" /></FormControl></FormItem>
+              )} />
+            </CardContent>
+          </Card>
+
+          <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-submit-booking">
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+            Submit Booking Request
+          </Button>
+        </form>
+      </Form>
+    </div>
+  );
+}
+
+function statusColor(status: string) {
+  switch (status) {
+    case "pending": return "secondary";
+    case "approved": case "converted": return "default";
+    case "rejected": return "destructive";
+    case "booked": return "secondary";
+    case "picked_up": return "default";
+    case "in_transit": return "default";
+    case "delivered": return "default";
+    default: return "secondary";
+  }
+}
+
+function statusLabel(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function MyBookingsTab({ token }: { token: string }) {
+  const [bookings, setBookings] = useState<BookingRequestInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
+  const [bookingDetail, setBookingDetail] = useState<{ request: BookingRequestInfo; shipment: ShipmentTrackingInfo | null } | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/customer/bookings", {
+      headers: { "x-customer-token": token },
+    })
+      .then((r) => r.json())
+      .then((data) => setBookings(data))
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [token]);
+
+  async function viewDetail(id: string) {
+    setSelectedBooking(id);
+    setIsLoadingDetail(true);
+    try {
+      const res = await fetch(`/api/customer/bookings/${id}`, {
+        headers: { "x-customer-token": token },
+      });
+      const data = await res.json();
+      setBookingDetail(data);
+    } catch {}
+    setIsLoadingDetail(false);
+  }
+
+  if (selectedBooking && bookingDetail) {
+    const { request, shipment } = bookingDetail;
+    return (
+      <div className="mx-auto max-w-2xl py-4">
+        <Button variant="ghost" size="sm" onClick={() => { setSelectedBooking(null); setBookingDetail(null); }} className="mb-4" data-testid="button-back-to-bookings">
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Bookings
+        </Button>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-lg" data-testid="text-detail-request-number">#{request.requestNumber}</CardTitle>
+              <Badge variant={statusColor(shipment ? shipment.status : request.status)} data-testid="badge-detail-status">
+                {statusLabel(shipment ? shipment.status : request.status)}
+              </Badge>
+            </div>
+            <CardDescription>Submitted {new Date(request.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium mb-1">Sender</p>
+                <p className="text-sm">{request.senderName}</p>
+                <p className="text-sm text-muted-foreground">{request.senderPhone}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-1">Receiver</p>
+                <p className="text-sm">{request.receiverName}</p>
+                <p className="text-sm text-muted-foreground">{request.receiverCity || "N/A"}</p>
+              </div>
+            </div>
+            {request.pickupLocationName && (
+              <div>
+                <p className="text-sm font-medium mb-1">Pickup Location</p>
+                <p className="text-sm text-muted-foreground flex items-start gap-1">
+                  <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+                  {request.pickupLocationName}
+                </p>
+              </div>
+            )}
+            {shipment && (
+              <div>
+                <p className="text-sm font-medium mb-3">Tracking Timeline</p>
+                <div className="space-y-3">
+                  {[
+                    { label: "Booked", date: shipment.bookedAt, active: true },
+                    { label: "Picked Up", date: shipment.pickedUpAt, active: ["picked_up", "in_transit", "delivered"].includes(shipment.status) },
+                    { label: "In Transit", date: null, active: ["in_transit", "delivered"].includes(shipment.status) },
+                    { label: "Delivered", date: shipment.deliveredAt, active: shipment.status === "delivered" },
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${step.active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        <CheckCircle className="h-3 w-3" />
+                      </div>
+                      <div>
+                        <p className={`text-sm font-medium ${step.active ? "" : "text-muted-foreground"}`}>{step.label}</p>
+                        {step.date && <p className="text-xs text-muted-foreground">{new Date(step.date).toLocaleString("en-IN")}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {shipment.bookingNumber && (
+                  <div className="mt-4 bg-muted rounded-md p-3">
+                    <p className="text-xs text-muted-foreground">Booking Number</p>
+                    <p className="font-mono font-bold" data-testid="text-tracking-booking-number">{shipment.bookingNumber}</p>
+                    {shipment.awbNumber && (
+                      <>
+                        <p className="text-xs text-muted-foreground mt-2">AWB Number</p>
+                        <p className="font-mono font-bold">{shipment.awbNumber}</p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl py-4">
+      <h2 className="text-xl font-bold mb-4" data-testid="text-my-bookings-title">My Bookings</h2>
+      {isLoading ? (
+        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
+      ) : bookings.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No bookings yet. Start by booking a shipment!</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {bookings.map((b) => (
+            <Card key={b.id} className="hover-elevate cursor-pointer" onClick={() => viewDetail(b.id)} data-testid={`card-booking-${b.id}`}>
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="font-mono font-bold text-sm" data-testid={`text-request-number-${b.id}`}>#{b.requestNumber}</p>
+                    <p className="text-sm text-muted-foreground">{b.senderName} &rarr; {b.receiverName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      {b.receiverCity ? ` | To: ${b.receiverCity}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={statusColor(b.status)} className="text-xs">{statusLabel(b.status)}</Badge>
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackTab() {
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [result, setResult] = useState<ShipmentTrackingInfo | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const { toast } = useToast();
+
+  async function handleTrack() {
+    if (!trackingNumber.trim()) return;
+    setIsSearching(true);
+    setNotFound(false);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/public/track/${encodeURIComponent(trackingNumber.trim())}`);
+      if (res.status === 404) {
+        setNotFound(true);
+      } else if (res.ok) {
+        setResult(await res.json());
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to track shipment", variant: "destructive" });
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-lg py-4">
+      <h2 className="text-xl font-bold mb-4" data-testid="text-track-title">Track Shipment</h2>
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex gap-2">
+            <Input
+              value={trackingNumber}
+              onChange={(e) => setTrackingNumber(e.target.value)}
+              placeholder="Enter Booking or AWB Number"
+              onKeyDown={(e) => e.key === "Enter" && handleTrack()}
+              data-testid="input-tracking-number"
+            />
+            <Button onClick={handleTrack} disabled={isSearching} data-testid="button-track">
+              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
+
+          {notFound && (
+            <div className="text-center py-6">
+              <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground" data-testid="text-not-found">No shipment found with this number</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="font-mono font-bold" data-testid="text-track-result-number">{result.bookingNumber}</p>
+                  {result.awbNumber && <p className="text-xs text-muted-foreground">AWB: {result.awbNumber}</p>}
+                </div>
+                <Badge variant={statusColor(result.status)}>{statusLabel(result.status)}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-muted-foreground">From</p><p>{result.senderCity || "N/A"}</p></div>
+                <div><p className="text-muted-foreground">To</p><p>{result.receiverCity || "N/A"}</p></div>
+                <div><p className="text-muted-foreground">Service</p><p className="capitalize">{result.serviceType}</p></div>
+                <div><p className="text-muted-foreground">Weight</p><p>{result.weight} kg</p></div>
+              </div>
+              <div className="space-y-3 pt-2">
+                {[
+                  { label: "Booked", date: result.bookedAt, active: true },
+                  { label: "Picked Up", date: result.pickedUpAt, active: ["picked_up", "in_transit", "delivered"].includes(result.status) },
+                  { label: "In Transit", date: null, active: ["in_transit", "delivered"].includes(result.status) },
+                  { label: "Delivered", date: result.deliveredAt, active: result.status === "delivered" },
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${step.active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      <CheckCircle className="h-3 w-3" />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-medium ${step.active ? "" : "text-muted-foreground"}`}>{step.label}</p>
+                      {step.date && <p className="text-xs text-muted-foreground">{new Date(step.date).toLocaleString("en-IN")}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AccountTab({ token, user, onUserUpdate, onLogout }: {
+  token: string;
+  user: CustomerUserInfo;
+  onUserUpdate: (user: CustomerUserInfo) => void;
+  onLogout: () => void;
+}) {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const form = useForm<z.infer<typeof profileSchema>>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      name: user.name || "",
+      phone: user.phone || "",
+      email: user.email || "",
+      address: user.address || "",
+      city: user.city || "",
+      state: user.state || "",
+      pincode: user.pincode || "",
+    },
+  });
+
+  async function onSubmit(data: z.infer<typeof profileSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/customer/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-customer-token": token },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      onUserUpdate(result);
+      toast({ title: "Profile Updated", description: "Your details have been saved." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-lg py-4">
+      <h2 className="text-xl font-bold mb-4" data-testid="text-account-title">My Account</h2>
+      <Card>
+        <CardContent className="pt-6">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} data-testid="input-profile-name" /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid gap-4 grid-cols-2">
+                <FormField control={form.control} name="phone" render={({ field }) => (
+                  <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} data-testid="input-profile-phone" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="email" render={({ field }) => (
+                  <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" data-testid="input-profile-email" /></FormControl></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="address" render={({ field }) => (
+                <FormItem><FormLabel>Default Address</FormLabel><FormControl><Input {...field} data-testid="input-profile-address" /></FormControl></FormItem>
+              )} />
+              <div className="grid gap-4 grid-cols-3">
+                <FormField control={form.control} name="city" render={({ field }) => (
+                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-profile-city" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="state" render={({ field }) => (
+                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} data-testid="input-profile-state" /></FormControl></FormItem>
+                )} />
+                <FormField control={form.control} name="pincode" render={({ field }) => (
+                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-profile-pincode" /></FormControl></FormItem>
+                )} />
+              </div>
+              <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-save-profile">
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
+            </form>
+          </Form>
+          <div className="mt-6 pt-6 border-t">
+            <Button variant="outline" className="w-full" onClick={onLogout} data-testid="button-logout">
+              <LogOut className="h-4 w-4 mr-2" /> Sign Out
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function CustomerPortalPage() {
+  const params = useParams<{ slug: string }>();
+  const slug = params.slug || "";
+  const [office, setOffice] = useState<OfficeInfo | null>(null);
+  const [partners, setPartners] = useState<PartnerInfo[]>([]);
+  const [isLoadingOffice, setIsLoadingOffice] = useState(true);
+  const [officeError, setOfficeError] = useState(false);
+  const auth = useCustomerAuth(slug);
+  const [activeTab, setActiveTab] = useState("book");
+
+  useEffect(() => {
+    if (!slug) return;
+    fetch(`/api/public/office/${slug}`)
+      .then((r) => {
+        if (!r.ok) throw new Error();
+        return r.json();
+      })
+      .then((data) => setOffice(data))
+      .catch(() => setOfficeError(true))
+      .finally(() => setIsLoadingOffice(false));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!slug || !office) return;
+    fetch(`/api/public/office/${slug}/partners`)
+      .then((r) => r.json())
+      .then((data) => setPartners(data))
+      .catch(() => {});
+  }, [slug, office]);
+
+  if (isLoadingOffice || auth.isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (officeError || !office) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
+          <div className="mx-auto max-w-3xl px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
+                <Building2 className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <span className="text-xl font-semibold">XGoo</span>
+            </div>
+          </div>
+        </header>
+        <div className="mx-auto max-w-3xl px-4 py-20 text-center">
+          <h1 className="text-2xl font-bold mb-4">Office Not Found</h1>
+          <p className="text-muted-foreground">The booking portal you're looking for doesn't exist or is no longer available.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="mx-auto max-w-3xl px-4 py-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
+                <Building2 className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div>
+                <span className="text-lg font-semibold">XGoo</span>
+                <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| {office.name}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {office.phone && (
+                <a href={`tel:${office.phone}`} className="text-sm text-primary hover:underline hidden sm:block" data-testid="link-office-phone">
+                  {office.phone}
+                </a>
+              )}
+              {auth.isAuthenticated && (
+                <span className="text-sm text-muted-foreground" data-testid="text-welcome-user">
+                  <UserCircle className="h-4 w-4 inline mr-1" />
+                  {auth.user?.name}
+                </span>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1 sm:hidden">{office.name}</p>
+        </div>
+      </header>
+
+      {!auth.isAuthenticated ? (
+        <AuthPage slug={slug} office={office} onLogin={auth.login} />
+      ) : (
+        <main className="mx-auto max-w-3xl px-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+            <TabsList className="grid w-full grid-cols-4" data-testid="tabs-navigation">
+              <TabsTrigger value="book" data-testid="tab-book">
+                <Plus className="h-4 w-4 mr-1 hidden sm:block" /> Book
+              </TabsTrigger>
+              <TabsTrigger value="bookings" data-testid="tab-bookings">
+                <ClipboardList className="h-4 w-4 mr-1 hidden sm:block" /> My Bookings
+              </TabsTrigger>
+              <TabsTrigger value="track" data-testid="tab-track">
+                <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
+              </TabsTrigger>
+              <TabsTrigger value="account" data-testid="tab-account">
+                <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="book">
+              <BookingTab token={auth.token!} user={auth.user!} slug={slug} partners={partners} />
+            </TabsContent>
+            <TabsContent value="bookings">
+              <MyBookingsTab token={auth.token!} />
+            </TabsContent>
+            <TabsContent value="track">
+              <TrackTab />
+            </TabsContent>
+            <TabsContent value="account">
+              <AccountTab
+                token={auth.token!}
+                user={auth.user!}
+                onUserUpdate={(u) => {
+                  auth.setUser(u);
+                  localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
+                }}
+                onLogout={auth.logout}
+              />
+            </TabsContent>
+          </Tabs>
+        </main>
+      )}
+    </div>
+  );
+}

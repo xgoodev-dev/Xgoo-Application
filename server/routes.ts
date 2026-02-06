@@ -1,9 +1,14 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
+import { db } from "./db";
+import { shipments } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -872,6 +877,285 @@ export async function registerRoutes(
       }
       console.error("Error creating booking request:", error);
       res.status(500).json({ message: "Failed to submit booking request" });
+    }
+  });
+
+  // ==========================================
+  // Customer Portal Auth & API Routes
+  // ==========================================
+
+  const customerRegisterSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    phone: z.string().min(10, "Valid phone number required"),
+    email: z.string().email().optional().or(z.literal("")),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    pincode: z.string().optional(),
+  });
+
+  const customerLoginSchema = z.object({
+    phone: z.string().min(10, "Valid phone number required"),
+    password: z.string().min(1, "Password is required"),
+  });
+
+  const customerUpdateSchema = z.object({
+    name: z.string().min(1).optional(),
+    phone: z.string().min(10).optional(),
+    email: z.string().email().optional().or(z.literal("")),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    pincode: z.string().optional(),
+    defaultPickupLat: z.string().optional().nullable(),
+    defaultPickupLng: z.string().optional().nullable(),
+  });
+
+  // Middleware to authenticate customer portal users
+  async function isCustomerAuthenticated(req: any, res: Response, next: NextFunction) {
+    const token = req.headers["x-customer-token"] as string;
+    if (!token) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const session = await storage.getCustomerSessionByToken(token);
+    if (!session) {
+      return res.status(401).json({ message: "Invalid or expired session" });
+    }
+    const customerUser = await storage.getCustomerUser(session.customerUserId);
+    if (!customerUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    req.customerUser = customerUser;
+    next();
+  }
+
+  // Customer Register
+  app.post("/api/public/office/:slug/customer/register", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const validated = customerRegisterSchema.parse(req.body);
+
+      const existing = await storage.getCustomerUserByPhone(office.id, validated.phone);
+      if (existing) {
+        return res.status(400).json({ message: "An account with this phone number already exists. Please login instead." });
+      }
+
+      if (validated.email) {
+        const existingEmail = await storage.getCustomerUserByEmail(office.id, validated.email);
+        if (existingEmail) {
+          return res.status(400).json({ message: "An account with this email already exists." });
+        }
+      }
+
+      const passwordHash = await bcrypt.hash(validated.password, 10);
+      const customerUser = await storage.createCustomerUser({
+        officeId: office.id,
+        name: validated.name,
+        phone: validated.phone,
+        email: validated.email || null,
+        passwordHash,
+        address: validated.address || null,
+        city: validated.city || null,
+        state: validated.state || null,
+        pincode: validated.pincode || null,
+      });
+
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await storage.createCustomerSession({
+        customerUserId: customerUser.id,
+        token,
+        expiresAt,
+      });
+
+      const { passwordHash: _, ...safeUser } = customerUser;
+      res.json({ user: safeUser, token });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error registering customer:", error);
+      res.status(500).json({ message: "Failed to register" });
+    }
+  });
+
+  // Customer Login
+  app.post("/api/public/office/:slug/customer/login", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const validated = customerLoginSchema.parse(req.body);
+      const customerUser = await storage.getCustomerUserByPhone(office.id, validated.phone);
+      if (!customerUser) {
+        return res.status(401).json({ message: "Invalid phone number or password" });
+      }
+
+      const isValid = await bcrypt.compare(validated.password, customerUser.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ message: "Invalid phone number or password" });
+      }
+
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await storage.createCustomerSession({
+        customerUserId: customerUser.id,
+        token,
+        expiresAt,
+      });
+
+      const { passwordHash: _, ...safeUser } = customerUser;
+      res.json({ user: safeUser, token });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error logging in customer:", error);
+      res.status(500).json({ message: "Failed to login" });
+    }
+  });
+
+  // Customer Logout
+  app.post("/api/customer/logout", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const token = req.headers["x-customer-token"] as string;
+      await storage.deleteCustomerSession(token);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error logging out:", error);
+      res.status(500).json({ message: "Failed to logout" });
+    }
+  });
+
+  // Get current customer user
+  app.get("/api/customer/me", isCustomerAuthenticated, async (req: any, res) => {
+    const { passwordHash: _, ...safeUser } = req.customerUser;
+    res.json(safeUser);
+  });
+
+  // Update customer profile
+  app.patch("/api/customer/me", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = customerUpdateSchema.parse(req.body);
+      const updated = await storage.updateCustomerUser(req.customerUser.id, validated as any);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { passwordHash: _, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Get customer's booking requests
+  app.get("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const requests = await storage.getBookingRequestsByCustomerUser(req.customerUser.id);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching customer bookings:", error);
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
+
+  // Get customer's booking request with shipment tracking info
+  app.get("/api/customer/bookings/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const request = await storage.getBookingRequest(id);
+      if (!request || request.customerUserId !== req.customerUser.id) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      let shipment = null;
+      if (request.convertedShipmentId) {
+        shipment = await storage.getShipment(request.convertedShipmentId);
+      }
+
+      res.json({ request, shipment });
+    } catch (error) {
+      console.error("Error fetching booking detail:", error);
+      res.status(500).json({ message: "Failed to fetch booking" });
+    }
+  });
+
+  // Customer submits a new booking (authenticated)
+  app.post("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = bookingRequestCreateSchema.parse(req.body);
+      const pickupData = {
+        pickupLat: req.body.pickupLat || null,
+        pickupLng: req.body.pickupLng || null,
+        pickupLocationName: req.body.pickupLocationName || null,
+      };
+
+      const request = await storage.createBookingRequest({
+        ...validated,
+        ...pickupData,
+        officeId: req.customerUser.officeId,
+        customerUserId: req.customerUser.id,
+        status: "pending",
+      });
+
+      res.json({
+        success: true,
+        requestNumber: request.requestNumber,
+        message: "Your booking request has been submitted.",
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating customer booking:", error);
+      res.status(500).json({ message: "Failed to submit booking" });
+    }
+  });
+
+  // Customer track shipment by booking number or AWB (public, no auth needed)
+  app.get("/api/public/track/:trackingNumber", async (req, res) => {
+    try {
+      const { trackingNumber } = req.params;
+      const shipmentResults = await db
+        .select()
+        .from(shipments)
+        .where(
+          sql`${shipments.bookingNumber} = ${trackingNumber} OR ${shipments.awbNumber} = ${trackingNumber}`
+        );
+
+      if (shipmentResults.length === 0) {
+        return res.status(404).json({ message: "No shipment found with this tracking number" });
+      }
+
+      const s = shipmentResults[0];
+      res.json({
+        bookingNumber: s.bookingNumber,
+        awbNumber: s.awbNumber,
+        status: s.status,
+        senderCity: s.senderCity,
+        receiverCity: s.receiverCity,
+        serviceType: s.serviceType,
+        weight: s.weight,
+        bookedAt: s.bookedAt,
+        pickedUpAt: s.pickedUpAt,
+        deliveredAt: s.deliveredAt,
+      });
+    } catch (error) {
+      console.error("Error tracking shipment:", error);
+      res.status(500).json({ message: "Failed to track shipment" });
     }
   });
 

@@ -6,6 +6,15 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 **Target**: Booking entry under 60 seconds, 90% digital bookings, clear end-of-day revenue visibility.
 
 ## Recent Changes
+- **2026-02-06**: Customer Portal with authentication, map-based booking, tracking
+  - Customer authentication system (phone + password, bcryptjs, session-based)
+  - Database: customer_users, customer_sessions tables; pickup location fields on booking_requests
+  - Full customer portal frontend at /book/:slug with login/register, tabbed interface
+  - Leaflet/OpenStreetMap map for pickup location selection (GPS, search, drag pin)
+  - Customer booking history with tracking timeline
+  - Public shipment tracking by booking/AWB number
+  - Profile management with address and default pickup location
+  - Provider booking-requests page shows pickup location with Google Maps link
 - **2026-02-05**: Added quotations, public booking portal, invoices, and parcel labels
   - Quotations system for creating and sharing price quotes with customers
   - Public booking portal at /book/:slug for customer self-service
@@ -135,6 +144,17 @@ All endpoints require authentication (except auth and public routes):
 - `GET /api/public/office/:slug` - Get public office info
 - `GET /api/public/office/:slug/partners` - Get active partners
 - `POST /api/public/office/:slug/booking-request` - Submit booking request
+- `POST /api/public/office/:slug/customer/register` - Register customer account
+- `POST /api/public/office/:slug/customer/login` - Customer login
+- `GET /api/public/track/:trackingNumber` - Track shipment by booking/AWB number
+
+### Customer Portal Endpoints (requires x-customer-token header)
+- `POST /api/customer/logout` - Customer logout
+- `GET /api/customer/me` - Get customer profile
+- `PATCH /api/customer/me` - Update customer profile
+- `GET /api/customer/bookings` - List customer's booking requests
+- `GET /api/customer/bookings/:id` - Get booking detail with shipment tracking
+- `POST /api/customer/bookings` - Submit new booking request
 
 ## User Preferences
 - Mobile-first design approach

@@ -22,7 +22,7 @@ import CustomersPage from "@/pages/customers";
 import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
-import PublicBookingPage from "@/pages/public-booking";
+import CustomerPortalPage from "@/pages/customer-portal";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedApp() {
@@ -92,7 +92,7 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/book/:slug" component={PublicBookingPage} />
+      <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route>
         {isLoading ? (
           <LoadingScreen />
