@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,10 @@ import {
   Building2,
   Loader2,
   Upload,
+  Link2,
+  Copy,
+  Check,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,6 +124,9 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
+        <BookingPortalLink office={office!} />
+
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <Card>
@@ -319,7 +326,78 @@ export default function SettingsPage() {
             </Card>
           </div>
         </div>
+        </>
       )}
     </div>
+  );
+}
+
+function BookingPortalLink({ office }: { office: Office }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!office?.publicSlug) return null;
+
+  const portalUrl = `${window.location.origin}/book/${office.publicSlug}`;
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = portalUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <Card className="mb-6 border-primary/20">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Link2 className="h-5 w-5" />
+          Customer Booking Portal
+        </CardTitle>
+        <CardDescription>
+          Share this link with your customers so they can book shipments, track parcels, and manage their account online.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2">
+          <Input
+            readOnly
+            value={portalUrl}
+            className="font-mono text-sm"
+            data-testid="input-booking-portal-url"
+          />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={copyToClipboard}
+            data-testid="button-copy-portal-link"
+          >
+            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            asChild
+            data-testid="button-open-portal"
+          >
+            <a href={portalUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Customers can register, book pickups with map location, track shipments, and manage their profile through this link.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

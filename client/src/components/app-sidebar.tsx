@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Package,
@@ -10,8 +12,12 @@ import {
   Building2,
   FileSpreadsheet,
   Inbox,
+  Link2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import type { Office } from "@shared/schema";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -81,6 +87,11 @@ const settingsNavItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const [portalCopied, setPortalCopied] = useState(false);
+
+  const { data: office } = useQuery<Office>({
+    queryKey: ["/api/office"],
+  });
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -95,6 +106,26 @@ export function AppSidebar() {
   const displayName = user?.firstName
     ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}`
     : user?.email || "User";
+
+  const portalUrl = office?.publicSlug
+    ? `${window.location.origin}/book/${office.publicSlug}`
+    : null;
+
+  const copyPortalLink = async () => {
+    if (!portalUrl) return;
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = portalUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setPortalCopied(true);
+    setTimeout(() => setPortalCopied(false), 2000);
+  };
 
   return (
     <Sidebar>
@@ -135,6 +166,30 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {portalUrl && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Booking Portal</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={copyPortalLink} data-testid="button-sidebar-copy-portal">
+                    {portalCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    <span>{portalCopied ? "Link Copied!" : "Copy Portal Link"}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <a href={portalUrl} target="_blank" rel="noopener noreferrer" data-testid="link-open-portal">
+                      <Link2 className="h-4 w-4" />
+                      <span>Open Portal</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>Settings</SidebarGroupLabel>
