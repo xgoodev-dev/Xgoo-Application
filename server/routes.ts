@@ -1148,6 +1148,71 @@ export async function registerRoutes(
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
 
+  // AI Section Fill - Parse natural language description for a specific form section (multilingual)
+  app.post("/api/ai/section-fill", async (req, res) => {
+    try {
+      const { section, description, customers, partners } = req.body;
+      if (!description || !section) {
+        return res.status(400).json({ message: "Section and description are required" });
+      }
+      if (typeof description !== "string" || description.length > 1000) {
+        return res.status(400).json({ message: "Description too long (max 1000 chars)" });
+      }
+
+      const validSections = ["sender", "receiver", "package", "service"];
+      if (!validSections.includes(section)) {
+        return res.status(400).json({ message: "Invalid section. Must be: sender, receiver, package, or service" });
+      }
+
+      const sectionFieldMap: Record<string, string> = {
+        sender: `Extract sender/shipper details. Return JSON with ONLY fields you can extract:
+{ "senderName": string, "senderPhone": string (10-digit Indian number), "senderAddress": string, "senderCity": string, "senderState": string, "senderPincode": string (6-digit), "customerId": string }
+${customers?.length ? `Known customers: ${customers.map((c: any) => `${c.name} (${c.phone}, ID: ${c.id})`).join(", ")}. If the description matches a known customer, include their customerId.` : ""}`,
+
+        receiver: `Extract receiver/destination details. Return JSON with ONLY fields you can extract:
+{ "receiverName": string, "receiverPhone": string (10-digit Indian number), "receiverAddress": string, "receiverCity": string, "receiverState": string, "receiverPincode": string (6-digit) }
+For Indian cities, infer the state if possible. Try to infer pincode from well-known areas.`,
+
+        package: `Extract package/parcel details. Return JSON with ONLY fields you can extract:
+{ "weight": string (in kg), "length": string (in cm), "width": string (in cm), "height": string (in cm), "numberOfPieces": string, "contentDescription": string, "declaredValue": string (in INR) }
+Common conversions: 1 pound ≈ 0.45 kg, 1 inch ≈ 2.54 cm. Parse colloquial measurements.`,
+
+        service: `Extract service/shipping preference details. Return JSON with ONLY fields you can extract:
+{ "serviceType": "air" | "surface", "courierPartnerId": string, "paymentMode": "cash" | "upi" | "bank_transfer" | "credit", "awbNumber": string }
+Default "surface" unless express/urgent/air/fast mentioned. "COD" or "cash on delivery" = "cash".
+${partners?.length ? `Available courier partners: ${partners.map((p: any) => `${p.name} (${p.code}, ID: ${p.id})`).join(", ")}. Match partner by name/code if mentioned.` : ""}`,
+      };
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a multilingual courier booking assistant for Indian courier offices. You understand ALL languages including Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Urdu, English, and mixed-language input (Hinglish etc.).
+
+${sectionFieldMap[section]}
+
+IMPORTANT RULES:
+1. The user may type in ANY language or mix of languages. Understand their intent regardless of language.
+2. Always return field VALUES in English (names can be in the original script if that's clearly the person's name).
+3. Phone numbers should be 10-digit Indian format.
+4. Return ONLY a JSON object with the fields you could extract. Omit fields you're unsure about.
+5. Do NOT wrap the response in markdown.`
+          },
+          { role: "user", content: description }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 300,
+      });
+
+      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(parsed);
+    } catch (error) {
+      console.error("AI section fill error:", error);
+      res.status(500).json({ message: "AI processing failed" });
+    }
+  });
+
   // AI Smart Fill - Parse natural language booking description into form fields
   app.post("/api/ai/smart-fill", async (req, res) => {
     try {
@@ -1310,6 +1375,69 @@ Match by code/name if recognized.`
     } catch (error) {
       console.error("AI recommend courier error:", error);
       res.status(500).json({ message: "AI recommendation failed" });
+    }
+  });
+
+  // AI Section Fill for customer portal (public, no auth, multilingual)
+  app.post("/api/public/ai/section-fill", async (req, res) => {
+    try {
+      const { section, description, senderName, senderPhone, senderAddress } = req.body;
+      if (!description || !section) {
+        return res.status(400).json({ message: "Section and description are required" });
+      }
+      if (typeof description !== "string" || description.length > 1000) {
+        return res.status(400).json({ message: "Description too long (max 1000 chars)" });
+      }
+
+      const validSections = ["sender", "receiver", "package", "service"];
+      if (!validSections.includes(section)) {
+        return res.status(400).json({ message: "Invalid section" });
+      }
+
+      const sectionFieldMap: Record<string, string> = {
+        sender: `Extract sender/shipper details. Return JSON with ONLY fields you can extract:
+{ "senderName": string, "senderPhone": string (10-digit Indian number), "senderEmail": string, "senderAddress": string, "senderCity": string, "senderState": string, "senderPincode": string (6-digit) }
+${senderName ? `Current sender: ${senderName} (${senderPhone}), address: ${senderAddress}. Update only fields the user mentions.` : ""}`,
+
+        receiver: `Extract receiver/destination details. Return JSON with ONLY fields you can extract:
+{ "receiverName": string, "receiverPhone": string (10-digit Indian number), "receiverAddress": string, "receiverCity": string, "receiverState": string, "receiverPincode": string (6-digit) }
+For Indian cities, infer the state if possible. Try to infer pincode from well-known areas.`,
+
+        package: `Extract package/parcel details. Return JSON with ONLY fields you can extract:
+{ "weight": string (in kg), "numberOfPieces": string, "contentDescription": string, "declaredValue": string (in INR) }
+Common conversions: 1 pound ≈ 0.45 kg. Parse colloquial measurements like "paanch kilo" = 5 kg.`,
+
+        service: `Extract service/shipping preference details. Return JSON with ONLY fields you can extract:
+{ "serviceType": "air" | "surface", "courierPreference": string, "notes": string }
+Default "surface" unless express/urgent/air/fast mentioned.`,
+      };
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a multilingual courier booking assistant. You understand ALL languages including Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Urdu, English, and mixed-language input (Hinglish etc.).
+
+${sectionFieldMap[section]}
+
+IMPORTANT RULES:
+1. The user may type in ANY language or mix of languages. Understand their intent regardless of language.
+2. Always return field VALUES in English (names can be in the original script if that's clearly the person's name).
+3. Phone numbers should be 10-digit Indian format.
+4. Return ONLY a JSON object with the fields you could extract. Omit fields you're unsure about.`
+          },
+          { role: "user", content: description }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 300,
+      });
+
+      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(parsed);
+    } catch (error) {
+      console.error("AI section fill (public) error:", error);
+      res.status(500).json({ message: "AI processing failed" });
     }
   });
 

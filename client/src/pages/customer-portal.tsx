@@ -595,6 +595,8 @@ function BookingTab({ token, user, slug, partners }: {
   const [isUploading, setIsUploading] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
+  const [sectionAiText, setSectionAiText] = useState<Record<string, string>>({ sender: "", receiver: "", package: "", service: "" });
+  const [sectionAiLoading, setSectionAiLoading] = useState<Record<string, boolean>>({ sender: false, receiver: false, package: false, service: false });
 
   const form = useForm<z.infer<typeof bookingSchema>>({
     resolver: zodResolver(bookingSchema),
@@ -727,6 +729,41 @@ function BookingTab({ token, user, slug, partners }: {
     form.setValue("packagePhotoUrls", newPhotos);
   }
 
+  async function handleSectionAiFill(section: string) {
+    const text = sectionAiText[section];
+    if (!text?.trim()) return;
+    setSectionAiLoading(prev => ({ ...prev, [section]: true }));
+    try {
+      const body: any = { section, description: text, senderName: user.name, senderPhone: user.phone, senderAddress: user.address };
+      const res = await fetch("/api/public/ai/section-fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      const sectionFields: Record<string, string[]> = {
+        sender: ["senderName", "senderPhone", "senderEmail", "senderAddress", "senderCity", "senderState", "senderPincode"],
+        receiver: ["receiverName", "receiverPhone", "receiverAddress", "receiverCity", "receiverState", "receiverPincode"],
+        package: ["weight", "numberOfPieces", "contentDescription", "declaredValue"],
+        service: ["serviceType", "courierPreference", "notes"],
+      };
+      let filled = 0;
+      for (const key of sectionFields[section] || []) {
+        if (data[key] !== undefined && data[key] !== null && data[key] !== "") {
+          form.setValue(key as any, String(data[key]));
+          filled++;
+        }
+      }
+      toast({ title: "AI Filled", description: `${filled} field(s) auto-filled.` });
+      setSectionAiText(prev => ({ ...prev, [section]: "" }));
+    } catch (err: any) {
+      toast({ title: "AI Error", description: err.message || "Could not process", variant: "destructive" });
+    } finally {
+      setSectionAiLoading(prev => ({ ...prev, [section]: false }));
+    }
+  }
+
   async function onSubmit(data: z.infer<typeof bookingSchema>) {
     setIsSubmitting(true);
     try {
@@ -822,6 +859,13 @@ function BookingTab({ token, user, slug, partners }: {
               <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Sender Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
+                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
+                <Input value={sectionAiText.sender} onChange={(e) => setSectionAiText(prev => ({ ...prev, sender: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("sender"); } }} placeholder='e.g. Raj Kumar, 9876543210, MG Road Bangalore (any language)' className="text-sm" disabled={sectionAiLoading.sender} data-testid="input-ai-sender" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("sender")} disabled={sectionAiLoading.sender || !sectionAiText.sender?.trim()} data-testid="button-ai-sender">
+                  {sectionAiLoading.sender ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField control={form.control} name="senderName" render={({ field }) => (
                   <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-sender-name" /></FormControl><FormMessage /></FormItem>
@@ -869,6 +913,13 @@ function BookingTab({ token, user, slug, partners }: {
               <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Receiver Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
+                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
+                <Input value={sectionAiText.receiver} onChange={(e) => setSectionAiText(prev => ({ ...prev, receiver: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("receiver"); } }} placeholder='e.g. Amit ko Delhi Connaught Place bhejo (any language)' className="text-sm" disabled={sectionAiLoading.receiver} data-testid="input-ai-receiver" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("receiver")} disabled={sectionAiLoading.receiver || !sectionAiText.receiver?.trim()} data-testid="button-ai-receiver">
+                  {sectionAiLoading.receiver ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField control={form.control} name="receiverName" render={({ field }) => (
                   <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-receiver-name" /></FormControl><FormMessage /></FormItem>
@@ -909,6 +960,13 @@ function BookingTab({ token, user, slug, partners }: {
               <CardDescription>Enter details manually or scan your package with AI</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
+                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
+                <Input value={sectionAiText.package} onChange={(e) => setSectionAiText(prev => ({ ...prev, package: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("package"); } }} placeholder='e.g. 5 kilo electronics, value 10000 (any language)' className="text-sm" disabled={sectionAiLoading.package} data-testid="input-ai-package" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("package")} disabled={sectionAiLoading.package || !sectionAiText.package?.trim()} data-testid="button-ai-package">
+                  {sectionAiLoading.package ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField control={form.control} name="weight" render={({ field }) => (
                   <FormItem><FormLabel>Approx. Weight (kg)</FormLabel><FormControl><Input {...field} type="number" step="0.1" data-testid="input-weight" /></FormControl></FormItem>
@@ -971,6 +1029,13 @@ function BookingTab({ token, user, slug, partners }: {
               <CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4" /> Service Preference</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
+                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
+                <Input value={sectionAiText.service} onChange={(e) => setSectionAiText(prev => ({ ...prev, service: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("service"); } }} placeholder='e.g. air express urgent delivery (any language)' className="text-sm" disabled={sectionAiLoading.service} data-testid="input-ai-service" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("service")} disabled={sectionAiLoading.service || !sectionAiText.service?.trim()} data-testid="button-ai-service">
+                  {sectionAiLoading.service ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </Button>
+              </div>
               <FormField control={form.control} name="serviceType" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Service Type</FormLabel>
