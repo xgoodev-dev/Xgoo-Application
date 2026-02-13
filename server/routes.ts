@@ -158,6 +158,10 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
 
+  storage.backfillPublicSlugs().catch((err) =>
+    console.error("Failed to backfill public slugs:", err)
+  );
+
   async function getOrCreateOffice(userId: string, officeName?: string): Promise<string> {
     let office = await storage.getOfficeByUserId(userId);
     if (!office) {

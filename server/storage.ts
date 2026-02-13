@@ -40,6 +40,7 @@ export interface IStorage {
   getOfficeByUserId(userId: string): Promise<Office | undefined>;
   createOffice(office: InsertOffice): Promise<Office>;
   updateOffice(id: string, office: Partial<InsertOffice>): Promise<Office | undefined>;
+  backfillPublicSlugs(): Promise<void>;
 
   // Customer operations
   getCustomersByOffice(officeId: string): Promise<Customer[]>;
@@ -132,8 +133,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOffice(office: InsertOffice): Promise<Office> {
+    if (!office.publicSlug) {
+      office.publicSlug = await this.generateUniqueSlug(office.name || "office");
+    }
     const [created] = await db.insert(offices).values(office).returning();
     return created;
+  }
+
+  private async generateUniqueSlug(name: string): Promise<string> {
+    let base = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40);
+    if (!base) base = "office";
+    let slug = base;
+    let attempt = 0;
+    while (true) {
+      const existing = await this.getOfficeBySlug(slug);
+      if (!existing) return slug;
+      attempt++;
+      slug = `${base}-${attempt}`;
+    }
   }
 
   async updateOffice(id: string, office: Partial<InsertOffice>): Promise<Office | undefined> {
@@ -418,6 +441,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(bookingRequests)
       .where(eq(bookingRequests.customerUserId, customerUserId))
       .orderBy(desc(bookingRequests.createdAt));
+  }
+
+  async backfillPublicSlugs(): Promise<void> {
+    const officesWithoutSlug = await db.select().from(offices).where(sql`${offices.publicSlug} IS NULL`);
+    for (const office of officesWithoutSlug) {
+      const slug = await this.generateUniqueSlug(office.name || "office");
+      await db.update(offices).set({ publicSlug: slug }).where(eq(offices.id, office.id));
+    }
+    if (officesWithoutSlug.length > 0) {
+      console.log(`Backfilled publicSlug for ${officesWithoutSlug.length} office(s)`);
+    }
   }
 
   // Office lookup by slug
