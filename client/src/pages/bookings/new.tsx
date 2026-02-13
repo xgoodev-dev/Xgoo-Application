@@ -19,6 +19,7 @@ import {
   Wand2,
   Bot,
   X,
+  Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,6 +98,8 @@ export default function NewBookingPage() {
   } | null>(null);
   const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
 
+  const [recordingSection, setRecordingSection] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
 
@@ -215,6 +218,96 @@ export default function NewBookingPage() {
       toast({ title: "AI Error", description: error.message || "Could not process", variant: "destructive" });
     } finally {
       setSectionAiLoading(prev => ({ ...prev, [section]: false }));
+    }
+  };
+
+  const handleVoiceRecord = async (section: string) => {
+    if (recordingSection === section) {
+      mediaRecorderRef.current?.stop();
+      setRecordingSection(null);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          try {
+            const res = await apiRequest("POST", "/api/ai/transcribe", { audio: base64 });
+            const data = await res.json();
+            if (data.text) {
+              setSectionAiText(prev => ({ ...prev, [section]: data.text }));
+              toast({ title: "Voice captured", description: "Your speech has been transcribed. Press the fill button to apply." });
+            }
+          } catch (err: any) {
+            toast({ title: "Transcription failed", description: err.message || "Could not transcribe audio", variant: "destructive" });
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      setRecordingSection(section);
+      mediaRecorder.start();
+
+      setTimeout(() => {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          setRecordingSection(null);
+        }
+      }, 15000);
+    } catch (err) {
+      toast({ title: "Microphone access denied", description: "Please allow microphone access to use voice input", variant: "destructive" });
+    }
+  };
+
+  const handleSmartFillVoice = async () => {
+    if (recordingSection === "smartfill") {
+      mediaRecorderRef.current?.stop();
+      setRecordingSection(null);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          try {
+            const res = await apiRequest("POST", "/api/ai/transcribe", { audio: base64 });
+            const data = await res.json();
+            if (data.text) {
+              setSmartFillText(data.text);
+              toast({ title: "Voice captured", description: "Your speech has been transcribed. Press the fill button to apply." });
+            }
+          } catch (err: any) {
+            toast({ title: "Transcription failed", description: err.message || "Could not transcribe audio", variant: "destructive" });
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+      setRecordingSection("smartfill");
+      mediaRecorder.start();
+      setTimeout(() => { if (mediaRecorder.state === 'recording') { mediaRecorder.stop(); setRecordingSection(null); } }, 15000);
+    } catch (err) {
+      toast({ title: "Microphone access denied", description: "Please allow microphone access to use voice input", variant: "destructive" });
     }
   };
 
@@ -415,6 +508,9 @@ export default function NewBookingPage() {
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSmartFill(); } }}
               data-testid="input-smart-fill"
             />
+            <Button type="button" size="icon" variant="ghost" onClick={handleSmartFillVoice} data-testid="button-mic-smartfill" className={recordingSection === "smartfill" ? "text-red-500" : ""}>
+              <Mic className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               onClick={handleSmartFill}
@@ -455,6 +551,9 @@ export default function NewBookingPage() {
                     disabled={sectionAiLoading.sender}
                     data-testid="input-ai-sender"
                   />
+                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("sender")} data-testid="button-mic-sender" className={recordingSection === "sender" ? "text-red-500" : ""}>
+                    <Mic className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"
@@ -598,6 +697,9 @@ export default function NewBookingPage() {
                     disabled={sectionAiLoading.receiver}
                     data-testid="input-ai-receiver"
                   />
+                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("receiver")} data-testid="button-mic-receiver" className={recordingSection === "receiver" ? "text-red-500" : ""}>
+                    <Mic className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"
@@ -739,6 +841,9 @@ export default function NewBookingPage() {
                     disabled={sectionAiLoading.package}
                     data-testid="input-ai-package"
                   />
+                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("package")} data-testid="button-mic-package" className={recordingSection === "package" ? "text-red-500" : ""}>
+                    <Mic className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"
@@ -935,6 +1040,9 @@ export default function NewBookingPage() {
                     disabled={sectionAiLoading.service}
                     data-testid="input-ai-service"
                   />
+                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("service")} data-testid="button-mic-service" className={recordingSection === "service" ? "text-red-500" : ""}>
+                    <Mic className="h-4 w-4" />
+                  </Button>
                   <Button
                     type="button"
                     size="icon"

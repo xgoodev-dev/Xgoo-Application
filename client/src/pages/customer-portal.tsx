@@ -19,6 +19,7 @@ import {
   Upload,
   Sparkles,
   X,
+  Mic,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import {
@@ -597,6 +598,8 @@ function BookingTab({ token, user, slug, partners }: {
   const photoUploadRef = useRef<HTMLInputElement>(null);
   const [sectionAiText, setSectionAiText] = useState<Record<string, string>>({ sender: "", receiver: "", package: "", service: "" });
   const [sectionAiLoading, setSectionAiLoading] = useState<Record<string, boolean>>({ sender: false, receiver: false, package: false, service: false });
+  const [recordingSection, setRecordingSection] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const form = useForm<z.infer<typeof bookingSchema>>({
     resolver: zodResolver(bookingSchema),
@@ -764,6 +767,92 @@ function BookingTab({ token, user, slug, partners }: {
     }
   }
 
+  async function handleVoiceRecord(section: string) {
+    if (recordingSection === section) {
+      mediaRecorderRef.current?.stop();
+      setRecordingSection(null);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          try {
+            const res = await fetch("/api/public/ai/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ audio: base64 }),
+            });
+            const data = await res.json();
+            if (data.text) {
+              setSectionAiText(prev => ({ ...prev, [section]: data.text }));
+              toast({ title: "Voice captured", description: "Your speech has been transcribed. Press the fill button to apply." });
+            }
+          } catch (err: any) {
+            toast({ title: "Transcription failed", description: err.message || "Could not transcribe audio", variant: "destructive" });
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+      setRecordingSection(section);
+      mediaRecorder.start();
+      setTimeout(() => { if (mediaRecorder.state === 'recording') { mediaRecorder.stop(); setRecordingSection(null); } }, 15000);
+    } catch (err) {
+      toast({ title: "Microphone access denied", description: "Please allow microphone access to use voice input", variant: "destructive" });
+    }
+  }
+
+  async function handleSmartFillVoice() {
+    if (recordingSection === "smartfill") {
+      mediaRecorderRef.current?.stop();
+      setRecordingSection(null);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          try {
+            const res = await fetch("/api/public/ai/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ audio: base64 }),
+            });
+            const data = await res.json();
+            if (data.text) {
+              setSmartFillText(data.text);
+              toast({ title: "Voice captured", description: "Your speech has been transcribed. Press the fill button to apply." });
+            }
+          } catch (err: any) {
+            toast({ title: "Transcription failed", description: err.message || "Could not transcribe audio", variant: "destructive" });
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+      setRecordingSection("smartfill");
+      mediaRecorder.start();
+      setTimeout(() => { if (mediaRecorder.state === 'recording') { mediaRecorder.stop(); setRecordingSection(null); } }, 15000);
+    } catch (err) {
+      toast({ title: "Microphone access denied", description: "Please allow microphone access to use voice input", variant: "destructive" });
+    }
+  }
+
   async function onSubmit(data: z.infer<typeof bookingSchema>) {
     setIsSubmitting(true);
     try {
@@ -847,6 +936,9 @@ function BookingTab({ token, user, slug, partners }: {
                   disabled={isSmartFilling}
                   data-testid="input-smart-fill"
                 />
+                <Button type="button" size="icon" variant="ghost" onClick={handleSmartFillVoice} data-testid="button-mic-smartfill" className={recordingSection === "smartfill" ? "text-red-500" : ""}>
+                  <Mic className="h-4 w-4" />
+                </Button>
                 <Button type="button" onClick={handleSmartFill} disabled={isSmartFilling || !smartFillText.trim()} data-testid="button-smart-fill">
                   {isSmartFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 </Button>
@@ -862,6 +954,9 @@ function BookingTab({ token, user, slug, partners }: {
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.sender} onChange={(e) => setSectionAiText(prev => ({ ...prev, sender: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("sender"); } }} placeholder='e.g. Raj Kumar, 9876543210, MG Road Bangalore (any language)' className="text-sm" disabled={sectionAiLoading.sender} data-testid="input-ai-sender" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("sender")} data-testid="button-mic-sender" className={recordingSection === "sender" ? "text-red-500" : ""}>
+                  <Mic className="h-4 w-4" />
+                </Button>
                 <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("sender")} disabled={sectionAiLoading.sender || !sectionAiText.sender?.trim()} data-testid="button-ai-sender">
                   {sectionAiLoading.sender ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 </Button>
@@ -916,6 +1011,9 @@ function BookingTab({ token, user, slug, partners }: {
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.receiver} onChange={(e) => setSectionAiText(prev => ({ ...prev, receiver: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("receiver"); } }} placeholder='e.g. Amit ko Delhi Connaught Place bhejo (any language)' className="text-sm" disabled={sectionAiLoading.receiver} data-testid="input-ai-receiver" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("receiver")} data-testid="button-mic-receiver" className={recordingSection === "receiver" ? "text-red-500" : ""}>
+                  <Mic className="h-4 w-4" />
+                </Button>
                 <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("receiver")} disabled={sectionAiLoading.receiver || !sectionAiText.receiver?.trim()} data-testid="button-ai-receiver">
                   {sectionAiLoading.receiver ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 </Button>
@@ -963,6 +1061,9 @@ function BookingTab({ token, user, slug, partners }: {
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.package} onChange={(e) => setSectionAiText(prev => ({ ...prev, package: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("package"); } }} placeholder='e.g. 5 kilo electronics, value 10000 (any language)' className="text-sm" disabled={sectionAiLoading.package} data-testid="input-ai-package" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("package")} data-testid="button-mic-package" className={recordingSection === "package" ? "text-red-500" : ""}>
+                  <Mic className="h-4 w-4" />
+                </Button>
                 <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("package")} disabled={sectionAiLoading.package || !sectionAiText.package?.trim()} data-testid="button-ai-package">
                   {sectionAiLoading.package ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 </Button>
@@ -1032,6 +1133,9 @@ function BookingTab({ token, user, slug, partners }: {
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.service} onChange={(e) => setSectionAiText(prev => ({ ...prev, service: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("service"); } }} placeholder='e.g. air express urgent delivery (any language)' className="text-sm" disabled={sectionAiLoading.service} data-testid="input-ai-service" />
+                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("service")} data-testid="button-mic-service" className={recordingSection === "service" ? "text-red-500" : ""}>
+                  <Mic className="h-4 w-4" />
+                </Button>
                 <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("service")} disabled={sectionAiLoading.service || !sectionAiText.service?.trim()} data-testid="button-ai-service">
                   {sectionAiLoading.service ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 </Button>

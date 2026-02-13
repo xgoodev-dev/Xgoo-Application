@@ -10,6 +10,8 @@ import { db } from "./db";
 import { shipments } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import OpenAI from "openai";
+import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
+import express from "express";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -1146,6 +1148,52 @@ export async function registerRoutes(
   const aiOpenai = new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+
+  const audioBodyParser = express.json({ limit: "25mb" });
+
+  app.post("/api/ai/transcribe", audioBodyParser, isAuthenticated, async (req: any, res) => {
+    try {
+      const { audio } = req.body;
+      if (!audio) {
+        return res.status(400).json({ message: "Audio data (base64) is required" });
+      }
+      if (typeof audio !== "string") {
+        return res.status(400).json({ message: "Invalid audio format" });
+      }
+      const rawBuffer = Buffer.from(audio, "base64");
+      if (rawBuffer.byteLength > 25 * 1024 * 1024) {
+        return res.status(413).json({ message: "Audio too large (max 25MB)" });
+      }
+      const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
+      const text = await speechToText(audioBuffer, format);
+      res.json({ text });
+    } catch (error) {
+      console.error("AI transcribe error:", error);
+      res.status(500).json({ message: "Transcription failed" });
+    }
+  });
+
+  app.post("/api/public/ai/transcribe", audioBodyParser, async (req, res) => {
+    try {
+      const { audio } = req.body;
+      if (!audio) {
+        return res.status(400).json({ message: "Audio data (base64) is required" });
+      }
+      if (typeof audio !== "string") {
+        return res.status(400).json({ message: "Invalid audio format" });
+      }
+      const rawBuffer = Buffer.from(audio, "base64");
+      if (rawBuffer.byteLength > 25 * 1024 * 1024) {
+        return res.status(413).json({ message: "Audio too large (max 25MB)" });
+      }
+      const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
+      const text = await speechToText(audioBuffer, format);
+      res.json({ text });
+    } catch (error) {
+      console.error("AI transcribe (public) error:", error);
+      res.status(500).json({ message: "Transcription failed" });
+    }
   });
 
   // AI Section Fill - Parse natural language description for a specific form section (multilingual)
