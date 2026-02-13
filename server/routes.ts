@@ -1184,7 +1184,7 @@ ${partners?.length ? `Available courier partners: ${partners.map((p: any) => `${
       };
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1225,7 +1225,7 @@ IMPORTANT RULES:
       const partnerList = (partners || []).map((p: any) => `${p.name} (${p.code}) - Air: ₹${p.baseRateAir}+₹${p.ratePerKgAir}/kg, Surface: ₹${p.baseRateSurface}+₹${p.ratePerKgSurface}/kg`).join("\n");
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1284,7 +1284,7 @@ Important: Only include fields you're confident about. For Indian cities, infer 
       }
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1340,7 +1340,7 @@ Use visual cues like nearby objects for scale reference. If there's a reference 
       }));
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1413,7 +1413,7 @@ Default "surface" unless express/urgent/air/fast mentioned.`,
       };
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1433,9 +1433,7 @@ IMPORTANT RULES:
         max_completion_tokens: 300,
       });
 
-      const rawContent = response.choices[0]?.message?.content || "{}";
-      console.log(`AI section fill (public) raw response for section=${section}:`, rawContent);
-      const parsed = JSON.parse(rawContent);
+      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
       res.json(parsed);
     } catch (error) {
       console.error("AI section fill (public) error:", error);
@@ -1455,7 +1453,7 @@ IMPORTANT RULES:
       }
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -1504,7 +1502,7 @@ Important: Focus on extracting receiver details since the sender is the customer
       }
 
       const response = await aiOpenai.chat.completions.create({
-        model: "gpt-5-nano",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
