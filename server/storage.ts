@@ -32,7 +32,7 @@ import {
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, desc, sql, count, sum } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, count, sum, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -100,6 +100,7 @@ export interface IStorage {
 
   // Office lookup
   getOfficeBySlug(slug: string): Promise<Office | undefined>;
+  getPublicOffices(): Promise<Pick<Office, "id" | "name" | "city" | "state" | "pincode" | "phone" | "email" | "publicSlug">[]>;
 
   // Dashboard stats
   getDashboardStats(officeId: string): Promise<{
@@ -423,6 +424,22 @@ export class DatabaseStorage implements IStorage {
   async getOfficeBySlug(slug: string): Promise<Office | undefined> {
     const [office] = await db.select().from(offices).where(eq(offices.publicSlug, slug));
     return office;
+  }
+
+  async getPublicOffices(): Promise<Pick<Office, "id" | "name" | "city" | "state" | "pincode" | "phone" | "email" | "publicSlug">[]> {
+    return db
+      .select({
+        id: offices.id,
+        name: offices.name,
+        city: offices.city,
+        state: offices.state,
+        pincode: offices.pincode,
+        phone: offices.phone,
+        email: offices.email,
+        publicSlug: offices.publicSlug,
+      })
+      .from(offices)
+      .where(isNotNull(offices.publicSlug));
   }
 
   // Dashboard stats

@@ -807,6 +807,17 @@ export async function registerRoutes(
     }
   });
 
+  // Public offices listing (for customer discovery)
+  app.get("/api/public/offices", async (req, res) => {
+    try {
+      const officesList = await storage.getPublicOffices();
+      res.json(officesList);
+    } catch (error) {
+      console.error("Error fetching public offices:", error);
+      res.status(500).json({ message: "Failed to fetch offices" });
+    }
+  });
+
   // Public booking portal routes (no auth required)
   app.get("/api/public/office/:slug", async (req, res) => {
     try {
