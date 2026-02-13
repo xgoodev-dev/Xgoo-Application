@@ -15,6 +15,7 @@ import {
   Building2,
   Send,
 } from "lucide-react";
+import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -196,9 +197,7 @@ export default function PublicBookingPage() {
         <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
           <div className="mx-auto max-w-3xl px-4 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                <Building2 className="h-5 w-5 text-primary-foreground" />
-              </div>
+              <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg" />
               <span className="text-xl font-semibold">XGoo</span>
             </div>
           </div>
@@ -219,9 +218,7 @@ export default function PublicBookingPage() {
         <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
           <div className="mx-auto max-w-3xl px-4 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                <Building2 className="h-5 w-5 text-primary-foreground" />
-              </div>
+              <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg" />
               <div>
                 <span className="text-xl font-semibold">XGoo</span>
                 <span className="text-muted-foreground text-sm ml-2">| {office.name}</span>
@@ -272,9 +269,7 @@ export default function PublicBookingPage() {
         <div className="mx-auto max-w-3xl px-4 py-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                <Building2 className="h-5 w-5 text-primary-foreground" />
-              </div>
+              <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg" />
               <div>
                 <span className="text-xl font-semibold">XGoo</span>
                 <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| {office.name}</span>

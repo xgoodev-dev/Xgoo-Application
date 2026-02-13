@@ -10,6 +10,9 @@ import {
   Settings,
   LogOut,
   Building2,
+} from "lucide-react";
+import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import {
   FileSpreadsheet,
   Inbox,
   Link2,
@@ -132,9 +135,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/" data-testid="link-home">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <Building2 className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src={xgooLogo} alt="XGoo" className="h-10 w-10 rounded-lg" />
             <div className="flex flex-col">
               <span className="text-lg font-semibold">XGoo</span>
               <span className="text-xs text-muted-foreground">Courier Management</span>
