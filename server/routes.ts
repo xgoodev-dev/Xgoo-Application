@@ -196,7 +196,6 @@ export async function registerRoutes(
       }
       const validated = officeCreateSchema.parse(req.body);
       const office = await storage.createOffice({ ...validated, userId });
-      await storage.seedData(office.id);
       res.json(office);
     } catch (error) {
       if (error instanceof z.ZodError) {
