@@ -165,7 +165,6 @@ export async function registerRoutes(
         userId,
         name: officeName || "My Courier Office",
       });
-      await storage.seedData(office.id);
     }
     return office.id;
   }
