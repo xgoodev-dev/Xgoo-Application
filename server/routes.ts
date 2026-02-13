@@ -1433,7 +1433,9 @@ IMPORTANT RULES:
         max_completion_tokens: 300,
       });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+      const rawContent = response.choices[0]?.message?.content || "{}";
+      console.log(`AI section fill (public) raw response for section=${section}:`, rawContent);
+      const parsed = JSON.parse(rawContent);
       res.json(parsed);
     } catch (error) {
       console.error("AI section fill (public) error:", error);
