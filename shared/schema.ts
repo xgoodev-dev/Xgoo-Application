@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export * from "./models/auth";
+export * from "./models/chat";
 
 // Offices table - one office per account for MVP
 export const offices = pgTable("offices", {
@@ -128,6 +129,7 @@ export const shipments = pgTable("shipments", {
   numberOfPieces: integer("number_of_pieces").default(1),
   contentDescription: text("content_description"),
   declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  packagePhotoUrls: text("package_photo_urls").array(),
   
   // Service details
   serviceType: varchar("service_type", { length: 20 }).notNull().default("surface"), // air, surface
@@ -304,6 +306,8 @@ export const bookingRequests = pgTable("booking_requests", {
   numberOfPieces: integer("number_of_pieces").default(1),
   contentDescription: text("content_description"),
   declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  
+  packagePhotoUrls: text("package_photo_urls").array(),
   
   // Service preference
   serviceType: varchar("service_type", { length: 20 }).default("surface"),

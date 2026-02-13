@@ -6,6 +6,14 @@ XGoo is a mobile-first courier office management SaaS designed for small and mid
 **Target**: Booking entry under 60 seconds, 90% digital bookings, clear end-of-day revenue visibility.
 
 ## Recent Changes
+- **2026-02-13**: AI-powered features for booking and package management
+  - AI Smart Fill: Natural language description auto-fills booking form fields (provider + customer)
+  - Camera-based package measurement: Vision AI estimates dimensions/weight from photos
+  - Package photo upload: Up to 3 photos per shipment via object storage (presigned URLs)
+  - AI courier partner recommendation: Suggests best partner based on shipment details (provider only)
+  - Backend endpoints: /api/ai/* (authenticated) and /api/public/ai/* (public with input validation)
+  - Database: packagePhotoUrls text[] columns on shipments and booking_requests tables
+  - Security: Input size limits, file type validation, content type restrictions on uploads
 - **2026-02-06**: Customer Portal with authentication, map-based booking, tracking
   - Customer authentication system (phone + password, bcryptjs, session-based)
   - Database: customer_users, customer_sessions tables; pickup location fields on booking_requests

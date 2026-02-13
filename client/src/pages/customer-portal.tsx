@@ -14,6 +14,11 @@ import {
   Building2,
   Send,
   LogOut,
+  Wand2,
+  Camera,
+  Upload,
+  Sparkles,
+  X,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import {
@@ -198,6 +203,7 @@ const bookingSchema = z.object({
   serviceType: z.enum(["air", "surface"]).default("surface"),
   courierPreference: z.string().optional(),
   notes: z.string().optional(),
+  packagePhotoUrls: z.array(z.string()).optional(),
 });
 
 const profileSchema = z.object({
@@ -582,6 +588,13 @@ function BookingTab({ token, user, slug, partners }: {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ requestNumber: string } | null>(null);
   const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [smartFillText, setSmartFillText] = useState("");
+  const [isSmartFilling, setIsSmartFilling] = useState(false);
+  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const photoUploadRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof bookingSchema>>({
     resolver: zodResolver(bookingSchema),
@@ -606,8 +619,113 @@ function BookingTab({ token, user, slug, partners }: {
       serviceType: "surface",
       courierPreference: "",
       notes: "",
+      packagePhotoUrls: [],
     },
   });
+
+  async function handleSmartFill() {
+    if (!smartFillText.trim()) return;
+    setIsSmartFilling(true);
+    try {
+      const res = await fetch("/api/public/ai/smart-fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: smartFillText,
+          senderName: user.name,
+          senderPhone: user.phone,
+          senderAddress: user.address,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      const fieldMap: Record<string, string> = {
+        receiverName: "receiverName", receiverPhone: "receiverPhone",
+        receiverAddress: "receiverAddress", receiverCity: "receiverCity",
+        receiverState: "receiverState", receiverPincode: "receiverPincode",
+        weight: "weight", numberOfPieces: "numberOfPieces",
+        contentDescription: "contentDescription", declaredValue: "declaredValue",
+        serviceType: "serviceType", notes: "notes",
+      };
+      let filled = 0;
+      for (const [key, formKey] of Object.entries(fieldMap)) {
+        if (data[key]) {
+          form.setValue(formKey as any, String(data[key]));
+          filled++;
+        }
+      }
+      toast({ title: "AI Smart Fill", description: `Filled ${filled} fields from your description.` });
+      setSmartFillText("");
+    } catch (err: any) {
+      toast({ title: "AI Error", description: err.message || "Could not parse description", variant: "destructive" });
+    } finally {
+      setIsSmartFilling(false);
+    }
+  }
+
+  async function handleCameraScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsMeasuring(true);
+    try {
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/public/ai/measure-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      if (data.estimatedWeight) form.setValue("weight", String(data.estimatedWeight));
+      if (data.contentDescription) form.setValue("contentDescription", data.contentDescription);
+      toast({
+        title: "Package Measured",
+        description: `~${data.length || "?"}x${data.width || "?"}x${data.height || "?"}cm, ~${data.estimatedWeight || "?"}kg (${data.confidence || "low"} confidence)`,
+      });
+    } catch (err: any) {
+      toast({ title: "Measurement Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsMeasuring(false);
+      if (cameraRef.current) cameraRef.current.value = "";
+    }
+  }
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || packagePhotos.length >= 3) return;
+    setIsUploading(true);
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      const { uploadURL, objectPath } = await urlRes.json();
+      await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      const newPhotos = [...packagePhotos, objectPath];
+      setPackagePhotos(newPhotos);
+      form.setValue("packagePhotoUrls", newPhotos);
+      toast({ title: "Photo Uploaded", description: `${newPhotos.length}/3 photos added` });
+    } catch (err: any) {
+      toast({ title: "Upload Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+      if (photoUploadRef.current) photoUploadRef.current.value = "";
+    }
+  }
+
+  function removePhoto(index: number) {
+    const newPhotos = packagePhotos.filter((_, i) => i !== index);
+    setPackagePhotos(newPhotos);
+    form.setValue("packagePhotoUrls", newPhotos);
+  }
 
   async function onSubmit(data: z.infer<typeof bookingSchema>) {
     setIsSubmitting(true);
@@ -617,6 +735,7 @@ function BookingTab({ token, user, slug, partners }: {
         numberOfPieces: parseInt(data.numberOfPieces) || 1,
         declaredValue: data.declaredValue || null,
         courierPreference: data.courierPreference || null,
+        packagePhotoUrls: packagePhotos.length > 0 ? packagePhotos : undefined,
         pickupLat: pickupLocation?.lat?.toString() || null,
         pickupLng: pickupLocation?.lng?.toString() || null,
         pickupLocationName: pickupLocation?.name || null,
@@ -629,6 +748,7 @@ function BookingTab({ token, user, slug, partners }: {
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
       setSubmitted({ requestNumber: result.requestNumber });
+      setPackagePhotos([]);
       toast({ title: "Booking Submitted!", description: `Request #${result.requestNumber}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -668,8 +788,35 @@ function BookingTab({ token, user, slug, partners }: {
         <h2 className="text-xl font-bold" data-testid="text-booking-title">Book a Shipment</h2>
         <p className="text-muted-foreground text-sm">Fill in details below. Your sender info is pre-filled from your profile.</p>
       </div>
+      <input type="file" ref={cameraRef} accept="image/*" capture="environment" className="hidden" onChange={handleCameraScan} data-testid="input-camera-scan" />
+      <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <Card className="border-dashed">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">AI Smart Fill</span>
+                <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">AI</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">Describe your shipment in plain words and we'll fill the form for you.</p>
+              <div className="flex gap-2">
+                <Input
+                  value={smartFillText}
+                  onChange={(e) => setSmartFillText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSmartFill(); } }}
+                  placeholder='e.g. "Send 2kg documents to Amit in Mumbai 400001"'
+                  disabled={isSmartFilling}
+                  data-testid="input-smart-fill"
+                />
+                <Button type="button" onClick={handleSmartFill} disabled={isSmartFilling || !smartFillText.trim()} data-testid="button-smart-fill">
+                  {isSmartFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Sender Details</CardTitle>
@@ -749,7 +896,17 @@ function BookingTab({ token, user, slug, partners }: {
 
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><Scale className="h-4 w-4" /> Package Details</CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="flex items-center gap-2 text-base"><Scale className="h-4 w-4" /> Package Details</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">AI</Badge>
+                  <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} disabled={isMeasuring} data-testid="button-scan-package">
+                    {isMeasuring ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Camera className="h-4 w-4 mr-1" />}
+                    Scan Package
+                  </Button>
+                </div>
+              </div>
+              <CardDescription>Enter details manually or scan your package with AI</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -766,6 +923,46 @@ function BookingTab({ token, user, slug, partners }: {
               <FormField control={form.control} name="declaredValue" render={({ field }) => (
                 <FormItem><FormLabel>Declared Value (Rs.)</FormLabel><FormControl><Input {...field} type="number" data-testid="input-declared-value" /></FormControl></FormItem>
               )} />
+
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    <span className="text-sm font-medium">Package Photos</span>
+                    <span className="text-xs text-muted-foreground">({packagePhotos.length}/3)</span>
+                  </div>
+                  {packagePhotos.length < 3 && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => photoUploadRef.current?.click()} disabled={isUploading} data-testid="button-upload-photo">
+                      {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+                      Add Photo
+                    </Button>
+                  )}
+                </div>
+                {packagePhotos.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {packagePhotos.map((url, i) => (
+                      <div key={i} className="relative group">
+                        <div className="h-20 w-20 rounded-md border overflow-hidden bg-muted">
+                          <img src={url} alt={`Package ${i + 1}`} className="h-full w-full object-cover" />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
+                          onClick={() => removePhoto(i)}
+                          data-testid={`button-remove-photo-${i}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {packagePhotos.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Optionally add photos of your package for better service.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
 

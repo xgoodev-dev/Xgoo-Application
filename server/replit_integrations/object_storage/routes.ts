@@ -45,6 +45,15 @@ export function registerObjectStorageRoutes(app: Express): void {
         });
       }
 
+      if (size && size > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: "File too large (max 10MB)" });
+      }
+
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+      if (contentType && !allowedTypes.includes(contentType)) {
+        return res.status(400).json({ error: "Only image files are allowed" });
+      }
+
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
 
       // Extract object path from the presigned URL for later reference

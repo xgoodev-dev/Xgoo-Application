@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +13,12 @@ import {
   CreditCard,
   Truck,
   Loader2,
+  Sparkles,
+  Camera,
+  Upload,
+  Wand2,
+  Bot,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer, CourierPartner } from "@shared/schema";
@@ -63,6 +70,7 @@ const bookingSchema = z.object({
   serviceType: z.enum(["air", "surface"]),
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   manualAmount: z.string().optional(),
+  packagePhotoUrls: z.array(z.string()).optional(),
 });
 
 type BookingFormData = z.infer<typeof bookingSchema>;
@@ -72,6 +80,23 @@ export default function NewBookingPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [calculatedAmount, setCalculatedAmount] = useState<number>(0);
+
+  const [smartFillText, setSmartFillText] = useState("");
+  const [isSmartFilling, setIsSmartFilling] = useState(false);
+  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isRecommending, setIsRecommending] = useState(false);
+  const [recommendation, setRecommendation] = useState<{
+    recommendedPartnerId: string;
+    reason: string;
+    estimatedCost?: string;
+    alternativePartnerId?: string;
+    alternativeReason?: string;
+  } | null>(null);
+  const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
+
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const photoUploadRef = useRef<HTMLInputElement>(null);
 
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -88,6 +113,7 @@ export default function NewBookingPage() {
       paymentMode: "cash",
       numberOfPieces: "1",
       weight: "",
+      packagePhotoUrls: [],
     },
   });
 
@@ -116,6 +142,153 @@ export default function NewBookingPage() {
     setCalculatedAmount(amount);
   };
 
+  const handleSmartFill = async () => {
+    if (!smartFillText.trim()) return;
+    setIsSmartFilling(true);
+    try {
+      const res = await apiRequest("POST", "/api/ai/smart-fill", {
+        description: smartFillText,
+        customers: customers || [],
+        partners: partners || [],
+      });
+      const data = await res.json();
+      const fieldKeys: (keyof BookingFormData)[] = [
+        "customerId", "courierPartnerId", "awbNumber",
+        "senderName", "senderPhone", "senderAddress", "senderCity", "senderState", "senderPincode",
+        "receiverName", "receiverPhone", "receiverAddress", "receiverCity", "receiverState", "receiverPincode",
+        "weight", "length", "width", "height", "numberOfPieces",
+        "contentDescription", "declaredValue", "serviceType", "paymentMode",
+      ];
+      for (const key of fieldKeys) {
+        if (data[key] !== undefined && data[key] !== null && data[key] !== "") {
+          form.setValue(key, data[key] as any, { shouldValidate: true });
+        }
+      }
+      setTimeout(updateCalculatedAmount, 100);
+      toast({ title: "Smart Fill Complete", description: "Form fields have been auto-filled by AI." });
+    } catch (error: any) {
+      toast({ title: "Smart Fill Failed", description: error.message || "Could not parse the description.", variant: "destructive" });
+    } finally {
+      setIsSmartFilling(false);
+    }
+  };
+
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsMeasuring(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await apiRequest("POST", "/api/ai/measure-package", { imageBase64: base64 });
+      const data = await res.json();
+      if (data.length) form.setValue("length", String(data.length), { shouldValidate: true });
+      if (data.width) form.setValue("width", String(data.width), { shouldValidate: true });
+      if (data.height) form.setValue("height", String(data.height), { shouldValidate: true });
+      if (data.estimatedWeight) form.setValue("weight", String(data.estimatedWeight), { shouldValidate: true });
+      if (data.contentDescription) form.setValue("contentDescription", data.contentDescription, { shouldValidate: true });
+      setTimeout(updateCalculatedAmount, 100);
+      const confidenceText = data.confidence ? ` (${Math.round(data.confidence * 100)}% confidence)` : "";
+      toast({ title: "Package Measured", description: `Dimensions auto-filled from photo.${confidenceText}` });
+    } catch (error: any) {
+      toast({ title: "Measurement Failed", description: error.message || "Could not measure package from photo.", variant: "destructive" });
+    } finally {
+      setIsMeasuring(false);
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const remaining = 3 - packagePhotos.length;
+    if (remaining <= 0) {
+      toast({ title: "Limit Reached", description: "Maximum 3 photos allowed.", variant: "destructive" });
+      return;
+    }
+    const filesToUpload = Array.from(files).slice(0, remaining);
+    setIsUploading(true);
+    try {
+      const newUrls: string[] = [];
+      for (const file of filesToUpload) {
+        const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
+          name: file.name,
+          size: file.size,
+          contentType: file.type,
+        });
+        const { uploadURL, objectPath } = await urlRes.json();
+        await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
+        newUrls.push(objectPath);
+      }
+      const updated = [...packagePhotos, ...newUrls];
+      setPackagePhotos(updated);
+      form.setValue("packagePhotoUrls", updated);
+      toast({ title: "Photos Uploaded", description: `${newUrls.length} photo(s) uploaded successfully.` });
+    } catch (error: any) {
+      toast({ title: "Upload Failed", description: error.message || "Could not upload photos.", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+      if (photoUploadRef.current) photoUploadRef.current.value = "";
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    const updated = packagePhotos.filter((_, i) => i !== index);
+    setPackagePhotos(updated);
+    form.setValue("packagePhotoUrls", updated);
+  };
+
+  const handleAiRecommend = async () => {
+    const senderCity = form.getValues("senderCity");
+    const receiverCity = form.getValues("receiverCity");
+    const currentWeight = form.getValues("weight");
+    const currentServiceType = form.getValues("serviceType");
+    const contentDescription = form.getValues("contentDescription");
+
+    if (!partners || partners.length === 0) {
+      toast({ title: "No Partners", description: "Add courier partners first.", variant: "destructive" });
+      return;
+    }
+
+    setIsRecommending(true);
+    setRecommendation(null);
+    try {
+      const res = await apiRequest("POST", "/api/ai/recommend-courier", {
+        senderCity: senderCity || "",
+        receiverCity: receiverCity || "",
+        weight: currentWeight || "0",
+        serviceType: currentServiceType,
+        contentDescription: contentDescription || "",
+        partners: partners,
+      });
+      const data = await res.json();
+      setRecommendation(data);
+    } catch (error: any) {
+      toast({ title: "Recommendation Failed", description: error.message || "Could not get AI recommendation.", variant: "destructive" });
+    } finally {
+      setIsRecommending(false);
+    }
+  };
+
+  const acceptRecommendation = (partnerId: string) => {
+    form.setValue("courierPartnerId", partnerId, { shouldValidate: true });
+    setTimeout(updateCalculatedAmount, 100);
+    setRecommendation(null);
+    toast({ title: "Partner Selected", description: "Courier partner updated from AI recommendation." });
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const createBookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
       const amount = data.manualAmount ? parseFloat(data.manualAmount) : calculatePrice();
@@ -129,6 +302,7 @@ export default function NewBookingPage() {
         declaredValue: data.declaredValue || null,
         totalAmount: amount.toString(),
         baseAmount: amount.toString(),
+        packagePhotoUrls: data.packagePhotoUrls || [],
       };
       return apiRequest("POST", "/api/shipments", payload);
     },
@@ -180,6 +354,37 @@ export default function NewBookingPage() {
           <p className="text-muted-foreground">Create a new shipment</p>
         </div>
       </div>
+
+      <Card className="border-dashed">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">AI Smart Fill</span>
+            <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={smartFillText}
+              onChange={(e) => setSmartFillText(e.target.value)}
+              placeholder='e.g. "Send 5kg parcel from Raj Kumar 9876543210 to Amit Sharma 9123456789 in Delhi by air via DTDC"'
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSmartFill(); } }}
+              data-testid="input-smart-fill"
+            />
+            <Button
+              type="button"
+              onClick={handleSmartFill}
+              disabled={isSmartFilling || !smartFillText.trim()}
+              data-testid="button-smart-fill"
+            >
+              {isSmartFilling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -394,11 +599,38 @@ export default function NewBookingPage() {
             </Card>
 
             <Card>
-              <CardHeader className="pb-4">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Scale className="h-4 w-4" />
                   Package Details
                 </CardTitle>
+                <div className="flex items-center gap-1">
+                  <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleCameraCapture}
+                    data-testid="input-camera-capture"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={isMeasuring}
+                    data-testid="button-scan-package"
+                  >
+                    {isMeasuring ? (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Camera className="mr-1 h-3 w-3" />
+                    )}
+                    Scan Package
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -500,6 +732,68 @@ export default function NewBookingPage() {
                     </FormItem>
                   )}
                 />
+
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Package Photos</span>
+                    <span className="text-xs text-muted-foreground">({packagePhotos.length}/3)</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {packagePhotos.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <div className="w-20 h-20 rounded-md border overflow-visible bg-muted flex items-center justify-center">
+                          <img
+                            src={url}
+                            alt={`Package photo ${index + 1}`}
+                            className="w-full h-full object-cover rounded-md"
+                            data-testid={`img-package-photo-${index}`}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
+                          onClick={() => removePhoto(index)}
+                          data-testid={`button-remove-photo-${index}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    {packagePhotos.length < 3 && (
+                      <>
+                        <input
+                          ref={photoUploadRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handlePhotoUpload}
+                          data-testid="input-photo-upload"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-20 h-20"
+                          onClick={() => photoUploadRef.current?.click()}
+                          disabled={isUploading}
+                          data-testid="button-upload-photo"
+                        >
+                          {isUploading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1">
+                              <Upload className="h-4 w-4" />
+                              <span className="text-[10px]">Add</span>
+                            </div>
+                          )}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -579,6 +873,88 @@ export default function NewBookingPage() {
                     </FormItem>
                   )}
                 />
+
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Bot className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">AI Courier Recommendation</span>
+                    <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiRecommend}
+                    disabled={isRecommending}
+                    data-testid="button-ai-recommend"
+                  >
+                    {isRecommending ? (
+                      <>
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-1 h-3 w-3" />
+                        Get AI Recommendation
+                      </>
+                    )}
+                  </Button>
+                  {recommendation && (
+                    <div className="mt-3 space-y-2">
+                      {(() => {
+                        const recommended = partners?.find((p) => p.id === recommendation.recommendedPartnerId);
+                        return recommended ? (
+                          <div className="rounded-md border p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">{recommended.name}</span>
+                                <Badge variant="default" className="text-[10px]">Recommended</Badge>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => acceptRecommendation(recommendation.recommendedPartnerId)}
+                                data-testid="button-accept-recommendation"
+                              >
+                                Accept
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{recommendation.reason}</p>
+                            {recommendation.estimatedCost && (
+                              <p className="text-xs text-muted-foreground">Est. cost: Rs. {recommendation.estimatedCost}</p>
+                            )}
+                          </div>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        const alt = recommendation.alternativePartnerId
+                          ? partners?.find((p) => p.id === recommendation.alternativePartnerId)
+                          : null;
+                        return alt ? (
+                          <div className="rounded-md border border-dashed p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">{alt.name}</span>
+                                <Badge variant="outline" className="text-[10px]">Alternative</Badge>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => acceptRecommendation(recommendation.alternativePartnerId!)}
+                                data-testid="button-accept-alternative"
+                              >
+                                Use Instead
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{recommendation.alternativeReason}</p>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

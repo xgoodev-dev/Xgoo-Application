@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { shipments } from "@shared/schema";
 import { sql } from "drizzle-orm";
+import OpenAI from "openai";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -88,6 +89,7 @@ const shipmentCreateSchema = z.object({
   numberOfPieces: z.number().int().positive().default(1),
   contentDescription: z.string().optional(),
   declaredValue: z.string().optional().nullable(),
+  packagePhotoUrls: z.array(z.string()).optional(),
   serviceType: z.enum(["air", "surface"]),
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   baseAmount: z.string().optional(),
@@ -148,6 +150,7 @@ const bookingRequestCreateSchema = z.object({
   serviceType: z.enum(["air", "surface"]).default("surface"),
   courierPreference: z.string().optional(),
   notes: z.string().optional(),
+  packagePhotoUrls: z.array(z.string()).optional(),
 });
 
 export async function registerRoutes(
@@ -1135,6 +1138,273 @@ export async function registerRoutes(
       }
       console.error("Error creating customer booking:", error);
       res.status(500).json({ message: "Failed to submit booking" });
+    }
+  });
+
+  // === AI ENDPOINTS ===
+
+  const aiOpenai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+
+  // AI Smart Fill - Parse natural language booking description into form fields
+  app.post("/api/ai/smart-fill", async (req, res) => {
+    try {
+      const { description, customers, partners } = req.body;
+      if (!description) {
+        return res.status(400).json({ message: "Description is required" });
+      }
+
+      const customerList = (customers || []).map((c: any) => `${c.name} (${c.phone})`).join(", ");
+      const partnerList = (partners || []).map((p: any) => `${p.name} (${p.code}) - Air: ₹${p.baseRateAir}+₹${p.ratePerKgAir}/kg, Surface: ₹${p.baseRateSurface}+₹${p.ratePerKgSurface}/kg`).join("\n");
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a courier booking assistant for an Indian courier office. Parse the user's natural language booking description and extract structured data. Return a JSON object with ONLY the fields you can extract (omit unknown fields):
+{
+  "senderName": string,
+  "senderPhone": string,
+  "senderAddress": string,
+  "senderCity": string,
+  "senderState": string,
+  "senderPincode": string,
+  "receiverName": string,
+  "receiverPhone": string,
+  "receiverAddress": string,
+  "receiverCity": string,
+  "receiverState": string,
+  "receiverPincode": string,
+  "weight": string (in kg),
+  "length": string (in cm),
+  "width": string (in cm),
+  "height": string (in cm),
+  "numberOfPieces": string,
+  "contentDescription": string,
+  "declaredValue": string,
+  "serviceType": "air" | "surface",
+  "courierPartnerId": string (match from available partners if mentioned),
+  "customerId": string (match from available customers if mentioned),
+  "notes": string
+}
+
+Available customers: ${customerList || "None"}
+Available courier partners:\n${partnerList || "None"}
+
+Important: Only include fields you're confident about. For Indian cities, infer state and approximate pincode if possible. Default serviceType to "surface" unless air/express/urgent is mentioned.`
+          },
+          { role: "user", content: description }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 500,
+      });
+
+      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(parsed);
+    } catch (error) {
+      console.error("AI smart fill error:", error);
+      res.status(500).json({ message: "AI processing failed" });
+    }
+  });
+
+  // AI Package Measurement - Analyze photo to estimate package dimensions
+  app.post("/api/ai/measure-package", async (req, res) => {
+    try {
+      const { imageBase64 } = req.body;
+      if (!imageBase64) {
+        return res.status(400).json({ message: "Image data is required" });
+      }
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a package measurement assistant. Analyze the photo of a package/parcel and estimate its dimensions. Return a JSON object:
+{
+  "length": number (in cm, estimated),
+  "width": number (in cm, estimated),
+  "height": number (in cm, estimated),
+  "estimatedWeight": number (in kg, rough estimate based on apparent size and typical package density),
+  "contentDescription": string (brief description of what the package appears to contain or its type, e.g., "cardboard box", "envelope", "bubble wrap package"),
+  "confidence": "low" | "medium" | "high"
+}
+
+Use visual cues like nearby objects for scale reference. If there's a reference object visible (phone, hand, pen, ruler), use it for more accurate estimates. Provide your best estimates even if uncertain. All measurements should be reasonable for courier packages (typically 5-150 cm per side, 0.1-50 kg).`
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+              },
+              { type: "text", text: "Please measure this package and estimate its dimensions and weight." }
+            ]
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 300,
+      });
+
+      const measurements = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(measurements);
+    } catch (error) {
+      console.error("AI measure package error:", error);
+      res.status(500).json({ message: "AI measurement failed" });
+    }
+  });
+
+  // AI Courier Recommendation - Suggest best courier partner
+  app.post("/api/ai/recommend-courier", async (req, res) => {
+    try {
+      const { senderCity, receiverCity, weight, serviceType, contentDescription, partners } = req.body;
+      if (!partners || partners.length === 0) {
+        return res.status(400).json({ message: "No courier partners available" });
+      }
+
+      const partnerDetails = partners.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        airRate: `Base ₹${p.baseRateAir} + ₹${p.ratePerKgAir}/kg`,
+        surfaceRate: `Base ₹${p.baseRateSurface} + ₹${p.ratePerKgSurface}/kg`,
+      }));
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a courier recommendation engine for Indian courier offices. Based on the shipment details, recommend the best courier partner. Return JSON:
+{
+  "recommendedPartnerId": string,
+  "reason": string (brief, 1-2 sentences why this partner is best),
+  "estimatedCost": number (approximate cost in INR),
+  "alternativePartnerId": string | null,
+  "alternativeReason": string | null
+}
+
+Consider: price (most important for surface), speed (most important for air), and typical Indian courier strengths:
+- DTDC: Good for domestic, affordable surface
+- FedEx: International, premium
+- Blue Dart: Fast air, reliable
+- Delhivery: E-commerce friendly, wide coverage
+- Professional Courier: Budget-friendly
+Match by code/name if recognized.`
+          },
+          {
+            role: "user",
+            content: `Shipment: ${senderCity || "Unknown"} → ${receiverCity || "Unknown"}, Weight: ${weight || "Unknown"}kg, Service: ${serviceType || "surface"}, Contents: ${contentDescription || "General"}\n\nAvailable partners: ${JSON.stringify(partnerDetails)}`
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 300,
+      });
+
+      const recommendation = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(recommendation);
+    } catch (error) {
+      console.error("AI recommend courier error:", error);
+      res.status(500).json({ message: "AI recommendation failed" });
+    }
+  });
+
+  // AI Smart Fill for customer portal (public, no auth)
+  app.post("/api/public/ai/smart-fill", async (req, res) => {
+    try {
+      const { description, senderName, senderPhone, senderAddress } = req.body;
+      if (!description) {
+        return res.status(400).json({ message: "Description is required" });
+      }
+      if (typeof description !== "string" || description.length > 1000) {
+        return res.status(400).json({ message: "Description too long (max 1000 chars)" });
+      }
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a courier booking assistant helping a customer book a parcel. Parse their natural language description and extract structured booking data. Return a JSON object with ONLY the fields you can extract:
+{
+  "receiverName": string,
+  "receiverPhone": string,
+  "receiverAddress": string,
+  "receiverCity": string,
+  "receiverState": string,
+  "receiverPincode": string,
+  "weight": string (in kg),
+  "numberOfPieces": string,
+  "contentDescription": string,
+  "declaredValue": string,
+  "serviceType": "air" | "surface",
+  "notes": string
+}
+
+${senderName ? `The sender is ${senderName} (${senderPhone}), address: ${senderAddress}.` : ""}
+Important: Focus on extracting receiver details since the sender is the customer themselves. For Indian cities, infer state if possible. Default serviceType to "surface" unless express/urgent/air mentioned.`
+          },
+          { role: "user", content: description }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 400,
+      });
+
+      const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(parsed);
+    } catch (error) {
+      console.error("AI smart fill (public) error:", error);
+      res.status(500).json({ message: "AI processing failed" });
+    }
+  });
+
+  // AI Package Measurement (public, no auth)
+  app.post("/api/public/ai/measure-package", async (req, res) => {
+    try {
+      const { imageBase64 } = req.body;
+      if (!imageBase64) {
+        return res.status(400).json({ message: "Image data is required" });
+      }
+      if (typeof imageBase64 !== "string" || imageBase64.length > 10_000_000) {
+        return res.status(400).json({ message: "Image too large (max ~7MB)" });
+      }
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-5-nano",
+        messages: [
+          {
+            role: "system",
+            content: `You are a package measurement assistant. Analyze the photo and estimate dimensions. Return JSON:
+{
+  "length": number (cm),
+  "width": number (cm),
+  "height": number (cm),
+  "estimatedWeight": number (kg),
+  "contentDescription": string,
+  "confidence": "low" | "medium" | "high"
+}`
+          },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+              { type: "text", text: "Measure this package dimensions and estimate weight." }
+            ]
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 300,
+      });
+
+      const measurements = JSON.parse(response.choices[0]?.message?.content || "{}");
+      res.json(measurements);
+    } catch (error) {
+      console.error("AI measure package (public) error:", error);
+      res.status(500).json({ message: "AI measurement failed" });
     }
   });
 
