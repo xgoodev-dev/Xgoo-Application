@@ -9,7 +9,7 @@ export * from "./models/chat";
 // Offices table - one office per account for MVP
 export const offices = pgTable("offices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
+  userId: varchar("user_id").notNull().unique(),
   name: varchar("name", { length: 255 }).notNull(),
   address: text("address"),
   city: varchar("city", { length: 100 }),
