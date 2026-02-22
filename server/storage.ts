@@ -82,7 +82,7 @@ export interface IStorage {
   getBookingRequest(id: string): Promise<BookingRequest | undefined>;
   createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest>;
   updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined>;
-  
+
   // Customer User operations
   getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
   getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined>;

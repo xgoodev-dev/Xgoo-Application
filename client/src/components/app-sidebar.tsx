@@ -106,8 +106,8 @@ export function AppSidebar() {
       .slice(0, 2);
   };
 
-  const displayName = user?.firstName
-    ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}`
+  const displayName = user?.user_metadata?.firstName
+    ? `${user.user_metadata.firstName}${user.user_metadata.lastName ? ` ${user.user_metadata.lastName}` : ""}`
     : user?.email || "User";
 
   const portalUrl = office?.publicSlug

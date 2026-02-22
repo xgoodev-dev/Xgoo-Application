@@ -23,6 +23,7 @@ import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
 import CustomerPortalPage from "@/pages/customer-portal";
+import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedApp() {
@@ -97,7 +98,7 @@ function Router() {
         {isLoading ? (
           <LoadingScreen />
         ) : !isAuthenticated ? (
-          <LandingPage />
+          <AuthPage />
         ) : (
           <AuthenticatedApp />
         )}

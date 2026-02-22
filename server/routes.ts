@@ -1,8 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { isAuthenticated } from "./auth";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
@@ -10,7 +12,6 @@ import { db } from "./db";
 import { shipments } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import OpenAI from "openai";
-import { speechToText, ensureCompatibleFormat } from "./replit_integrations/audio/client";
 import express from "express";
 
 // Validation schemas
@@ -159,9 +160,45 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await setupAuth(app);
-  registerAuthRoutes(app);
-  registerObjectStorageRoutes(app);
+  // Setup Multer for local storage
+  const uploadDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const fileStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+  });
+
+  const upload = multer({
+    storage: fileStorage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  });
+
+  // Local Storage Routes
+  app.post("/api/uploads/request-url", isAuthenticated, (req, res) => {
+    // Return a dummy URL and path to keep frontend happy
+    // The frontend will then POST/PUT to this "URL"
+    const id = randomUUID();
+    res.json({
+      uploadURL: `/api/uploads/direct/${id}`,
+      objectPath: `/objects/${id}`,
+    });
+  });
+
+  app.put("/api/uploads/direct/:id", isAuthenticated, upload.single("file"), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const publicUrl = `/objects/${req.file.filename}`;
+    res.json({ publicUrl, objectPath: publicUrl });
+  });
 
   storage.backfillPublicSlugs().catch((err) =>
     console.error("Failed to backfill public slugs:", err)
@@ -187,7 +224,7 @@ export async function registerRoutes(
   // Office routes
   app.get("/api/office", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const office = await storage.getOfficeByUserId(userId);
       res.json(office || null);
     } catch (error) {
@@ -198,7 +235,7 @@ export async function registerRoutes(
 
   app.post("/api/office", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const existing = await storage.getOfficeByUserId(userId);
       if (existing) {
         return res.status(400).json({ message: "Office already exists" });
@@ -217,15 +254,15 @@ export async function registerRoutes(
 
   app.patch("/api/office/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
-      
+
       // Verify ownership
       const userOffice = await storage.getOfficeByUserId(userId);
       if (!userOffice || userOffice.id !== id) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const validated = officeUpdateSchema.parse(req.body);
       const office = await storage.updateOffice(id, validated);
       if (!office) {
@@ -244,7 +281,7 @@ export async function registerRoutes(
   // Dashboard stats
   app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const stats = await storage.getDashboardStats(officeId);
       res.json(stats);
@@ -257,7 +294,7 @@ export async function registerRoutes(
   // Customer routes
   app.get("/api/customers", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const customers = await storage.getCustomersByOffice(officeId);
       res.json(customers);
@@ -269,7 +306,7 @@ export async function registerRoutes(
 
   app.post("/api/customers", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const validated = customerCreateSchema.parse(req.body);
       const customer = await storage.createCustomer({ ...validated, officeId });
@@ -285,16 +322,16 @@ export async function registerRoutes(
 
   app.patch("/api/customers/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       // Verify ownership
       const existing = await storage.getCustomer(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const validated = customerCreateSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(id, validated);
       if (!customer) {
@@ -312,16 +349,16 @@ export async function registerRoutes(
 
   app.delete("/api/customers/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       // Verify ownership
       const existing = await storage.getCustomer(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       await storage.deleteCustomer(id);
       res.json({ success: true });
     } catch (error) {
@@ -333,7 +370,7 @@ export async function registerRoutes(
   // Courier Partner routes
   app.get("/api/partners", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const partners = await storage.getPartnersByOffice(officeId);
       res.json(partners);
@@ -345,7 +382,7 @@ export async function registerRoutes(
 
   app.post("/api/partners", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const validated = partnerCreateSchema.parse(req.body);
       const partner = await storage.createPartner({ ...validated, officeId });
@@ -361,16 +398,16 @@ export async function registerRoutes(
 
   app.patch("/api/partners/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       // Verify ownership
       const existing = await storage.getPartner(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const validated = partnerCreateSchema.partial().parse(req.body);
       const partner = await storage.updatePartner(id, validated);
       if (!partner) {
@@ -388,16 +425,16 @@ export async function registerRoutes(
 
   app.delete("/api/partners/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       // Verify ownership
       const existing = await storage.getPartner(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       await storage.deletePartner(id);
       res.json({ success: true });
     } catch (error) {
@@ -409,7 +446,7 @@ export async function registerRoutes(
   // Shipment routes
   app.get("/api/shipments", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const shipments = await storage.getShipmentsByOffice(officeId);
       res.json(shipments);
@@ -421,10 +458,10 @@ export async function registerRoutes(
 
   app.get("/api/shipments/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const shipment = await storage.getShipment(id);
       if (!shipment || shipment.officeId !== officeId) {
         return res.status(404).json({ message: "Shipment not found" });
@@ -438,17 +475,17 @@ export async function registerRoutes(
 
   app.post("/api/shipments", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const validated = shipmentCreateSchema.parse(req.body);
-      
+
       // Verify courierPartnerId belongs to this office
       const partner = await storage.getPartner(validated.courierPartnerId);
       if (!partner || partner.officeId !== officeId) {
         return res.status(400).json({ message: "Invalid courier partner" });
       }
-      
+
       // Verify customerId belongs to this office (if provided)
       if (validated.customerId) {
         const customer = await storage.getCustomer(validated.customerId);
@@ -456,7 +493,7 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Invalid customer" });
         }
       }
-      
+
       const shipmentData = {
         ...validated,
         officeId,
@@ -495,16 +532,16 @@ export async function registerRoutes(
 
   app.patch("/api/shipments/:id/status", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       // Verify ownership
       const existing = await storage.getShipment(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const validated = statusUpdateSchema.parse(req.body);
       const shipment = await storage.updateShipmentStatus(id, validated.status);
       if (!shipment) {
@@ -522,20 +559,20 @@ export async function registerRoutes(
 
   app.get("/api/shipments/:id/label", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const shipment = await storage.getShipment(id);
       if (!shipment || shipment.officeId !== officeId) {
         return res.status(404).json({ message: "Shipment not found" });
       }
-      
+
       const office = await storage.getOfficeByUserId(userId);
       if (!office) {
         return res.status(404).json({ message: "Office not found" });
       }
-      
+
       res.json({ shipment, office });
     } catch (error) {
       console.error("Error fetching label data:", error);
@@ -545,15 +582,15 @@ export async function registerRoutes(
 
   app.get("/api/shipments/:id/invoice", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const shipment = await storage.getShipment(id);
       if (!shipment || shipment.officeId !== officeId) {
         return res.status(404).json({ message: "Shipment not found" });
       }
-      
+
       const office = await storage.getOfficeByUserId(userId);
       if (!office) {
         return res.status(404).json({ message: "Office not found" });
@@ -571,9 +608,9 @@ export async function registerRoutes(
           totalAmount: shipment.totalAmount,
         });
       }
-      
+
       const payment = await storage.getPaymentByShipment(id);
-      
+
       res.json({ invoice, shipment, office, payment });
     } catch (error) {
       console.error("Error fetching invoice data:", error);
@@ -584,7 +621,7 @@ export async function registerRoutes(
   // Reports routes
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const { from, to } = req.query;
 
@@ -605,7 +642,7 @@ export async function registerRoutes(
 
   app.get("/api/reports/export", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const { type, from, to } = req.query;
 
@@ -613,7 +650,7 @@ export async function registerRoutes(
       const typeResult = reportTypeSchema.safeParse(type);
       const fromResult = dateParamSchema.safeParse(from);
       const toResult = dateParamSchema.safeParse(to);
-      
+
       if (!typeResult.success) {
         return res.status(400).json({ message: "Invalid report type" });
       }
@@ -662,7 +699,7 @@ export async function registerRoutes(
   // Quotation routes
   app.get("/api/quotations", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const quotations = await storage.getQuotationsByOffice(officeId);
       res.json(quotations);
@@ -674,10 +711,10 @@ export async function registerRoutes(
 
   app.get("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const quotation = await storage.getQuotation(id);
       if (!quotation || quotation.officeId !== officeId) {
         return res.status(404).json({ message: "Quotation not found" });
@@ -691,11 +728,11 @@ export async function registerRoutes(
 
   app.post("/api/quotations", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const validated = quotationCreateSchema.parse(req.body);
-      
+
       // Verify courierPartnerId if provided
       if (validated.courierPartnerId) {
         const partner = await storage.getPartner(validated.courierPartnerId);
@@ -703,7 +740,7 @@ export async function registerRoutes(
           return res.status(400).json({ message: "Invalid courier partner" });
         }
       }
-      
+
       const quotation = await storage.createQuotation({
         ...validated,
         officeId,
@@ -721,15 +758,15 @@ export async function registerRoutes(
 
   app.patch("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const existing = await storage.getQuotation(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const validated = quotationCreateSchema.partial().parse(req.body);
       const quotation = await storage.updateQuotation(id, {
         ...validated,
@@ -747,15 +784,15 @@ export async function registerRoutes(
 
   app.delete("/api/quotations/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const existing = await storage.getQuotation(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       await storage.deleteQuotation(id);
       res.json({ success: true });
     } catch (error) {
@@ -767,7 +804,7 @@ export async function registerRoutes(
   // Booking Request routes (for authenticated users)
   app.get("/api/booking-requests", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const requests = await storage.getBookingRequestsByOffice(officeId);
       res.json(requests);
@@ -779,10 +816,10 @@ export async function registerRoutes(
 
   app.get("/api/booking-requests/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const request = await storage.getBookingRequest(id);
       if (!request || request.officeId !== officeId) {
         return res.status(404).json({ message: "Booking request not found" });
@@ -796,16 +833,16 @@ export async function registerRoutes(
 
   app.patch("/api/booking-requests/:id/status", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { id } = req.params;
       const { status, convertedShipmentId } = req.body;
       const officeId = await getOrCreateOffice(userId);
-      
+
       const existing = await storage.getBookingRequest(id);
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const updated = await storage.updateBookingRequestStatus(id, status, convertedShipmentId);
       res.json(updated);
     } catch (error) {
@@ -875,17 +912,17 @@ export async function registerRoutes(
       if (!office) {
         return res.status(404).json({ message: "Office not found" });
       }
-      
+
       const validated = bookingRequestCreateSchema.parse(req.body);
-      
+
       const request = await storage.createBookingRequest({
         ...validated,
         officeId: office.id,
         status: "pending",
       });
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         requestNumber: request.requestNumber,
         message: "Your booking request has been submitted. The office will contact you shortly."
       });
@@ -1150,51 +1187,6 @@ export async function registerRoutes(
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
 
-  const audioBodyParser = express.json({ limit: "25mb" });
-
-  app.post("/api/ai/transcribe", audioBodyParser, isAuthenticated, async (req: any, res) => {
-    try {
-      const { audio } = req.body;
-      if (!audio) {
-        return res.status(400).json({ message: "Audio data (base64) is required" });
-      }
-      if (typeof audio !== "string") {
-        return res.status(400).json({ message: "Invalid audio format" });
-      }
-      const rawBuffer = Buffer.from(audio, "base64");
-      if (rawBuffer.byteLength > 25 * 1024 * 1024) {
-        return res.status(413).json({ message: "Audio too large (max 25MB)" });
-      }
-      const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
-      const text = await speechToText(audioBuffer, format);
-      res.json({ text });
-    } catch (error) {
-      console.error("AI transcribe error:", error);
-      res.status(500).json({ message: "Transcription failed" });
-    }
-  });
-
-  app.post("/api/public/ai/transcribe", audioBodyParser, async (req, res) => {
-    try {
-      const { audio } = req.body;
-      if (!audio) {
-        return res.status(400).json({ message: "Audio data (base64) is required" });
-      }
-      if (typeof audio !== "string") {
-        return res.status(400).json({ message: "Invalid audio format" });
-      }
-      const rawBuffer = Buffer.from(audio, "base64");
-      if (rawBuffer.byteLength > 25 * 1024 * 1024) {
-        return res.status(413).json({ message: "Audio too large (max 25MB)" });
-      }
-      const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
-      const text = await speechToText(audioBuffer, format);
-      res.json({ text });
-    } catch (error) {
-      console.error("AI transcribe (public) error:", error);
-      res.status(500).json({ message: "Transcription failed" });
-    }
-  });
 
   // AI Section Fill - Parse natural language description for a specific form section (multilingual)
   app.post("/api/ai/section-fill", async (req, res) => {
