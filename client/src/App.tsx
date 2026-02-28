@@ -43,7 +43,8 @@ function AuthenticatedApp() {
           </header>
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <Switch>
-              <Route path="/" component={DashboardPage} />
+              <Route path="/" component={LandingPage} />
+              <Route path="/dashboard" component={DashboardPage} />
               <Route path="/bookings/new" component={NewBookingPage} />
               <Route path="/shipments" component={ShipmentsPage} />
               <Route path="/shipments/:id/label" component={ShipmentLabelPage} />
@@ -93,6 +94,8 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/" component={LandingPage} />
+      <Route path="/auth-page" component={AuthPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route>
         {isLoading ? (
