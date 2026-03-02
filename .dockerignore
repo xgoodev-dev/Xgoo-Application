@@ -1,0 +1,45 @@
+# Dependencies (installed fresh in Docker)
+node_modules
+
+# Built output (generated during Docker build)
+dist
+
+# Environment files (configured via Dokploy UI or docker-compose env_file)
+.env
+.env.*
+!.env.example
+
+# User-uploaded files (mounted as a Docker volume)
+uploads
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Claude AI workspace
+.claude
+
+# Logs
+*.log
+output.log
+output_new.log
+
+# Build artifacts
+*.tar.gz
+*.tgz
+
+# Vite temp files
+vite.config.ts.*
+
+# Test/dev assets (large binary files not needed in production)
+attached_assets
+
+# Database migrations (generated locally, not needed in image)
+migrations
+
+# TypeScript build info cache
+node_modules/typescript/tsbuildinfo

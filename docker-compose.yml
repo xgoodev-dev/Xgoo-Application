@@ -1,0 +1,67 @@
+version: "3.8"
+
+# ============================================================
+# XGoo Courier SaaS - Docker Compose (Dokploy / Production)
+# ============================================================
+# Usage:
+#   1. Copy .env.example → .env and fill in all values
+#   2. Deploy via Dokploy (point to this repo) OR run locally:
+#      docker compose up --build -d
+#
+# IMPORTANT — Two types of env vars:
+#   BUILD ARGS (VITE_*): Baked into the client bundle at build time.
+#     Set these in Dokploy → Service → Build Arguments.
+#   RUNTIME ENV VARS: Loaded by the server at container startup.
+#     Set these in Dokploy → Service → Environment Variables.
+# ============================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # These are baked into the Vite client bundle at build time.
+        # They MUST be provided as Docker build arguments in Dokploy.
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+
+    image: xgoo-courier:latest
+    container_name: xgoo-courier-app
+    restart: unless-stopped
+
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+
+    environment:
+      # Server runtime configuration
+      NODE_ENV: production
+      PORT: 3000
+
+      # PostgreSQL connection string
+      DATABASE_URL: ${DATABASE_URL}
+
+      # Supabase (server-side admin client)
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+
+      # OpenAI / AI integration
+      AI_INTEGRATIONS_OPENAI_API_KEY: ${AI_INTEGRATIONS_OPENAI_API_KEY}
+      AI_INTEGRATIONS_OPENAI_BASE_URL: ${AI_INTEGRATIONS_OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+    volumes:
+      # Persistent storage for user-uploaded files (label images, receipts, etc.)
+      # In Dokploy: configure this volume under Service → Volumes
+      - uploads_data:/app/uploads
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+# Named volume for persistent file uploads
+volumes:
+  uploads_data:
+    driver: local
