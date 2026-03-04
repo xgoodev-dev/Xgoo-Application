@@ -3,7 +3,7 @@ node_modules
 .env
 /uploads
 .DS_Store
-server/public
+server/publicnp
 vite.config.ts.*
 *.tar.gz
 .claude

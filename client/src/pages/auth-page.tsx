@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { FcGoogle } from "react-icons/fc";
+import { Separator } from "@/components/ui/separator";
 
 export default function AuthPage() {
     const [, setLocation] = useLocation();
@@ -39,6 +41,24 @@ export default function AuthPage() {
         setLoading(false);
     }
 
+    async function handleGoogleSignIn() {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: "google",
+                options: {
+                    redirectTo: window.location.origin,
+                },
+            });
+            if (error) throw error;
+        } catch (error: any) {
+            toast({
+                title: "Error with Google Sign-In",
+                description: error.message || "An unexpected error occurred.",
+                variant: "destructive",
+            });
+        }
+    }
+
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
             <Card className="w-full max-w-md">
@@ -65,6 +85,28 @@ export default function AuthPage() {
                                 <Button type="submit" className="w-full" disabled={loading}>
                                     {loading ? "Signing in..." : "Sign In"}
                                 </Button>
+
+                                <div className="relative my-4">
+                                    <div className="absolute inset-0 flex items-center">
+                                        <Separator className="w-full" />
+                                    </div>
+                                    <div className="relative flex justify-center text-xs uppercase">
+                                        <span className="bg-white px-2 text-muted-foreground">
+                                            Or continue with
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full flex items-center gap-2"
+                                    onClick={handleGoogleSignIn}
+                                    disabled={loading}
+                                >
+                                    <FcGoogle className="h-5 w-5" />
+                                    Google
+                                </Button>
                             </form>
                         </TabsContent>
                         <TabsContent value="register">
@@ -79,6 +121,28 @@ export default function AuthPage() {
                                 </div>
                                 <Button type="submit" className="w-full" disabled={loading}>
                                     {loading ? "Creating account..." : "Register"}
+                                </Button>
+
+                                <div className="relative my-4">
+                                    <div className="absolute inset-0 flex items-center">
+                                        <Separator className="w-full" />
+                                    </div>
+                                    <div className="relative flex justify-center text-xs uppercase">
+                                        <span className="bg-white px-2 text-muted-foreground">
+                                            Or continue with
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full flex items-center gap-2"
+                                    onClick={handleGoogleSignIn}
+                                    disabled={loading}
+                                >
+                                    <FcGoogle className="h-5 w-5" />
+                                    Google
                                 </Button>
                             </form>
                         </TabsContent>
