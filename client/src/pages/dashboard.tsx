@@ -269,7 +269,7 @@ export default function DashboardPage() {
               <div className="py-8 text-center text-muted-foreground">
                 <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No shipments yet</p>
-                <Button variant="link" asChild className="mt-2">
+                <Button variant="ghost" asChild className="mt-2">
                   <Link href="/bookings/new">Create your first booking</Link>
                 </Button>
               </div>

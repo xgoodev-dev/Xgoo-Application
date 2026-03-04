@@ -477,7 +477,7 @@ function LoginForm({ slug, office, onLogin, onToggle }: { slug: string; office: 
             </form>
           </Form>
           <div className="mt-4 text-center">
-            <Button variant="link" onClick={onToggle} data-testid="button-toggle-auth-mode">
+            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode">
               Don't have an account? Register
             </Button>
           </div>
@@ -559,7 +559,7 @@ function RegisterForm({ slug, office, onLogin, onToggle }: { slug: string; offic
             </form>
           </Form>
           <div className="mt-4 text-center">
-            <Button variant="link" onClick={onToggle} data-testid="button-toggle-auth-mode">
+            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode">
               Already have an account? Sign In
             </Button>
           </div>
