@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -43,7 +44,6 @@ function AuthenticatedApp() {
           </header>
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <Switch>
-              <Route path="/" component={LandingPage} />
               <Route path="/dashboard" component={DashboardPage} />
               <Route path="/bookings/new" component={NewBookingPage} />
               <Route path="/shipments" component={ShipmentsPage} />
@@ -89,12 +89,27 @@ function LoadingScreen() {
   );
 }
 
+function HomeRoute() {
+  const { isLoading, isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      setLocation("/dashboard");
+    }
+  }, [isLoading, isAuthenticated]);
+
+  if (isLoading) return <LoadingScreen />;
+  if (isAuthenticated) return null;
+  return <LandingPage />;
+}
+
 function Router() {
   const { isLoading, isAuthenticated } = useAuth();
 
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={HomeRoute} />
       <Route path="/auth-page" component={AuthPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route>

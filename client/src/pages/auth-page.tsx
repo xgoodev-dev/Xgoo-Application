@@ -36,7 +36,7 @@ export default function AuthPage() {
         if (error) {
             toast({ title: "Error signing in", description: error.message, variant: "destructive" });
         } else {
-            setLocation("/");
+            setLocation("/dashboard");
         }
         setLoading(false);
     }
@@ -46,7 +46,7 @@ export default function AuthPage() {
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: "google",
                 options: {
-                    redirectTo: window.location.origin,
+                    redirectTo: `${window.location.origin}/dashboard`,
                 },
             });
             if (error) throw error;
