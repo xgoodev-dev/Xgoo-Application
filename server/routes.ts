@@ -161,7 +161,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Setup Multer for local storage
-  const uploadDir = path.join(process.cwd(), "uploads");
+  // When running on Vercel, the filesystem is read-only except for /tmp.
+  const uploadDir = process.env.VERCEL
+    ? path.join("/tmp", "uploads")
+    : path.join(process.cwd(), "uploads");
+
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }

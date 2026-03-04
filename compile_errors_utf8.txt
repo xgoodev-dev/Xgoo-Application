@@ -1,0 +1,3 @@
+﻿client/src/pages/customer-portal.tsx(480,21): error TS2322: Type '"link"' is not assignable to type '"default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined'.
+client/src/pages/customer-portal.tsx(562,21): error TS2322: Type '"link"' is not assignable to type '"default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined'.
+client/src/pages/dashboard.tsx(272,25): error TS2322: Type '"link"' is not assignable to type '"default" | "destructive" | "outline" | "secondary" | "ghost" | null | undefined'.
