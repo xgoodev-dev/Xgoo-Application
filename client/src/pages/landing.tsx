@@ -106,7 +106,7 @@ export default function LandingPage() {
               Book a Shipment
             </Button>
             <Button size="sm" asChild className="bg-[#FF4907] hover:bg-[#e03d00] text-white gap-1 border-0">
-              <a href="/api/login">
+              <a href="/auth-page">
                 Get Started <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
             </Button>
@@ -169,7 +169,7 @@ export default function LandingPage() {
                   asChild
                   className="gap-2 px-6 border-gray-200 text-gray-700 hover:border-gray-300"
                 >
-                  <a href="/api/login">
+                  <a href="/auth-page">
                     <Truck className="h-5 w-5" />
                     Provider Login
                   </a>
@@ -332,7 +332,7 @@ export default function LandingPage() {
                 onMouseEnter={e => (e.currentTarget.style.background = "#e03d00")}
                 onMouseLeave={e => (e.currentTarget.style.background = "#FF4907")}
               >
-                <a href="/api/login">Join Us <ArrowRight className="h-4 w-4" /></a>
+                <a href="/auth-page">Join Us <ArrowRight className="h-4 w-4" /></a>
               </Button>
             </div>
           </div>
@@ -429,7 +429,7 @@ export default function LandingPage() {
               Book a Shipment
             </Button>
             <Button size="lg" variant="outline" asChild className="border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white gap-2 px-8">
-              <a href="/api/login">
+              <a href="/auth-page">
                 Register Your Business <ArrowRight className="h-4 w-4" />
               </a>
             </Button>
@@ -447,7 +447,7 @@ export default function LandingPage() {
             </div>
             <div className="flex items-center gap-6 text-sm text-white/40">
               <button onClick={scrollToFinder} className="hover:text-white transition-colors">Book</button>
-              <a href="/api/login" className="hover:text-white transition-colors">Login</a>
+              <a href="/auth-page" className="hover:text-white transition-colors">Login</a>
               <a href="#about" className="hover:text-white transition-colors">About</a>
             </div>
             <p className="text-sm text-white/30">&copy; {new Date().getFullYear()} XGoo. All rights reserved.</p>
