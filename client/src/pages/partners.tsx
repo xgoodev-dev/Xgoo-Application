@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -212,6 +213,11 @@ export default function PartnersPage() {
               <DialogTitle>
                 {editingPartner ? "Edit Partner" : "Add Courier Partner"}
               </DialogTitle>
+              <DialogDescription>
+                {editingPartner
+                  ? "Update this partner’s rates and contact details."
+                  : "Add a courier partner your office can assign to shipments."}
+              </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
