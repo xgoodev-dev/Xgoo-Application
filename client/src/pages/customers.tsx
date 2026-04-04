@@ -452,7 +452,7 @@ export default function CustomersPage() {
                     <TableRow key={customer.id} data-testid={`row-customer-${customer.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
                             {customer.customerType === "business" ? (
                               <Building2 className="h-4 w-4 text-primary" />
                             ) : (
@@ -488,7 +488,7 @@ export default function CustomersPage() {
                           variant="secondary"
                           className={
                             customer.paymentType === "credit"
-                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                              ? "bg-amber-100 text-amber-700 dark:bg-zinc-800 dark:text-zinc-200 dark:border dark:border-zinc-700"
                               : ""
                           }
                         >

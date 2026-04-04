@@ -46,10 +46,14 @@ import { apiRequest } from "@/lib/queryClient";
 import type { ShipmentWithRelations } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
-  booked: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  picked_up: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  in_transit: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  booked:
+    "bg-amber-100 text-amber-700 dark:bg-zinc-800 dark:text-zinc-200 dark:border dark:border-zinc-700",
+  picked_up:
+    "bg-blue-100 text-blue-700 dark:bg-zinc-800 dark:text-blue-400 dark:border dark:border-zinc-700",
+  in_transit:
+    "bg-purple-100 text-purple-700 dark:bg-zinc-800 dark:text-purple-300 dark:border dark:border-zinc-700",
+  delivered:
+    "bg-green-100 text-green-700 dark:bg-zinc-800 dark:text-green-400 dark:border dark:border-zinc-700",
 };
 
 const statusLabels: Record<string, string> = {

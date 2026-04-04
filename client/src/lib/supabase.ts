@@ -7,4 +7,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Missing Supabase environment variables");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+/**
+ * PKCE matches Supabase + Google OAuth for browser apps. The default
+ * `implicit` flow often breaks or is rejected; PKCE exchanges `?code=` on return.
+ */
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+        flowType: "pkce",
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+    },
+});

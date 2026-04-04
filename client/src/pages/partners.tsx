@@ -478,7 +478,7 @@ export default function PartnersPage() {
                     <TableRow key={partner.id} data-testid={`row-partner-${partner.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
                             <Truck className="h-4 w-4 text-primary" />
                           </div>
                           <div>

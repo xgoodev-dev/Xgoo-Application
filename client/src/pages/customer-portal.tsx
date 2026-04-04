@@ -113,6 +113,48 @@ interface ShipmentTrackingInfo {
   deliveredAt?: string | null;
 }
 
+type TrackTabResult =
+  | ({ kind: "shipment" } & ShipmentTrackingInfo)
+  | {
+      kind: "booking_request";
+      requestNumber: string;
+      status: string;
+      senderCity?: string | null;
+      receiverCity?: string | null;
+      createdAt: string;
+      message?: string;
+    };
+
+interface GuestBookingRef {
+  id: string;
+  requestNumber: string;
+  savedAt: string;
+}
+
+function guestBookingsStorageKey(slug: string) {
+  return `xgoo_guest_bookings_${slug}`;
+}
+
+function guestModeStorageKey(slug: string) {
+  return `xgoo_guest_mode_${slug}`;
+}
+
+function loadGuestBookings(slug: string): GuestBookingRef[] {
+  try {
+    const raw = localStorage.getItem(guestBookingsStorageKey(slug));
+    const parsed = raw ? (JSON.parse(raw) as GuestBookingRef[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGuestBookingRef(slug: string, id: string, requestNumber: string) {
+  const prev = loadGuestBookings(slug);
+  prev.unshift({ id, requestNumber, savedAt: new Date().toISOString() });
+  localStorage.setItem(guestBookingsStorageKey(slug), JSON.stringify(prev.slice(0, 20)));
+}
+
 function useCustomerAuth(slug: string) {
   const [user, setUser] = useState<CustomerUserInfo | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -419,7 +461,13 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
   );
 }
 
-function LoginForm({ slug, office, onLogin, onToggle }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void; onToggle: () => void }) {
+function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
+  slug: string;
+  office: OfficeInfo;
+  onLogin: (user: CustomerUserInfo, token: string) => void;
+  onToggle: () => void;
+  onContinueAsGuest?: () => void;
+}) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const form = useForm<z.infer<typeof loginSchema>>({
@@ -476,10 +524,15 @@ function LoginForm({ slug, office, onLogin, onToggle }: { slug: string; office: 
               </Button>
             </form>
           </Form>
-          <div className="mt-4 text-center">
-            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode">
+          <div className="mt-4 space-y-2 text-center">
+            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode" className="w-full">
               Don't have an account? Register
             </Button>
+            {onContinueAsGuest && (
+              <Button type="button" variant="outline" className="w-full" onClick={onContinueAsGuest} data-testid="button-continue-as-guest">
+                Continue without signing up
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -487,7 +540,13 @@ function LoginForm({ slug, office, onLogin, onToggle }: { slug: string; office: 
   );
 }
 
-function RegisterForm({ slug, office, onLogin, onToggle }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void; onToggle: () => void }) {
+function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
+  slug: string;
+  office: OfficeInfo;
+  onLogin: (user: CustomerUserInfo, token: string) => void;
+  onToggle: () => void;
+  onContinueAsGuest?: () => void;
+}) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const form = useForm<z.infer<typeof registerSchema>>({
@@ -558,10 +617,15 @@ function RegisterForm({ slug, office, onLogin, onToggle }: { slug: string; offic
               </Button>
             </form>
           </Form>
-          <div className="mt-4 text-center">
-            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode">
+          <div className="mt-4 space-y-2 text-center">
+            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode" className="w-full">
               Already have an account? Sign In
             </Button>
+            {onContinueAsGuest && (
+              <Button type="button" variant="outline" className="w-full" onClick={onContinueAsGuest} data-testid="button-continue-as-guest-register">
+                Continue without signing up
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -569,22 +633,37 @@ function RegisterForm({ slug, office, onLogin, onToggle }: { slug: string; offic
   );
 }
 
-function AuthPage({ slug, office, onLogin }: { slug: string; office: OfficeInfo; onLogin: (user: CustomerUserInfo, token: string) => void }) {
+function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
+  slug: string;
+  office: OfficeInfo;
+  onLogin: (user: CustomerUserInfo, token: string) => void;
+  onContinueAsGuest?: () => void;
+}) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const toggle = useCallback(() => setMode((m) => (m === "login" ? "register" : "login")), []);
 
   if (mode === "register") {
-    return <RegisterForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} />;
+    return <RegisterForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} onContinueAsGuest={onContinueAsGuest} />;
   }
-  return <LoginForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} />;
+  return <LoginForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} onContinueAsGuest={onContinueAsGuest} />;
 }
 
-function BookingTab({ token, user, slug, partners }: {
-  token: string;
-  user: CustomerUserInfo;
+function BookingTab({
+  slug,
+  partners,
+  guestMode,
+  token,
+  user,
+  onGuestBookingSaved,
+}: {
   slug: string;
   partners: PartnerInfo[];
+  guestMode?: boolean;
+  token?: string;
+  user?: CustomerUserInfo;
+  onGuestBookingSaved?: () => void;
 }) {
+  const isGuest = !!(guestMode && !token);
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ requestNumber: string } | null>(null);
@@ -604,13 +683,13 @@ function BookingTab({ token, user, slug, partners }: {
   const form = useForm<z.infer<typeof bookingSchema>>({
     resolver: zodResolver(bookingSchema),
     defaultValues: {
-      senderName: user.name || "",
-      senderPhone: user.phone || "",
-      senderEmail: user.email || "",
-      senderAddress: user.address || "",
-      senderCity: user.city || "",
-      senderState: user.state || "",
-      senderPincode: user.pincode || "",
+      senderName: user?.name || "",
+      senderPhone: user?.phone || "",
+      senderEmail: user?.email || "",
+      senderAddress: user?.address || "",
+      senderCity: user?.city || "",
+      senderState: user?.state || "",
+      senderPincode: user?.pincode || "",
       receiverName: "",
       receiverPhone: "",
       receiverAddress: "",
@@ -637,9 +716,9 @@ function BookingTab({ token, user, slug, partners }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: smartFillText,
-          senderName: user.name,
-          senderPhone: user.phone,
-          senderAddress: user.address,
+          senderName: user?.name,
+          senderPhone: user?.phone,
+          senderAddress: user?.address,
         }),
       });
       const data = await res.json();
@@ -703,6 +782,11 @@ function BookingTab({ token, user, slug, partners }: {
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (isGuest) {
+      toast({ title: "Photos", description: "Sign in to attach package photos. Guests can still submit the booking without photos.", variant: "destructive" });
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file || packagePhotos.length >= 3) return;
     setIsUploading(true);
@@ -737,7 +821,7 @@ function BookingTab({ token, user, slug, partners }: {
     if (!text?.trim()) return;
     setSectionAiLoading(prev => ({ ...prev, [section]: true }));
     try {
-      const body: any = { section, description: text, senderName: user.name, senderPhone: user.phone, senderAddress: user.address };
+      const body: any = { section, description: text, senderName: user?.name, senderPhone: user?.phone, senderAddress: user?.address };
       const res = await fetch("/api/public/ai/section-fill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -866,9 +950,26 @@ function BookingTab({ token, user, slug, partners }: {
         pickupLng: pickupLocation?.lng?.toString() || null,
         pickupLocationName: pickupLocation?.name || null,
       };
+      if (isGuest) {
+        const res = await fetch(`/api/public/office/${slug}/booking-request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message);
+        if (result.id && result.requestNumber) {
+          saveGuestBookingRef(slug, result.id, result.requestNumber);
+          onGuestBookingSaved?.();
+        }
+        setSubmitted({ requestNumber: result.requestNumber });
+        setPackagePhotos([]);
+        toast({ title: "Booking Submitted!", description: `Save request #${result.requestNumber} to track status.` });
+        return;
+      }
       const res = await fetch("/api/customer/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-customer-token": token },
+        headers: { "Content-Type": "application/json", "x-customer-token": token! },
         body: JSON.stringify(payload),
       });
       const result = await res.json();
@@ -912,7 +1013,11 @@ function BookingTab({ token, user, slug, partners }: {
     <div className="mx-auto max-w-3xl py-4 pb-12">
       <div className="mb-6">
         <h2 className="text-xl font-bold" data-testid="text-booking-title">Book a Shipment</h2>
-        <p className="text-muted-foreground text-sm">Fill in details below. Your sender info is pre-filled from your profile.</p>
+        <p className="text-muted-foreground text-sm">
+          {isGuest
+            ? "Fill in your details. You will get a request number to track this booking."
+            : "Fill in details below. Your sender info is pre-filled from your profile."}
+        </p>
       </div>
       <input type="file" ref={cameraRef} accept="image/*" capture="environment" className="hidden" onChange={handleCameraScan} data-testid="input-camera-scan" />
       <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
@@ -997,8 +1102,8 @@ function BookingTab({ token, user, slug, partners }: {
             <CardContent>
               <PickupMapComponent
                 onLocationSelect={(lat, lng, name) => setPickupLocation({ lat, lng, name })}
-                initialLat={user.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
-                initialLng={user.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
+                initialLat={user?.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
+                initialLng={user?.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
               />
             </CardContent>
           </Card>
@@ -1091,7 +1196,14 @@ function BookingTab({ token, user, slug, partners }: {
                     <span className="text-xs text-muted-foreground">({packagePhotos.length}/3)</span>
                   </div>
                   {packagePhotos.length < 3 && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => photoUploadRef.current?.click()} disabled={isUploading} data-testid="button-upload-photo">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => (isGuest ? toast({ title: "Photos", description: "Sign in to attach package photos." }) : photoUploadRef.current?.click())}
+                      disabled={isUploading}
+                      data-testid="button-upload-photo"
+                    >
                       {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
                       Add Photo
                     </Button>
@@ -1349,9 +1461,214 @@ function MyBookingsTab({ token }: { token: string }) {
   );
 }
 
-function TrackTab() {
+function mapShipmentForGuest(s: Record<string, unknown> | null | undefined): ShipmentTrackingInfo | null {
+  if (!s || typeof s !== "object") return null;
+  return {
+    bookingNumber: String(s.bookingNumber ?? ""),
+    awbNumber: (s.awbNumber as string) ?? null,
+    status: String(s.status ?? ""),
+    senderCity: (s.senderCity as string) ?? null,
+    receiverCity: (s.receiverCity as string) ?? null,
+    serviceType: String(s.serviceType ?? ""),
+    weight: String(s.weight ?? ""),
+    bookedAt: String(s.bookedAt ?? ""),
+    pickedUpAt: (s.pickedUpAt as string) ?? null,
+    deliveredAt: (s.deliveredAt as string) ?? null,
+  };
+}
+
+function GuestBookingsTab({ slug, refreshTick }: { slug: string; refreshTick: number }) {
+  const { toast } = useToast();
+  const [refs, setRefs] = useState<GuestBookingRef[]>([]);
+  const [selectedRequestNumber, setSelectedRequestNumber] = useState<string | null>(null);
+  const [bookingDetail, setBookingDetail] = useState<{ request: BookingRequestInfo; shipment: ShipmentTrackingInfo | null } | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    setRefs(loadGuestBookings(slug));
+  }, [slug, refreshTick]);
+
+  async function viewDetail(requestNumber: string) {
+    setSelectedRequestNumber(requestNumber);
+    setIsLoadingDetail(true);
+    setBookingDetail(null);
+    try {
+      const res = await fetch(
+        `/api/public/office/${encodeURIComponent(slug)}/booking-request/${encodeURIComponent(requestNumber)}`
+      );
+      if (!res.ok) {
+        toast({ title: "Not found", description: "Could not load this booking. Try Track with your request number.", variant: "destructive" });
+        setSelectedRequestNumber(null);
+        return;
+      }
+      const data = await res.json();
+      const r = data.request;
+      if (!r) {
+        toast({ title: "Not found", description: "Invalid response from server.", variant: "destructive" });
+        setSelectedRequestNumber(null);
+        return;
+      }
+      const request: BookingRequestInfo = {
+        id: r.id,
+        requestNumber: r.requestNumber,
+        senderName: r.senderName,
+        senderPhone: r.senderPhone,
+        receiverName: r.receiverName,
+        receiverCity: r.receiverCity,
+        status: r.status,
+        serviceType: r.serviceType,
+        createdAt: r.createdAt,
+        convertedShipmentId: r.convertedShipmentId,
+        pickupLocationName: r.pickupLocationName,
+      };
+      setBookingDetail({ request, shipment: mapShipmentForGuest(data.shipment) });
+    } catch {
+      toast({ title: "Error", description: "Could not load booking details.", variant: "destructive" });
+      setSelectedRequestNumber(null);
+    } finally {
+      setIsLoadingDetail(false);
+    }
+  }
+
+  if (selectedRequestNumber) {
+    if (isLoadingDetail || !bookingDetail) {
+      return (
+        <div className="mx-auto max-w-2xl py-4">
+          <Button variant="ghost" size="sm" onClick={() => { setSelectedRequestNumber(null); setBookingDetail(null); }} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Skeleton className="h-48 w-full" />
+        </div>
+      );
+    }
+    const { request, shipment } = bookingDetail;
+    return (
+      <div className="mx-auto max-w-2xl py-4">
+        <Button variant="ghost" size="sm" onClick={() => { setSelectedRequestNumber(null); setBookingDetail(null); }} className="mb-4" data-testid="button-guest-back-to-bookings">
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back to My bookings
+        </Button>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-lg" data-testid="text-guest-detail-request-number">#{request.requestNumber}</CardTitle>
+              <Badge variant={statusColor(shipment ? shipment.status : request.status)}>{statusLabel(shipment ? shipment.status : request.status)}</Badge>
+            </div>
+            <CardDescription>
+              Submitted {new Date(request.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium mb-1">Sender</p>
+                <p className="text-sm">{request.senderName}</p>
+                <p className="text-sm text-muted-foreground">{request.senderPhone}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-1">Receiver</p>
+                <p className="text-sm">{request.receiverName}</p>
+                <p className="text-sm text-muted-foreground">{request.receiverCity || "N/A"}</p>
+              </div>
+            </div>
+            {request.pickupLocationName && (
+              <div>
+                <p className="text-sm font-medium mb-1">Pickup Location</p>
+                <p className="text-sm text-muted-foreground flex items-start gap-1">
+                  <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+                  {request.pickupLocationName}
+                </p>
+              </div>
+            )}
+            {shipment && (
+              <div>
+                <p className="text-sm font-medium mb-3">Tracking Timeline</p>
+                <div className="space-y-3">
+                  {[
+                    { label: "Booked", date: shipment.bookedAt, active: true },
+                    { label: "Picked Up", date: shipment.pickedUpAt, active: ["picked_up", "in_transit", "delivered"].includes(shipment.status) },
+                    { label: "In Transit", date: null, active: ["in_transit", "delivered"].includes(shipment.status) },
+                    { label: "Delivered", date: shipment.deliveredAt, active: shipment.status === "delivered" },
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${step.active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        <CheckCircle className="h-3 w-3" />
+                      </div>
+                      <div>
+                        <p className={`text-sm font-medium ${step.active ? "" : "text-muted-foreground"}`}>{step.label}</p>
+                        {step.date && <p className="text-xs text-muted-foreground">{new Date(step.date).toLocaleString("en-IN")}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {shipment.bookingNumber && (
+                  <div className="mt-4 bg-muted rounded-md p-3">
+                    <p className="text-xs text-muted-foreground">Booking Number</p>
+                    <p className="font-mono font-bold">{shipment.bookingNumber}</p>
+                    {shipment.awbNumber && (
+                      <>
+                        <p className="text-xs text-muted-foreground mt-2">AWB Number</p>
+                        <p className="font-mono font-bold">{shipment.awbNumber}</p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {!shipment && (
+              <p className="text-sm text-muted-foreground">
+                This request is still with the office. Use the Track tab with your request number anytime.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl py-4">
+      <h2 className="text-xl font-bold mb-2" data-testid="text-guest-my-bookings-title">My bookings (this device)</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Request numbers you create as a guest are saved in this browser. You can also use Track and enter any request, booking, or AWB number.
+      </p>
+      {refs.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No guest bookings saved yet. Submit a booking from the Book tab.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {refs.map((ref) => (
+            <Card
+              key={`${ref.id}-${ref.requestNumber}`}
+              className="hover-elevate cursor-pointer"
+              onClick={() => viewDetail(ref.requestNumber)}
+              data-testid={`card-guest-booking-${ref.requestNumber}`}
+            >
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="font-mono font-bold text-sm">#{ref.requestNumber}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Saved {new Date(ref.savedAt).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  <Eye className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrackTab({ slug }: { slug: string }) {
   const [trackingNumber, setTrackingNumber] = useState("");
-  const [result, setResult] = useState<ShipmentTrackingInfo | null>(null);
+  const [result, setResult] = useState<TrackTabResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const { toast } = useToast();
@@ -1362,11 +1679,16 @@ function TrackTab() {
     setNotFound(false);
     setResult(null);
     try {
-      const res = await fetch(`/api/public/track/${encodeURIComponent(trackingNumber.trim())}`);
+      const res = await fetch(
+        `/api/public/office/${encodeURIComponent(slug)}/track/${encodeURIComponent(trackingNumber.trim())}`
+      );
       if (res.status === 404) {
         setNotFound(true);
       } else if (res.ok) {
-        setResult(await res.json());
+        setResult((await res.json()) as TrackTabResult);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.message || "Could not look up this number", variant: "destructive" });
       }
     } catch {
       toast({ title: "Error", description: "Failed to track shipment", variant: "destructive" });
@@ -1377,14 +1699,17 @@ function TrackTab() {
 
   return (
     <div className="mx-auto max-w-lg py-4">
-      <h2 className="text-xl font-bold mb-4" data-testid="text-track-title">Track Shipment</h2>
+      <h2 className="text-xl font-bold mb-4" data-testid="text-track-title">Track booking</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Enter your request number (e.g. BR…), booking number, or AWB for this office.
+      </p>
       <Card>
         <CardContent className="pt-6 space-y-4">
           <div className="flex gap-2">
             <Input
               value={trackingNumber}
               onChange={(e) => setTrackingNumber(e.target.value)}
-              placeholder="Enter Booking or AWB Number"
+              placeholder="Request #, booking #, or AWB"
               onKeyDown={(e) => e.key === "Enter" && handleTrack()}
               data-testid="input-tracking-number"
             />
@@ -1396,15 +1721,48 @@ function TrackTab() {
           {notFound && (
             <div className="text-center py-6">
               <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground" data-testid="text-not-found">No shipment found with this number</p>
+              <p className="text-muted-foreground" data-testid="text-not-found">No booking found with this number for this office</p>
             </div>
           )}
 
-          {result && (
+          {result?.kind === "booking_request" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="font-mono font-bold" data-testid="text-track-result-number">{result.bookingNumber}</p>
+                  <p className="text-xs text-muted-foreground">Request number</p>
+                  <p className="font-mono font-bold" data-testid="text-track-result-number">{result.requestNumber}</p>
+                </div>
+                <Badge variant={statusColor(result.status)}>{statusLabel(result.status)}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-muted-foreground">From</p><p>{result.senderCity || "N/A"}</p></div>
+                <div><p className="text-muted-foreground">To</p><p>{result.receiverCity || "N/A"}</p></div>
+              </div>
+              {result.createdAt && (
+                <p className="text-xs text-muted-foreground">
+                  Submitted {new Date(result.createdAt).toLocaleString("en-IN")}
+                </p>
+              )}
+              {result.message && <p className="text-sm text-muted-foreground">{result.message}</p>}
+              <div className="space-y-3 pt-2 border-t">
+                <div className="flex items-start gap-3">
+                  <div className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 bg-primary text-primary-foreground">
+                    <CheckCircle className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Request received</p>
+                    <p className="text-xs text-muted-foreground">Full shipment tracking appears after the office confirms.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {result?.kind === "shipment" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="font-mono font-bold" data-testid="text-track-result-booking">{result.bookingNumber}</p>
                   {result.awbNumber && <p className="text-xs text-muted-foreground">AWB: {result.awbNumber}</p>}
                 </div>
                 <Badge variant={statusColor(result.status)}>{statusLabel(result.status)}</Badge>
@@ -1539,6 +1897,39 @@ export default function CustomerPortalPage() {
   const [officeError, setOfficeError] = useState(false);
   const auth = useCustomerAuth(slug);
   const [activeTab, setActiveTab] = useState("book");
+  const [guestMode, setGuestMode] = useState(false);
+  const [guestBookingsTick, setGuestBookingsTick] = useState(0);
+
+  useEffect(() => {
+    if (!slug) return;
+    setGuestMode(localStorage.getItem(guestModeStorageKey(slug)) === "1");
+  }, [slug]);
+
+  useEffect(() => {
+    if (auth.isAuthenticated && slug) {
+      localStorage.removeItem(guestModeStorageKey(slug));
+      setGuestMode(false);
+    }
+  }, [auth.isAuthenticated, slug]);
+
+  const enterGuestMode = useCallback(() => {
+    if (!slug) return;
+    localStorage.setItem(guestModeStorageKey(slug), "1");
+    setGuestMode(true);
+    setActiveTab("book");
+  }, [slug]);
+
+  const exitGuestMode = useCallback(() => {
+    if (!slug) return;
+    localStorage.removeItem(guestModeStorageKey(slug));
+    setGuestMode(false);
+  }, [slug]);
+
+  useEffect(() => {
+    if (guestMode && !auth.isAuthenticated && activeTab === "account") {
+      setActiveTab("book");
+    }
+  }, [guestMode, auth.isAuthenticated, activeTab]);
 
   useEffect(() => {
     if (!slug) return;
@@ -1602,11 +1993,21 @@ export default function CustomerPortalPage() {
                 <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| {office.name}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               {office.phone && (
                 <a href={`tel:${office.phone}`} className="text-sm text-primary hover:underline hidden sm:block" data-testid="link-office-phone">
                   {office.phone}
                 </a>
+              )}
+              {guestMode && !auth.isAuthenticated && (
+                <>
+                  <span className="text-xs text-muted-foreground rounded-md border px-2 py-1" data-testid="badge-guest">
+                    Guest
+                  </span>
+                  <Button variant="outline" size="sm" onClick={exitGuestMode} data-testid="button-guest-sign-in">
+                    Sign in
+                  </Button>
+                </>
               )}
               {auth.isAuthenticated && (
                 <span className="text-sm text-muted-foreground" data-testid="text-welcome-user">
@@ -1620,12 +2021,15 @@ export default function CustomerPortalPage() {
         </div>
       </header>
 
-      {!auth.isAuthenticated ? (
-        <AuthPage slug={slug} office={office} onLogin={auth.login} />
+      {!auth.isAuthenticated && !guestMode ? (
+        <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
       ) : (
         <main className="mx-auto max-w-3xl px-4">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className="grid w-full grid-cols-4" data-testid="tabs-navigation">
+            <TabsList
+              className={`grid w-full ${guestMode && !auth.isAuthenticated ? "grid-cols-3" : "grid-cols-4"}`}
+              data-testid="tabs-navigation"
+            >
               <TabsTrigger value="book" data-testid="tab-book">
                 <Plus className="h-4 w-4 mr-1 hidden sm:block" /> Book
               </TabsTrigger>
@@ -1635,30 +2039,52 @@ export default function CustomerPortalPage() {
               <TabsTrigger value="track" data-testid="tab-track">
                 <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
               </TabsTrigger>
-              <TabsTrigger value="account" data-testid="tab-account">
-                <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
-              </TabsTrigger>
+              {!(guestMode && !auth.isAuthenticated) && (
+                <TabsTrigger value="account" data-testid="tab-account">
+                  <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
+                </TabsTrigger>
+              )}
             </TabsList>
             <TabsContent value="book">
-              <BookingTab token={auth.token!} user={auth.user!} slug={slug} partners={partners} />
+              {guestMode && !auth.isAuthenticated ? (
+                <BookingTab
+                  slug={slug}
+                  partners={partners}
+                  guestMode
+                  onGuestBookingSaved={() => setGuestBookingsTick((t) => t + 1)}
+                />
+              ) : (
+                <BookingTab
+                  slug={slug}
+                  partners={partners}
+                  token={auth.token!}
+                  user={auth.user!}
+                />
+              )}
             </TabsContent>
             <TabsContent value="bookings">
-              <MyBookingsTab token={auth.token!} />
+              {guestMode && !auth.isAuthenticated ? (
+                <GuestBookingsTab slug={slug} refreshTick={guestBookingsTick} />
+              ) : (
+                <MyBookingsTab token={auth.token!} />
+              )}
             </TabsContent>
             <TabsContent value="track">
-              <TrackTab />
+              <TrackTab slug={slug} />
             </TabsContent>
-            <TabsContent value="account">
-              <AccountTab
-                token={auth.token!}
-                user={auth.user!}
-                onUserUpdate={(u) => {
-                  auth.setUser(u);
-                  localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
-                }}
-                onLogout={auth.logout}
-              />
-            </TabsContent>
+            {!(guestMode && !auth.isAuthenticated) && (
+              <TabsContent value="account">
+                <AccountTab
+                  token={auth.token!}
+                  user={auth.user!}
+                  onUserUpdate={(u) => {
+                    auth.setUser(u);
+                    localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
+                  }}
+                  onLogout={auth.logout}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </main>
       )}

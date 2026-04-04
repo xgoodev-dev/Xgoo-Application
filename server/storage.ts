@@ -32,7 +32,7 @@ import {
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, desc, sql, count, sum, isNotNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, sql, count, sum, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -98,6 +98,11 @@ export interface IStorage {
 
   // Customer booking requests (by customer user)
   getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]>;
+
+  /** Public portal: shipment in this office by booking # or AWB */
+  getShipmentByOfficeAndTracking(officeId: string, trackingNumber: string): Promise<Shipment | undefined>;
+  /** Public portal: booking request in this office by request # (e.g. BR...) */
+  getBookingRequestByOfficeAndRequestNumber(officeId: string, requestNumber: string): Promise<BookingRequest | undefined>;
 
   // Office lookup
   getOfficeBySlug(slug: string): Promise<Office | undefined>;
@@ -441,6 +446,33 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(bookingRequests)
       .where(eq(bookingRequests.customerUserId, customerUserId))
       .orderBy(desc(bookingRequests.createdAt));
+  }
+
+  async getShipmentByOfficeAndTracking(officeId: string, trackingNumber: string): Promise<Shipment | undefined> {
+    const q = trackingNumber.trim();
+    if (!q) return undefined;
+    const [row] = await db
+      .select()
+      .from(shipments)
+      .where(
+        and(
+          eq(shipments.officeId, officeId),
+          or(eq(shipments.bookingNumber, q), eq(shipments.awbNumber, q))
+        )
+      )
+      .limit(1);
+    return row;
+  }
+
+  async getBookingRequestByOfficeAndRequestNumber(officeId: string, rawRequestNumber: string): Promise<BookingRequest | undefined> {
+    const normalized = rawRequestNumber.trim().replace(/^#/, "").toUpperCase();
+    if (!normalized) return undefined;
+    const [row] = await db
+      .select()
+      .from(bookingRequests)
+      .where(and(eq(bookingRequests.officeId, officeId), eq(bookingRequests.requestNumber, normalized)))
+      .limit(1);
+    return row;
   }
 
   async backfillPublicSlugs(): Promise<void> {

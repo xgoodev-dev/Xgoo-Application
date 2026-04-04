@@ -154,6 +154,9 @@ const bookingRequestCreateSchema = z.object({
   courierPreference: z.string().optional(),
   notes: z.string().optional(),
   packagePhotoUrls: z.array(z.string()).optional(),
+  pickupLat: z.string().optional().nullable(),
+  pickupLng: z.string().optional().nullable(),
+  pickupLocationName: z.string().optional().nullable(),
 });
 
 export async function registerRoutes(
@@ -927,6 +930,7 @@ export async function registerRoutes(
 
       res.json({
         success: true,
+        id: request.id,
         requestNumber: request.requestNumber,
         message: "Your booking request has been submitted. The office will contact you shortly."
       });
@@ -936,6 +940,102 @@ export async function registerRoutes(
       }
       console.error("Error creating booking request:", error);
       res.status(500).json({ message: "Failed to submit booking request" });
+    }
+  });
+
+  // Public track for this office: request # (BR…), booking #, or AWB
+  app.get("/api/public/office/:slug/track/:trackingNumber", async (req, res) => {
+    try {
+      const { slug, trackingNumber: rawParam } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      const raw = decodeURIComponent(rawParam || "").trim();
+      if (!raw) {
+        return res.status(400).json({ message: "Tracking number required" });
+      }
+
+      const shipmentDirect = await storage.getShipmentByOfficeAndTracking(office.id, raw);
+      if (shipmentDirect) {
+        return res.json({
+          kind: "shipment" as const,
+          bookingNumber: shipmentDirect.bookingNumber,
+          awbNumber: shipmentDirect.awbNumber,
+          status: shipmentDirect.status,
+          senderCity: shipmentDirect.senderCity,
+          receiverCity: shipmentDirect.receiverCity,
+          serviceType: shipmentDirect.serviceType,
+          weight: shipmentDirect.weight,
+          bookedAt: shipmentDirect.bookedAt,
+          pickedUpAt: shipmentDirect.pickedUpAt,
+          deliveredAt: shipmentDirect.deliveredAt,
+        });
+      }
+
+      const br = await storage.getBookingRequestByOfficeAndRequestNumber(office.id, raw);
+      if (!br) {
+        return res.status(404).json({ message: "No booking or shipment found with this number" });
+      }
+
+      if (br.convertedShipmentId) {
+        const s = await storage.getShipment(br.convertedShipmentId);
+        if (s) {
+          return res.json({
+            kind: "shipment" as const,
+            bookingNumber: s.bookingNumber,
+            awbNumber: s.awbNumber,
+            status: s.status,
+            senderCity: s.senderCity,
+            receiverCity: s.receiverCity,
+            serviceType: s.serviceType,
+            weight: s.weight,
+            bookedAt: s.bookedAt,
+            pickedUpAt: s.pickedUpAt,
+            deliveredAt: s.deliveredAt,
+          });
+        }
+      }
+
+      return res.json({
+        kind: "booking_request" as const,
+        requestNumber: br.requestNumber,
+        status: br.status,
+        senderCity: br.senderCity,
+        receiverCity: br.receiverCity,
+        createdAt: br.createdAt,
+        message:
+          "Your request is with the office. When it becomes a shipment, full tracking will appear here.",
+      });
+    } catch (error) {
+      console.error("Error in office track:", error);
+      res.status(500).json({ message: "Failed to track" });
+    }
+  });
+
+  // Guest / public: booking request detail by request number (scoped to office)
+  app.get("/api/public/office/:slug/booking-request/:requestNumber", async (req, res) => {
+    try {
+      const { slug, requestNumber: rawParam } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      const request = await storage.getBookingRequestByOfficeAndRequestNumber(
+        office.id,
+        decodeURIComponent(rawParam || "")
+      );
+      if (!request) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      let shipment = null;
+      if (request.convertedShipmentId) {
+        shipment = await storage.getShipment(request.convertedShipmentId);
+      }
+      res.json({ request, shipment });
+    } catch (error) {
+      console.error("Error fetching public booking request:", error);
+      res.status(500).json({ message: "Failed to load booking" });
     }
   });
 
@@ -1185,11 +1285,62 @@ export async function registerRoutes(
   });
 
   // === AI ENDPOINTS ===
+  // Support both names: AI_INTEGRATIONS_OPENAI_API_KEY (project convention) and OPENAI_API_KEY (common default).
+  const openaiApiKey =
+    process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() ||
+    process.env.OPENAI_API_KEY?.trim() ||
+    "";
+  const openaiBaseUrlRaw = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim();
+  const openaiBaseUrl =
+    openaiBaseUrlRaw && openaiBaseUrlRaw.length > 0 ? openaiBaseUrlRaw : undefined;
 
   const aiOpenai = new OpenAI({
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    apiKey: openaiApiKey || "sk-missing-configure-env",
+    baseURL: openaiBaseUrl,
   });
+
+  /** OpenAI Node SDK: details are often on `error.error.message` / `error.code`, not only `error.message`. */
+  function openAiErrMessage(err: unknown): string {
+    if (!err || typeof err !== "object") return String(err);
+    const e = err as Record<string, unknown> & {
+      error?: { message?: string; code?: string };
+      code?: string;
+      response?: { data?: { error?: { message?: string; code?: string } } };
+      message?: string;
+    };
+    const apiInner = e.error;
+    if (apiInner && typeof apiInner === "object") {
+      const m = (apiInner as { message?: string }).message;
+      if (typeof m === "string" && m.length) return m;
+    }
+    const fromAxios = e.response?.data?.error?.message;
+    if (typeof fromAxios === "string" && fromAxios.length) return fromAxios;
+    if (typeof e.message === "string" && e.message.length) return e.message;
+    return "Unknown error";
+  }
+
+  function openAiErrCode(err: unknown): string | undefined {
+    if (!err || typeof err !== "object") return undefined;
+    const e = err as { code?: string; error?: { code?: string } };
+    return e.code || e.error?.code;
+  }
+
+  /** Vision models sometimes wrap JSON in markdown; json_object mode can error on some accounts. */
+  function parseJsonFromChatContent(raw: string | null | undefined): Record<string, unknown> {
+    const text = (raw || "").trim();
+    if (!text) return {};
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const candidate = fenced ? fenced[1].trim() : text;
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    const slice =
+      start >= 0 && end > start ? candidate.slice(start, end + 1) : candidate;
+    try {
+      return JSON.parse(slice) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
 
 
   // AI Section Fill - Parse natural language description for a specific form section (multilingual)
@@ -1364,6 +1515,143 @@ Use visual cues like nearby objects for scale reference. If there's a reference 
     } catch (error) {
       console.error("AI measure package error:", error);
       res.status(500).json({ message: "AI measurement failed" });
+    }
+  });
+
+  // AI: Scan package / label photos — OCR addresses + infer parcel details (vision)
+  app.post("/api/ai/scan-package-photos", isAuthenticated, async (req, res) => {
+    try {
+      if (!openaiApiKey) {
+        return res.status(503).json({
+          message:
+            "OpenAI API key is not set. Add AI_INTEGRATIONS_OPENAI_API_KEY=sk-... or OPENAI_API_KEY=sk-... to your .env file and restart the dev server (npm run dev).",
+        });
+      }
+
+      const { images, customers, partners } = req.body;
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ message: "Provide at least one image (images[])" });
+      }
+      if (images.length > 5) {
+        return res.status(400).json({ message: "Maximum 5 images per scan" });
+      }
+
+      const dataUrls: string[] = [];
+      for (const img of images) {
+        if (typeof img !== "string" || !img.trim()) {
+          return res.status(400).json({ message: "Each image must be a non-empty base64 or data URL string" });
+        }
+        const s = img.trim();
+        if (s.startsWith("data:image/")) dataUrls.push(s);
+        else dataUrls.push(`data:image/jpeg;base64,${s}`);
+      }
+
+      const customerList = (customers || [])
+        .map((c: any) => `${c.name} (${c.phone}) ID:${c.id}`)
+        .join("; ");
+      const partnerList = (partners || [])
+        .map((p: any) => `${p.name} (${p.code}) ID:${p.id}`)
+        .join("; ");
+
+      const systemPrompt = `You are an expert at reading courier/shipping photos for Indian courier offices.
+
+The user may provide one or more photos showing:
+- Printed shipping labels, waybills, or AWB stickers (read FROM/Sender vs TO/Receiver/Courier blocks)
+- Handwritten addresses on parcels or envelopes
+- The package itself (estimate size/weight if no label)
+
+Return ONE JSON object with ONLY fields you can confidently extract. Use English for values; preserve person/place names in original script if clearly visible.
+
+Schema (omit unknown fields):
+{
+  "senderName": string,
+  "senderPhone": string (10-digit Indian mobile, no country code),
+  "senderAddress": string,
+  "senderCity": string,
+  "senderState": string,
+  "senderPincode": string (6 digits),
+  "receiverName": string,
+  "receiverPhone": string (10-digit Indian mobile),
+  "receiverAddress": string,
+  "receiverCity": string,
+  "receiverState": string,
+  "receiverPincode": string (6 digits),
+  "weight": string (kg),
+  "length": string (cm),
+  "width": string (cm),
+  "height": string (cm),
+  "numberOfPieces": string,
+  "contentDescription": string,
+  "declaredValue": string (INR),
+  "serviceType": "air" | "surface",
+  "paymentMode": "cash" | "upi" | "bank_transfer" | "credit",
+  "awbNumber": string,
+  "customerId": string (must match a listed customer ID if the sender clearly matches),
+  "courierPartnerId": string (must match a listed partner ID if logo/name/code visible),
+  "scanNotes": string (brief: what you read from which image, or uncertainties)
+}
+
+Rules:
+- Distinguish sender FROM vs receiver TO using label layout, arrows, or "Ship To" / "Deliver To" / "From".
+- If only one full address is visible, assign to the side that fits (e.g. label "To" → receiver).
+- Infer Indian state from city when reasonable. Normalize phones to 10 digits.
+- Default serviceType to "surface" unless "express", "air", or "overnight" is visible.
+- COD on label often implies paymentMode "cash".
+
+Known customers (match sender if plausible): ${customerList || "None"}
+Known courier partners (match if logo/text visible): ${partnerList || "None"}`;
+
+      const userContent: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      > = [
+        {
+          type: "text",
+          text: "Read all images together. Extract booking fields for creating a shipment. Return JSON only.",
+        },
+      ];
+      for (const url of dataUrls) {
+        userContent.push({
+          type: "image_url",
+          image_url: { url },
+        });
+      }
+
+      const response = await aiOpenai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        max_completion_tokens: 900,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      const parsed = parseJsonFromChatContent(content);
+      res.json(parsed);
+    } catch (error: unknown) {
+      console.error("AI scan package photos error:", error);
+      const code = openAiErrCode(error);
+      let msg = openAiErrMessage(error);
+      let httpStatus = 500;
+
+      if (code === "insufficient_quota" || /insufficient_quota|exceeded your current quota|billing/i.test(msg)) {
+        httpStatus = 402;
+        msg =
+          "OpenAI quota or billing limit reached. Add credits or a payment method at https://platform.openai.com/account/billing (Usage limits / Payment methods), then try again.";
+      } else if (/invalid.?api|incorrect api key|invalid_api_key|^401\b/i.test(msg) || code === "invalid_api_key") {
+        msg =
+          "OpenAI rejected the API key. Set AI_INTEGRATIONS_OPENAI_API_KEY or OPENAI_API_KEY in .env, save, and restart the server.";
+        httpStatus = 401;
+      } else if (code === "rate_limit_exceeded" || /rate.?limit/i.test(msg)) {
+        httpStatus = 429;
+        msg = msg || "OpenAI rate limit exceeded. Wait a minute and try again.";
+      } else if (msg.includes("Invalid image")) {
+        /* keep msg */
+      } else if (!msg || msg === "Unknown error") {
+        msg = "AI scan failed. Check server logs, OpenAI key, and billing.";
+      }
+      res.status(httpStatus).json({ message: msg, code: code || undefined });
     }
   });
 

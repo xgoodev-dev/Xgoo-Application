@@ -464,16 +464,41 @@ function OfficeFinder() {
   const [, navigate] = useLocation();
   const [offices, setOffices] = useState<PublicOffice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [userCity, setUserCity] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/public/offices")
-      .then((r) => r.json())
-      .then((d) => setOffices(d))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/public/offices");
+        const data: unknown = await r.json();
+        if (cancelled) return;
+        if (!r.ok || !Array.isArray(data)) {
+          setOffices([]);
+          setFetchError(
+            !r.ok
+              ? "We couldn’t load the office list. Check your connection or try again in a moment."
+              : "Office list is temporarily unavailable."
+          );
+          return;
+        }
+        setFetchError(null);
+        setOffices(data);
+      } catch {
+        if (!cancelled) {
+          setOffices([]);
+          setFetchError("We couldn’t load the office list. Please try again.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const detectLocation = async () => {
@@ -492,7 +517,8 @@ function OfficeFinder() {
     } catch { setUserCity(null); } finally { setDetecting(false); }
   };
 
-  const filtered = offices.filter((o) => {
+  const safeOffices = Array.isArray(offices) ? offices : [];
+  const filtered = safeOffices.filter((o) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
@@ -532,6 +558,12 @@ function OfficeFinder() {
         <p className="text-sm text-gray-500 mb-4 flex items-center gap-1" data-testid="text-detected-city">
           <MapPin className="h-3 w-3" />
           Showing offices near <span className="font-medium text-gray-900 ml-1">{userCity}</span>
+        </p>
+      )}
+
+      {fetchError && !loading && (
+        <p className="text-sm text-amber-800 dark:text-zinc-200 bg-amber-50 dark:bg-zinc-900 dark:border dark:border-zinc-700 rounded-lg px-4 py-3 mb-4" role="alert">
+          {fetchError}
         </p>
       )}
 

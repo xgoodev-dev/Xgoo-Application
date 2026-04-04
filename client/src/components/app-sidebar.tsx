@@ -88,7 +88,7 @@ const settingsNavItems = [
 ];
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const [portalCopied, setPortalCopied] = useState(false);
 
@@ -218,7 +218,7 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
             {/* <AvatarImage src={user?.profileImageUrl || ""} alt={displayName} />  */}
-            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+            <AvatarFallback className="bg-muted text-primary text-sm">
               {getInitials(displayName)}
             </AvatarFallback>
           </Avatar>
@@ -229,7 +229,10 @@ export function AppSidebar() {
             </span>
           </div>
           <SidebarMenuButton
-            onClick={() => logout()}
+            onClick={async () => {
+              await logout();
+              setLocation("/");
+            }}
             className="h-8 w-8 p-0"
             data-testid="button-logout"
           >

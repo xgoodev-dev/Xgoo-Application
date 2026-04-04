@@ -32,6 +32,13 @@ export async function setupVite(server: Server, app: Express) {
   app.use(vite.middlewares);
 
   app.use("/{*path}", async (req, res, next) => {
+    // Never serve index.html for /api — unmatched API routes must return JSON (not HTML),
+    // or the client throws "Unexpected token '<'" when parsing JSON.
+    const pathOnly = req.path.split("?")[0];
+    if (pathOnly.startsWith("/api")) {
+      return res.status(404).json({ message: "API route not found" });
+    }
+
     const url = req.originalUrl;
 
     try {

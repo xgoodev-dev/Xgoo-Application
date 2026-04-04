@@ -20,6 +20,7 @@ import {
   Bot,
   X,
   Mic,
+  ScanLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +90,7 @@ export default function NewBookingPage() {
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
+  const [isScanningPhotos, setIsScanningPhotos] = useState(false);
   const [recommendation, setRecommendation] = useState<{
     recommendedPartnerId: string;
     reason: string;
@@ -102,6 +104,7 @@ export default function NewBookingPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
+  const scanPhotosInputRef = useRef<HTMLInputElement>(null);
 
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -175,6 +178,80 @@ export default function NewBookingPage() {
       toast({ title: "Smart Fill Failed", description: error.message || "Could not parse the description.", variant: "destructive" });
     } finally {
       setIsSmartFilling(false);
+    }
+  };
+
+  const handlePackagePhotoScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const arr = Array.from(files).slice(0, 5);
+    setIsScanningPhotos(true);
+    try {
+      const images: string[] = [];
+      for (const f of arr) {
+        images.push(await compressImageFileToDataUrl(f));
+      }
+      const res = await apiRequest("POST", "/api/ai/scan-package-photos", {
+        images,
+        customers: customers || [],
+        partners: partners || [],
+      });
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const raw = await res.text();
+        throw new Error(
+          raw.trimStart().startsWith("<!DOCTYPE") || raw.trimStart().toLowerCase().startsWith("<html")
+            ? "Server returned a web page instead of JSON. Restart the dev server (npm run dev) and try again with smaller photos."
+            : raw.slice(0, 240) || "Not a JSON response"
+        );
+      }
+      const data = await res.json();
+      const fieldKeys: (keyof BookingFormData)[] = [
+        "customerId",
+        "courierPartnerId",
+        "awbNumber",
+        "senderName",
+        "senderPhone",
+        "senderAddress",
+        "senderCity",
+        "senderState",
+        "senderPincode",
+        "receiverName",
+        "receiverPhone",
+        "receiverAddress",
+        "receiverCity",
+        "receiverState",
+        "receiverPincode",
+        "weight",
+        "length",
+        "width",
+        "height",
+        "numberOfPieces",
+        "contentDescription",
+        "declaredValue",
+        "serviceType",
+        "paymentMode",
+      ];
+      for (const key of fieldKeys) {
+        if (data[key] !== undefined && data[key] !== null && String(data[key]).trim() !== "") {
+          form.setValue(key, data[key] as never, { shouldValidate: true });
+        }
+      }
+      if (data.customerId) {
+        handleCustomerSelect(String(data.customerId));
+      }
+      setTimeout(updateCalculatedAmount, 100);
+      const note = typeof data.scanNotes === "string" && data.scanNotes.trim() ? data.scanNotes.trim() : "Review and submit when ready.";
+      toast({
+        title: "Photo scan complete",
+        description: note,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Could not read photos.";
+      toast({ title: "Photo scan failed", description: message, variant: "destructive" });
+    } finally {
+      setIsScanningPhotos(false);
+      if (scanPhotosInputRef.current) scanPhotosInputRef.current.value = "";
     }
   };
 
@@ -427,6 +504,28 @@ export default function NewBookingPage() {
     });
   };
 
+  /** Resize + JPEG compress to stay under JSON limits and speed up vision API. */
+  async function compressImageFileToDataUrl(file: File, maxWidth = 1600, quality = 0.82): Promise<string> {
+    const bitmap = await createImageBitmap(file);
+    try {
+      let w = bitmap.width;
+      let h = bitmap.height;
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w);
+        w = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas not available");
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      return canvas.toDataURL("image/jpeg", quality);
+    } finally {
+      bitmap.close();
+    }
+  }
+
   const createBookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
       const amount = data.manualAmount ? parseFloat(data.manualAmount) : calculatePrice();
@@ -523,6 +622,56 @@ export default function NewBookingPage() {
                 <Wand2 className="h-4 w-4" />
               )}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-dashed border-primary/30 bg-muted/30">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ScanLine className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Scan package photos (AI)</span>
+                <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                  Vision
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                Photograph the parcel, shipping label, or handwritten From / To addresses. AI reads the images and fills
+                sender, receiver, package, and service fields—then review before submitting.
+              </p>
+            </div>
+            <div className="shrink-0 flex gap-2">
+              <input
+                ref={scanPhotosInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handlePackagePhotoScan}
+                data-testid="input-scan-package-photos"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isScanningPhotos}
+                onClick={() => scanPhotosInputRef.current?.click()}
+                data-testid="button-scan-package-photos"
+              >
+                {isScanningPhotos ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Scanning…
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-4 w-4 mr-2" />
+                    Choose photos
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

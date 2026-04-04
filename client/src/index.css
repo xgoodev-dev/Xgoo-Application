@@ -88,56 +88,55 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
-/* DARK MODE - XGoo Brand Colors */
-/* Dark Brown Background: #391305, Orange Accents: #FF4907 */
+/* DARK MODE - Neutral black / grey surfaces; orange kept for primary brand only */
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 16 84% 12%;
-  --foreground: 30 20% 95%;
-  --border: 16 50% 20%;
-  --card: 16 70% 14%;
-  --card-foreground: 30 20% 95%;
-  --card-border: 16 50% 18%;
-  --sidebar: 16 75% 15%;
-  --sidebar-foreground: 30 20% 95%;
-  --sidebar-border: 16 50% 20%;
+  --background: 0 0% 7%;
+  --foreground: 0 0% 96%;
+  --border: 0 0% 18%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 96%;
+  --card-border: 0 0% 16%;
+  --sidebar: 0 0% 9%;
+  --sidebar-foreground: 0 0% 96%;
+  --sidebar-border: 0 0% 15%;
   --sidebar-primary: 16 100% 51%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 16 60% 20%;
-  --sidebar-accent-foreground: 30 20% 95%;
+  --sidebar-accent: 0 0% 14%;
+  --sidebar-accent-foreground: 0 0% 96%;
   --sidebar-ring: 16 100% 51%;
-  --popover: 16 70% 16%;
-  --popover-foreground: 30 20% 95%;
-  --popover-border: 16 50% 22%;
+  --popover: 0 0% 11%;
+  --popover-foreground: 0 0% 96%;
+  --popover-border: 0 0% 18%;
   --primary: 16 100% 51%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 16 50% 20%;
-  --secondary-foreground: 30 20% 95%;
-  --muted: 16 40% 18%;
-  --muted-foreground: 30 15% 65%;
-  --accent: 16 87% 33%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 42%;
+  --secondary: 0 0% 17%;
+  --secondary-foreground: 0 0% 96%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 64%;
+  --accent: 0 0% 18%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 98%;
-  --input: 16 40% 28%;
+  --input: 0 0% 18%;
   --ring: 16 100% 51%;
   --chart-1: 16 100% 55%;
-  --chart-2: 16 87% 40%;
-  --chart-3: 30 70% 55%;
-  --chart-4: 16 70% 45%;
-  --chart-5: 45 80% 55%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(16 84% 5% / 0.20);
-  --shadow-xs: 0px 2px 0px 0px hsl(16 84% 5% / 0.25);
-  --shadow-sm: 0px 2px 0px 0px hsl(16 84% 5% / 0.20), 0px 1px 2px -1px hsl(16 84% 5% / 0.30);
-  --shadow: 0px 2px 0px 0px hsl(16 84% 5% / 0.20), 0px 1px 2px -1px hsl(16 84% 5% / 0.30);
-  --shadow-md: 0px 2px 0px 0px hsl(16 84% 5% / 0.20), 0px 2px 4px -1px hsl(16 84% 5% / 0.35);
-  --shadow-lg: 0px 2px 0px 0px hsl(16 84% 5% / 0.20), 0px 4px 6px -1px hsl(16 84% 5% / 0.40);
-  --shadow-xl: 0px 2px 0px 0px hsl(16 84% 5% / 0.20), 0px 8px 10px -1px hsl(16 84% 5% / 0.45);
-  --shadow-2xl: 0px 2px 0px 0px hsl(16 84% 5% / 0.50);
+  --chart-2: 0 0% 70%;
+  --chart-3: 0 0% 55%;
+  --chart-4: 0 0% 40%;
+  --chart-5: 0 0% 62%;
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.22);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.28);
+  --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.22), 0px 1px 2px -1px hsl(0 0% 0% / 0.32);
+  --shadow: 0px 2px 0px 0px hsl(0 0% 0% / 0.22), 0px 1px 2px -1px hsl(0 0% 0% / 0.32);
+  --shadow-md: 0px 2px 0px 0px hsl(0 0% 0% / 0.22), 0px 2px 4px -1px hsl(0 0% 0% / 0.38);
+  --shadow-lg: 0px 2px 0px 0px hsl(0 0% 0% / 0.22), 0px 4px 6px -1px hsl(0 0% 0% / 0.42);
+  --shadow-xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.22), 0px 8px 10px -1px hsl(0 0% 0% / 0.48);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.55);
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));

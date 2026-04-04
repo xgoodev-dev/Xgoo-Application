@@ -12,7 +12,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let detail = text;
+    try {
+      const j = JSON.parse(text) as { message?: string };
+      if (typeof j.message === "string" && j.message.trim()) {
+        detail = j.message.trim();
+      }
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(`${res.status}: ${detail}`);
   }
 }
 
