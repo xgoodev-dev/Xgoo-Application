@@ -696,6 +696,11 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
+      if (error && typeof error === "object" && "code" in error && (error as any).code === "23505") {
+        return res.status(409).json({
+          message: "A partner with the same unique value already exists (likely code or email).",
+        });
+      }
       console.error("Error creating partner:", error);
       res.status(500).json({ message: "Failed to create partner" });
     }
@@ -727,6 +732,11 @@ export async function registerRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      if (error && typeof error === "object" && "code" in error && (error as any).code === "23505") {
+        return res.status(409).json({
+          message: "Update conflicts with an existing partner (duplicate code/email).",
+        });
       }
       console.error("Error updating partner:", error);
       res.status(500).json({ message: "Failed to update partner" });
