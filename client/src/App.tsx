@@ -17,20 +17,32 @@ import NewBookingPage from "@/pages/bookings/new";
 import ShipmentsPage from "@/pages/shipments";
 import ShipmentLabelPage from "@/pages/shipments/label";
 import ShipmentInvoicePage from "@/pages/shipments/invoice";
-import QuotationsPage from "@/pages/quotations";
+import ShipmentBillPage from "@/pages/shipments/bill";
+import ShipmentDetailPage from "@/pages/shipments/detail";
+import QuotationDocumentPage from "@/pages/quotations/document";
 import BookingRequestsPage from "@/pages/booking-requests";
 import CustomersPage from "@/pages/customers";
 import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
+import PricingPage from "@/pages/pricing";
+import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
 import CustomerPortalPage from "@/pages/customer-portal";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
 
+function QuotationsRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/documents/quotations");
+  }, [setLocation]);
+  return null;
+}
+
 function AuthenticatedApp() {
   const sidebarStyle = {
     "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
+    "--sidebar-width-icon": "3.5rem",
   };
 
   return (
@@ -49,10 +61,16 @@ function AuthenticatedApp() {
               <Route path="/shipments" component={ShipmentsPage} />
               <Route path="/shipments/:id/label" component={ShipmentLabelPage} />
               <Route path="/shipments/:id/invoice" component={ShipmentInvoicePage} />
-              <Route path="/quotations" component={QuotationsPage} />
+              <Route path="/shipments/:id/bill" component={ShipmentBillPage} />
+              <Route path="/shipments/:id" component={ShipmentDetailPage} />
+              <Route path="/documents" component={DocumentsPage} />
+              <Route path="/documents/:tab" component={DocumentsPage} />
+              <Route path="/quotations" component={QuotationsRedirect} />
+              <Route path="/quotations/:id/document" component={QuotationDocumentPage} />
               <Route path="/booking-requests" component={BookingRequestsPage} />
               <Route path="/customers" component={CustomersPage} />
               <Route path="/partners" component={PartnersPage} />
+              <Route path="/pricing" component={PricingPage} />
               <Route path="/reports" component={ReportsPage} />
               <Route path="/settings" component={SettingsPage} />
               <Route component={NotFound} />
@@ -111,6 +129,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomeRoute} />
       <Route path="/auth-page" component={AuthPage} />
+      <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route>
         {isLoading ? (

@@ -56,6 +56,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AddressPicker, SavedAddressesManager, saveAddressFromBooking } from "@/components/customer/SavedAddresses";
+import type { SavedAddressValue } from "@/components/customer/SavedAddresses";
 
 interface OfficeInfo {
   id: string;
@@ -130,6 +133,13 @@ interface GuestBookingRef {
   requestNumber: string;
   savedAt: string;
 }
+
+const PICKUP_TIME_SLOTS = [
+  { value: "09:00-12:00", label: "Morning (9 AM – 12 PM)" },
+  { value: "12:00-15:00", label: "Afternoon (12 PM – 3 PM)" },
+  { value: "15:00-18:00", label: "Evening (3 PM – 6 PM)" },
+  { value: "18:00-21:00", label: "Night (6 PM – 9 PM)" },
+];
 
 function guestBookingsStorageKey(slug: string) {
   return `xgoo_guest_bookings_${slug}`;
@@ -247,6 +257,8 @@ const bookingSchema = z.object({
   courierPreference: z.string().optional(),
   notes: z.string().optional(),
   packagePhotoUrls: z.array(z.string()).optional(),
+  pickupDate: z.string().min(1, "Pickup date is required"),
+  pickupTimeSlot: z.string().min(1, "Pickup time is required"),
 });
 
 const profileSchema = z.object({
@@ -259,10 +271,11 @@ const profileSchema = z.object({
   pincode: z.string().optional(),
 });
 
-function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
+function PickupMapComponent({ onLocationSelect, initialLat, initialLng, autoDetectOnMount }: {
   onLocationSelect: (lat: number, lng: number, name: string) => void;
   initialLat?: number;
   initialLng?: number;
+  autoDetectOnMount?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
@@ -270,6 +283,60 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
   const [isLocating, setIsLocating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [locationName, setLocationName] = useState("");
+  const autoDetectRef = useRef(false);
+
+  async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    } catch {
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }
+
+  async function detectLocation() {
+    if (!navigator.geolocation) return;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        if (leafletMapRef.current) {
+          leafletMapRef.current.setView([latitude, longitude], 16);
+          const L = await import("leaflet");
+          const defaultIcon = L.icon({
+            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41],
+          });
+          if (markerRef.current) {
+            markerRef.current.setLatLng([latitude, longitude]);
+          } else {
+            markerRef.current = L.marker([latitude, longitude], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
+            markerRef.current.on("dragend", async () => {
+              const pos = markerRef.current.getLatLng();
+              const name = await reverseGeocode(pos.lat, pos.lng);
+              setLocationName(name);
+              onLocationSelect(pos.lat, pos.lng, name);
+            });
+          }
+        }
+        const name = await reverseGeocode(latitude, longitude);
+        setLocationName(name);
+        onLocationSelect(latitude, longitude, name);
+        setIsLocating(false);
+      },
+      () => setIsLocating(false),
+      { enableHighAccuracy: true }
+    );
+  }
 
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return;
@@ -326,6 +393,11 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
       });
 
       leafletMapRef.current = map;
+
+      if (autoDetectOnMount && !initialLat && !autoDetectRef.current) {
+        autoDetectRef.current = true;
+        setTimeout(() => detectLocation(), 500);
+      }
     };
 
     loadLeaflet();
@@ -337,19 +409,6 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
       }
     };
   }, []);
-
-  async function reverseGeocode(lat: number, lng: number): Promise<string> {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-        { headers: { "Accept-Language": "en" } }
-      );
-      const data = await res.json();
-      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    } catch {
-      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    }
-  }
 
   async function searchLocation() {
     if (!searchQuery.trim()) return;
@@ -391,46 +450,6 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng }: {
         onLocationSelect(latNum, lngNum, display_name);
       }
     } catch {}
-  }
-
-  async function detectLocation() {
-    if (!navigator.geolocation) return;
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        if (leafletMapRef.current) {
-          leafletMapRef.current.setView([latitude, longitude], 16);
-          const L = await import("leaflet");
-          const defaultIcon = L.icon({
-            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41],
-          });
-          if (markerRef.current) {
-            markerRef.current.setLatLng([latitude, longitude]);
-          } else {
-            markerRef.current = L.marker([latitude, longitude], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
-            markerRef.current.on("dragend", async () => {
-              const pos = markerRef.current.getLatLng();
-              const name = await reverseGeocode(pos.lat, pos.lng);
-              setLocationName(name);
-              onLocationSelect(pos.lat, pos.lng, name);
-            });
-          }
-        }
-        const name = await reverseGeocode(latitude, longitude);
-        setLocationName(name);
-        onLocationSelect(latitude, longitude, name);
-        setIsLocating(false);
-      },
-      () => setIsLocating(false),
-      { enableHighAccuracy: true }
-    );
   }
 
   return (
@@ -639,7 +658,7 @@ function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onContinueAsGuest?: () => void;
 }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">("register");
   const toggle = useCallback(() => setMode((m) => (m === "login" ? "register" : "login")), []);
 
   if (mode === "register") {
@@ -668,6 +687,8 @@ function BookingTab({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ requestNumber: string } | null>(null);
   const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [saveSenderAddress, setSaveSenderAddress] = useState(false);
+  const [saveReceiverAddress, setSaveReceiverAddress] = useState(false);
   const [smartFillText, setSmartFillText] = useState("");
   const [isSmartFilling, setIsSmartFilling] = useState(false);
   const [isMeasuring, setIsMeasuring] = useState(false);
@@ -679,6 +700,8 @@ function BookingTab({
   const [sectionAiLoading, setSectionAiLoading] = useState<Record<string, boolean>>({ sender: false, receiver: false, package: false, service: false });
   const [recordingSection, setRecordingSection] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  const todayStr = new Date().toISOString().split("T")[0];
 
   const form = useForm<z.infer<typeof bookingSchema>>({
     resolver: zodResolver(bookingSchema),
@@ -704,8 +727,22 @@ function BookingTab({
       courierPreference: "",
       notes: "",
       packagePhotoUrls: [],
+      pickupDate: todayStr,
+      pickupTimeSlot: "09:00-12:00",
     },
   });
+
+  function applySavedAddress(prefix: "sender" | "receiver", addr: SavedAddressValue) {
+    form.setValue(`${prefix}Name` as any, addr.name);
+    form.setValue(`${prefix}Phone` as any, addr.phone);
+    form.setValue(`${prefix}Address` as any, addr.address);
+    if (addr.city) form.setValue(`${prefix}City` as any, addr.city);
+    if (addr.state) form.setValue(`${prefix}State` as any, addr.state);
+    if (addr.pincode) form.setValue(`${prefix}Pincode` as any, addr.pincode);
+    if (prefix === "sender" && addr.lat && addr.lng) {
+      setPickupLocation({ lat: parseFloat(addr.lat), lng: parseFloat(addr.lng), name: addr.address });
+    }
+  }
 
   async function handleSmartFill() {
     if (!smartFillText.trim()) return;
@@ -949,6 +986,8 @@ function BookingTab({
         pickupLat: pickupLocation?.lat?.toString() || null,
         pickupLng: pickupLocation?.lng?.toString() || null,
         pickupLocationName: pickupLocation?.name || null,
+        pickupDate: data.pickupDate,
+        pickupTimeSlot: data.pickupTimeSlot,
       };
       if (isGuest) {
         const res = await fetch(`/api/public/office/${slug}/booking-request`, {
@@ -974,6 +1013,44 @@ function BookingTab({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
+      if (!isGuest && token) {
+        if (pickupLocation) {
+          await fetch("/api/customer/me", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "x-customer-token": token },
+            body: JSON.stringify({
+              defaultPickupLat: pickupLocation.lat.toString(),
+              defaultPickupLng: pickupLocation.lng.toString(),
+            }),
+          });
+        }
+        if (saveSenderAddress) {
+          await saveAddressFromBooking(token, {
+            label: "Pickup",
+            name: data.senderName,
+            phone: data.senderPhone,
+            address: data.senderAddress,
+            city: data.senderCity,
+            state: data.senderState,
+            pincode: data.senderPincode,
+            lat: pickupLocation?.lat?.toString() || null,
+            lng: pickupLocation?.lng?.toString() || null,
+            addressType: "sender",
+          });
+        }
+        if (saveReceiverAddress) {
+          await saveAddressFromBooking(token, {
+            label: "Delivery",
+            name: data.receiverName,
+            phone: data.receiverPhone,
+            address: data.receiverAddress,
+            city: data.receiverCity,
+            state: data.receiverState,
+            pincode: data.receiverPincode,
+            addressType: "receiver",
+          });
+        }
+      }
       setSubmitted({ requestNumber: result.requestNumber });
       setPackagePhotos([]);
       toast({ title: "Booking Submitted!", description: `Request #${result.requestNumber}` });
@@ -1024,6 +1101,60 @@ function BookingTab({
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LocateFixed className="h-4 w-4 text-primary" /> Your Pickup Location
+              </CardTitle>
+              <CardDescription>We detect your current location automatically. Adjust the pin if needed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pickupLocation && (
+                <div className="rounded-md border bg-background px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Current location</p>
+                  <p className="text-sm font-medium line-clamp-2">{pickupLocation.name}</p>
+                </div>
+              )}
+              <PickupMapComponent
+                onLocationSelect={(lat, lng, name) => setPickupLocation({ lat, lng, name })}
+                initialLat={user?.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
+                initialLng={user?.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
+                autoDetectOnMount
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Schedule Pickup</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <FormField control={form.control} name="pickupDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Pickup Date *</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" min={new Date().toISOString().split("T")[0]} data-testid="input-pickup-date" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="pickupTimeSlot" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Time Slot *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-pickup-time"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {PICKUP_TIME_SLOTS.map((slot) => (
+                        <SelectItem key={slot.value} value={slot.value}>{slot.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </CardContent>
+          </Card>
+
           <Card className="border-dashed">
             <CardContent className="pt-4 pb-4">
               <div className="flex items-center gap-2 mb-2">
@@ -1056,6 +1187,9 @@ function BookingTab({
               <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Sender Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!isGuest && token && (
+                <AddressPicker token={token} addressType="sender" onSelect={(a) => applySavedAddress("sender", a)} />
+              )}
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.sender} onChange={(e) => setSectionAiText(prev => ({ ...prev, sender: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("sender"); } }} placeholder='e.g. Raj Kumar, 9876543210, MG Road Bangalore (any language)' className="text-sm" disabled={sectionAiLoading.sender} data-testid="input-ai-sender" />
@@ -1091,20 +1225,12 @@ function BookingTab({
                   <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-sender-pincode" /></FormControl></FormItem>
                 )} />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><Navigation className="h-4 w-4" /> Pickup Location</CardTitle>
-              <CardDescription>Pin your pickup location on the map or use GPS</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PickupMapComponent
-                onLocationSelect={(lat, lng, name) => setPickupLocation({ lat, lng, name })}
-                initialLat={user?.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
-                initialLng={user?.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
-              />
+              {!isGuest && token && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox checked={saveSenderAddress} onCheckedChange={(v) => setSaveSenderAddress(!!v)} />
+                  Save sender address for future bookings
+                </label>
+              )}
             </CardContent>
           </Card>
 
@@ -1113,6 +1239,9 @@ function BookingTab({
               <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Receiver Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!isGuest && token && (
+                <AddressPicker token={token} addressType="receiver" onSelect={(a) => applySavedAddress("receiver", a)} />
+              )}
               <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
                 <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
                 <Input value={sectionAiText.receiver} onChange={(e) => setSectionAiText(prev => ({ ...prev, receiver: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("receiver"); } }} placeholder='e.g. Amit ko Delhi Connaught Place bhejo (any language)' className="text-sm" disabled={sectionAiLoading.receiver} data-testid="input-ai-receiver" />
@@ -1145,6 +1274,12 @@ function BookingTab({
                   <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-receiver-pincode" /></FormControl></FormItem>
                 )} />
               </div>
+              {!isGuest && token && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox checked={saveReceiverAddress} onCheckedChange={(v) => setSaveReceiverAddress(!!v)} />
+                  Save receiver address for future bookings
+                </label>
+              )}
             </CardContent>
           </Card>
 
@@ -1884,13 +2019,15 @@ function AccountTab({ token, user, onUserUpdate, onLogout }: {
           </div>
         </CardContent>
       </Card>
+      <SavedAddressesManager token={token} />
     </div>
   );
 }
 
 export default function CustomerPortalPage() {
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug || "";
+  const params = useParams<{ slug?: string }>();
+  const routeSlug = params.slug || "";
+  const [slug, setSlug] = useState(routeSlug);
   const [office, setOffice] = useState<OfficeInfo | null>(null);
   const [partners, setPartners] = useState<PartnerInfo[]>([]);
   const [isLoadingOffice, setIsLoadingOffice] = useState(true);
@@ -1932,16 +2069,47 @@ export default function CustomerPortalPage() {
   }, [guestMode, auth.isAuthenticated, activeTab]);
 
   useEffect(() => {
-    if (!slug) return;
-    fetch(`/api/public/office/${slug}`)
-      .then((r) => {
+    let cancelled = false;
+    setIsLoadingOffice(true);
+    setOfficeError(false);
+
+    const loadOffice = async () => {
+      try {
+        if (routeSlug) {
+          const r = await fetch(`/api/public/office/${routeSlug}`);
+          if (!r.ok) throw new Error();
+          const data = await r.json();
+          if (cancelled) return;
+          setSlug(routeSlug);
+          setOffice(data);
+          return;
+        }
+
+        const r = await fetch("/api/public/booking-office");
         if (!r.ok) throw new Error();
-        return r.json();
-      })
-      .then((data) => setOffice(data))
-      .catch(() => setOfficeError(true))
-      .finally(() => setIsLoadingOffice(false));
-  }, [slug]);
+        const data = await r.json();
+        if (cancelled) return;
+        setSlug(data.slug);
+        setOffice({
+          id: data.id,
+          name: data.name,
+          city: data.city,
+          state: data.state,
+          phone: data.phone,
+          email: data.email,
+        });
+      } catch {
+        if (!cancelled) setOfficeError(true);
+      } finally {
+        if (!cancelled) setIsLoadingOffice(false);
+      }
+    };
+
+    loadOffice();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeSlug]);
 
   useEffect(() => {
     if (!slug || !office) return;
@@ -1974,8 +2142,8 @@ export default function CustomerPortalPage() {
           </div>
         </header>
         <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-          <h1 className="text-2xl font-bold mb-4">Office Not Found</h1>
-          <p className="text-muted-foreground">The booking portal you're looking for doesn't exist or is no longer available.</p>
+          <h1 className="text-2xl font-bold mb-4">Booking Unavailable</h1>
+          <p className="text-muted-foreground">Parcel booking is not set up yet. Please try again later.</p>
         </div>
       </div>
     );
@@ -1990,7 +2158,7 @@ export default function CustomerPortalPage() {
               <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md" />
               <div>
                 <span className="text-lg font-semibold">XGoo</span>
-                <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| {office.name}</span>
+                <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| Courier Booking</span>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -2017,7 +2185,7 @@ export default function CustomerPortalPage() {
               )}
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-1 sm:hidden">{office.name}</p>
+          <p className="text-sm text-muted-foreground mt-1 sm:hidden">Courier Booking</p>
         </div>
       </header>
 

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "XGoo Partner Sync",
+  "version": "1.0.0",
+  "description": "Autofill courier partner booking forms from XGoo shipments.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://one.delhivery.com/*",
+    "https://*.delhivery.com/*",
+    "https://www.indiancourier.net/*",
+    "https://*.indiancourier.net/*",
+    "https://stcourier.com/*",
+    "https://*.stcourier.com/*",
+    "https://www.franchcourier.com/*",
+    "https://*.franchcourier.com/*",
+    "https://www.dtdc.in/*",
+    "https://*.dtdc.in/*",
+    "https://www.bluedart.com/*",
+    "https://*.bluedart.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+      "js": ["src/constants.js", "src/content-xgoo.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://one.delhivery.com/*",
+        "https://*.delhivery.com/*",
+        "https://www.indiancourier.net/*",
+        "https://*.indiancourier.net/*",
+        "https://stcourier.com/*",
+        "https://*.stcourier.com/*",
+        "https://www.franchcourier.com/*",
+        "https://*.franchcourier.com/*",
+        "https://www.dtdc.in/*",
+        "https://*.dtdc.in/*",
+        "https://www.bluedart.com/*",
+        "https://*.bluedart.com/*"
+      ],
+      "js": [
+        "src/constants.js",
+        "src/lib/dom-utils.js",
+        "src/adapters/generic.js",
+        "src/adapters/delhivery.js",
+        "src/adapters/index.js",
+        "src/content-partner.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "XGoo Partner Sync",
+    "default_popup": "popup/popup.html"
+  },
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"]
+  }
+}

@@ -13,6 +13,12 @@ import { shipments } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
+import { searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
+import { parseTariffSheetRows, parsedRowsToInsert } from "./pricing";
+import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
+import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
+import { isDelhiveryPartner } from "@shared/delhivery";
+import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -25,6 +31,7 @@ const officeCreateSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   gstNumber: z.string().optional(),
   publicSlug: z.string().optional(),
+  documentSettings: z.record(z.unknown()).optional(),
 });
 
 const officeUpdateSchema = z.object({
@@ -37,7 +44,30 @@ const officeUpdateSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   gstNumber: z.string().optional(),
   publicSlug: z.string().optional(),
+  documentSettings: z.record(z.unknown()).optional(),
 });
+
+const branchCreateSchema = z.object({
+  name: z.string().min(1, "Branch name is required"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  isPrimary: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+const branchUpdateSchema = branchCreateSchema.partial();
+
+const serviceAreaCreateSchema = z.object({
+  pincode: z.string().min(6, "Valid 6-digit pincode required").max(10),
+  radiusKm: z.union([z.string(), z.number()]).optional(),
+  label: z.string().optional(),
+});
+
+const serviceAreaUpdateSchema = serviceAreaCreateSchema.partial();
 
 const customerCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -53,6 +83,23 @@ const customerCreateSchema = z.object({
   creditLimit: z.string().optional(),
 });
 
+function normalizePortalUrlInput(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+const portalUrlSchema = z
+  .string()
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => normalizePortalUrlInput(v ?? ""))
+  .refine((v) => v === "" || z.string().url().safeParse(v).success, {
+    message: "Enter a valid URL (e.g. https://one.delhivery.com/)",
+  });
+
 const partnerCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   code: z.string().min(1).max(10),
@@ -63,9 +110,13 @@ const partnerCreateSchema = z.object({
   baseRateSurface: z.string().optional(),
   ratePerKgAir: z.string().optional(),
   ratePerKgSurface: z.string().optional(),
+  marginAmount: z.string().optional(),
+  marginPercent: z.string().optional(),
+  useTariffPricing: z.boolean().optional(),
   awbPrefix: z.string().optional(),
   awbRangeStart: z.string().optional(),
   awbRangeEnd: z.string().optional(),
+  portalUrl: portalUrlSchema,
   isActive: z.boolean().default(true),
 });
 
@@ -101,6 +152,14 @@ const shipmentCreateSchema = z.object({
 
 const statusUpdateSchema = z.object({
   status: z.enum(["booked", "picked_up", "in_transit", "delivered"]),
+});
+
+const partnerSyncUpdateSchema = z.object({
+  partnerSyncStatus: z.enum(PARTNER_SYNC_STATUSES).optional(),
+  externalAwb: z.string().optional().nullable(),
+  awbNumber: z.string().optional().nullable(),
+  partnerSyncError: z.string().optional().nullable(),
+  copyExternalToAwb: z.boolean().optional(),
 });
 
 const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format");
@@ -157,6 +216,8 @@ const bookingRequestCreateSchema = z.object({
   pickupLat: z.string().optional().nullable(),
   pickupLng: z.string().optional().nullable(),
   pickupLocationName: z.string().optional().nullable(),
+  pickupDate: z.string().optional().nullable(),
+  pickupTimeSlot: z.string().optional().nullable(),
 });
 
 export async function registerRoutes(
@@ -210,6 +271,9 @@ export async function registerRoutes(
   storage.backfillPublicSlugs().catch((err) =>
     console.error("Failed to backfill public slugs:", err)
   );
+  storage.backfillBranches().catch((err) =>
+    console.error("Failed to backfill branches:", err)
+  );
 
   async function getOrCreateOffice(userId: string, officeName?: string): Promise<string> {
     let office = await storage.getOfficeByUserId(userId);
@@ -228,11 +292,34 @@ export async function registerRoutes(
     return office?.id === resourceOfficeId;
   }
 
+  async function resolveBranchIdForBooking(
+    officeId: string,
+    data: {
+      senderPincode?: string | null;
+      pickupLat?: string | number | null;
+      pickupLng?: string | number | null;
+    },
+  ): Promise<string | undefined> {
+    const branch = await storage.findBranchForPickup(officeId, {
+      pincode: data.senderPincode,
+      lat: data.pickupLat != null && data.pickupLat !== "" ? parseFloat(String(data.pickupLat)) : null,
+      lng: data.pickupLng != null && data.pickupLng !== "" ? parseFloat(String(data.pickupLng)) : null,
+    });
+    return branch?.id;
+  }
+
   // Office routes
   app.get("/api/office", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const office = await storage.getOfficeByUserId(userId);
+      if (office) {
+        try {
+          await storage.ensureDefaultBranchForOffice(office);
+        } catch (branchErr) {
+          console.error("Error ensuring default branch:", branchErr);
+        }
+      }
       res.json(office || null);
     } catch (error) {
       console.error("Error fetching office:", error);
@@ -282,6 +369,213 @@ export async function registerRoutes(
       }
       console.error("Error updating office:", error);
       res.status(500).json({ message: "Failed to update office" });
+    }
+  });
+
+  // Branch routes
+  app.get("/api/branches", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const branchList = await storage.getBranchesByOffice(officeId);
+      res.json(branchList);
+    } catch (error) {
+      console.error("Error fetching branches:", error);
+      res.status(500).json({ message: "Failed to fetch branches" });
+    }
+  });
+
+  app.post("/api/branches", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const validated = branchCreateSchema.parse(req.body);
+      const branch = await storage.createBranch({ ...validated, officeId });
+      res.json(branch);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating branch:", error);
+      res.status(500).json({ message: "Failed to create branch" });
+    }
+  });
+
+  app.patch("/api/branches/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const { id } = req.params;
+      const existing = await storage.getBranch(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const validated = branchUpdateSchema.parse(req.body);
+      const branch = await storage.updateBranch(id, validated);
+      res.json(branch);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating branch:", error);
+      res.status(500).json({ message: "Failed to update branch" });
+    }
+  });
+
+  app.delete("/api/branches/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const { id } = req.params;
+      const existing = await storage.getBranch(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const deleted = await storage.deleteBranch(id);
+      if (!deleted) {
+        return res.status(400).json({ message: "Cannot delete the only branch" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting branch:", error);
+      res.status(500).json({ message: "Failed to delete branch" });
+    }
+  });
+
+  app.post("/api/branches/:id/service-areas", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const { id } = req.params;
+      const branch = await storage.getBranch(id);
+      if (!branch || branch.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const validated = serviceAreaCreateSchema.parse(req.body);
+      const area = await storage.createBranchServiceArea({
+        branchId: id,
+        pincode: validated.pincode,
+        radiusKm: validated.radiusKm != null ? String(validated.radiusKm) : "0",
+        label: validated.label,
+      });
+      res.json(area);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating service area:", error);
+      res.status(500).json({ message: "Failed to add service pincode" });
+    }
+  });
+
+  app.patch("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const { branchId, areaId } = req.params;
+      const branch = await storage.getBranch(branchId);
+      if (!branch || branch.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const validated = serviceAreaUpdateSchema.parse(req.body);
+      const patch: Record<string, unknown> = { ...validated };
+      if (validated.radiusKm != null) patch.radiusKm = String(validated.radiusKm);
+      const area = await storage.updateBranchServiceArea(areaId, patch);
+      if (!area) return res.status(404).json({ message: "Service area not found" });
+      res.json(area);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating service area:", error);
+      res.status(500).json({ message: "Failed to update service pincode" });
+    }
+  });
+
+  app.delete("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const officeId = await getOrCreateOffice(userId);
+      const { branchId, areaId } = req.params;
+      const branch = await storage.getBranch(branchId);
+      if (!branch || branch.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      await storage.deleteBranchServiceArea(areaId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting service area:", error);
+      res.status(500).json({ message: "Failed to delete service pincode" });
+    }
+  });
+
+  // Geocoding for address autofill + maps
+  app.get("/api/geocode/search", isAuthenticated, async (req: any, res) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      if (q.length < 3) {
+        return res.json([]);
+      }
+      const results = await searchIndianAddresses(q, 6);
+      res.json(results);
+    } catch (error) {
+      console.error("Geocode search error:", error);
+      res.status(500).json({ message: "Address search failed" });
+    }
+  });
+
+  app.get("/api/geocode/reverse", isAuthenticated, async (req: any, res) => {
+    try {
+      const lat = parseFloat(String(req.query.lat));
+      const lng = parseFloat(String(req.query.lng));
+      if (Number.isNaN(lat) || Number.isNaN(lng)) {
+        return res.status(400).json({ message: "Invalid coordinates" });
+      }
+      const result = await reverseGeocodeLatLng(lat, lng);
+      if (!result) {
+        return res.status(404).json({ message: "Could not resolve address" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Reverse geocode error:", error);
+      res.status(500).json({ message: "Reverse geocode failed" });
+    }
+  });
+
+  // Demo / sample data
+  app.get("/api/demo-data/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const status = await storage.getDemoDataStatus(officeId);
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching demo data status:", error);
+      res.status(500).json({ message: "Failed to fetch demo data status" });
+    }
+  });
+
+  app.post("/api/demo-data/seed", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      await storage.seedData(officeId);
+      const status = await storage.getDemoDataStatus(officeId);
+      res.json({ success: true, ...status });
+    } catch (error) {
+      console.error("Error seeding demo data:", error);
+      const message =
+        error instanceof Error ? error.message : "Failed to load sample data";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.delete("/api/demo-data", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      await storage.clearDemoData(officeId);
+      res.json({ success: true, hasDemoData: false });
+    } catch (error) {
+      console.error("Error clearing demo data:", error);
+      res.status(500).json({ message: "Failed to remove sample data" });
     }
   });
 
@@ -392,7 +686,11 @@ export async function registerRoutes(
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
       const validated = partnerCreateSchema.parse(req.body);
-      const partner = await storage.createPartner({ ...validated, officeId });
+      const partner = await storage.createPartner({
+        ...validated,
+        officeId,
+        portalUrl: validated.portalUrl || null,
+      });
       res.json(partner);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -416,7 +714,12 @@ export async function registerRoutes(
       }
 
       const validated = partnerCreateSchema.partial().parse(req.body);
-      const partner = await storage.updatePartner(id, validated);
+      const partner = await storage.updatePartner(id, {
+        ...validated,
+        ...(validated.portalUrl !== undefined
+          ? { portalUrl: validated.portalUrl || null }
+          : {}),
+      });
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
@@ -447,6 +750,193 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting partner:", error);
       res.status(500).json({ message: "Failed to delete partner" });
+    }
+  });
+
+  const tariffUploadSchema = z.object({
+    label: z.string().min(1),
+    courierPartnerId: z.string().optional(),
+    validFrom: z.string().optional(),
+    validTo: z.string().optional(),
+    activate: z.enum(["true", "false"]).optional(),
+  });
+
+  const pricingQuoteSchema = z.object({
+    courierPartnerId: z.string().optional(),
+    serviceType: z.enum(["air", "surface"]),
+    senderPincode: z.string().optional(),
+    receiverPincode: z.string().optional(),
+    weight: z.union([z.string(), z.number()]),
+    length: z.union([z.string(), z.number()]).optional().nullable(),
+    width: z.union([z.string(), z.number()]).optional().nullable(),
+    height: z.union([z.string(), z.number()]).optional().nullable(),
+  });
+
+  // Tariff & pricing routes
+  app.get("/api/tariffs/template", isAuthenticated, (_req, res) => {
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="xgoo-tariff-template.csv"');
+    res.send(TARIFF_CSV_TEMPLATE);
+  });
+
+  app.get("/api/tariffs", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const versions = await storage.getTariffVersionsByOffice(officeId);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching tariffs:", error);
+      res.status(500).json({ message: "Failed to fetch tariffs" });
+    }
+  });
+
+  app.get("/api/tariffs/:id/rows", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      const rows = await storage.getTariffRateRowsByVersion(version.id);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching tariff rows:", error);
+      res.status(500).json({ message: "Failed to fetch tariff rows" });
+    }
+  });
+
+  app.post("/api/tariffs/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const officeId = await getOrCreateOffice(req.user.id);
+      const meta = tariffUploadSchema.parse(req.body);
+      const partners = await storage.getPartnersByOffice(officeId);
+      const defaultPartner = meta.courierPartnerId
+        ? partners.find((p) => p.id === meta.courierPartnerId)
+        : undefined;
+
+      const parsed = parseTariffSheetRows(
+        req.file.path,
+        defaultPartner?.code,
+      );
+
+      if (parsed.length === 0) {
+        return res.status(400).json({
+          message: "No valid tariff rows found. Use the CSV template with partner_code, service_type, weight range, and tariff_amount columns.",
+        });
+      }
+
+      const validFrom = meta.validFrom ? new Date(meta.validFrom) : new Date();
+      const validTo = meta.validTo ? new Date(meta.validTo) : new Date(validFrom.getTime() + 15 * 24 * 60 * 60 * 1000);
+
+      const version = await storage.createTariffVersion({
+        officeId,
+        courierPartnerId: meta.courierPartnerId || null,
+        label: meta.label,
+        fileName: req.file.originalname,
+        fileUrl: `/objects/${req.file.filename}`,
+        validFrom,
+        validTo,
+        status: meta.activate === "true" ? "active" : "draft",
+        rowCount: 0,
+      });
+
+      const { rows, errors } = parsedRowsToInsert(
+        parsed,
+        partners,
+        version.id,
+        officeId,
+        meta.courierPartnerId,
+      );
+
+      const inserted = await storage.insertTariffRateRows(rows);
+      await storage.updateTariffVersion(version.id, { rowCount: inserted });
+
+      if (meta.activate === "true") {
+        await storage.activateTariffVersion(version.id, officeId);
+      }
+
+      res.json({
+        version: { ...version, rowCount: inserted },
+        imported: inserted,
+        parseErrors: errors,
+        preview: rows.slice(0, 20),
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error uploading tariff:", error);
+      res.status(500).json({ message: "Failed to upload tariff" });
+    }
+  });
+
+  app.post("/api/tariffs/:id/activate", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const activated = await storage.activateTariffVersion(req.params.id, officeId);
+      if (!activated) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      res.json(activated);
+    } catch (error) {
+      console.error("Error activating tariff:", error);
+      res.status(500).json({ message: "Failed to activate tariff" });
+    }
+  });
+
+  app.delete("/api/tariffs/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      await storage.deleteTariffVersion(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting tariff:", error);
+      res.status(500).json({ message: "Failed to delete tariff" });
+    }
+  });
+
+  app.post("/api/pricing/quote", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const data = pricingQuoteSchema.parse(req.body);
+
+      const baseInput = {
+        serviceType: data.serviceType,
+        senderPincode: data.senderPincode,
+        receiverPincode: data.receiverPincode,
+        weight: parseFloat(String(data.weight)) || 0,
+        length: data.length != null ? parseFloat(String(data.length)) : undefined,
+        width: data.width != null ? parseFloat(String(data.width)) : undefined,
+        height: data.height != null ? parseFloat(String(data.height)) : undefined,
+      };
+
+      if (data.courierPartnerId) {
+        const quote = await storage.quotePrice(officeId, {
+          ...baseInput,
+          courierPartnerId: data.courierPartnerId,
+        });
+        if (!quote) {
+          return res.status(404).json({ message: "Partner not found" });
+        }
+        return res.json(quote);
+      }
+
+      const quotes = await storage.quoteAllPartners(officeId, baseInput);
+      res.json({ quotes });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error quoting price:", error);
+      res.status(500).json({ message: "Failed to quote price" });
     }
   });
 
@@ -561,6 +1051,158 @@ export async function registerRoutes(
       }
       console.error("Error updating shipment status:", error);
       res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
+  app.get("/api/shipments/:id/partner-payload", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+
+      let partner = shipment.courierPartner ?? undefined;
+      if (shipment.courierPartnerId) {
+        const freshPartner = await storage.getPartner(shipment.courierPartnerId);
+        if (freshPartner) partner = freshPartner;
+      }
+
+      const payload = buildPartnerSyncPayload(shipment, partner);
+      res.json(payload);
+    } catch (error) {
+      console.error("Error building partner payload:", error);
+      res.status(500).json({ message: "Failed to build partner payload" });
+    }
+  });
+
+  app.patch("/api/shipments/:id/partner-sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+
+      const existing = await storage.getShipment(id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const validated = partnerSyncUpdateSchema.parse(req.body);
+
+      let awbNumber = validated.awbNumber;
+      const externalAwb = validated.externalAwb;
+
+      if (validated.copyExternalToAwb !== false && externalAwb?.trim()) {
+        if (!awbNumber?.trim() && !existing.awbNumber?.trim()) {
+          awbNumber = externalAwb.trim();
+        }
+      }
+
+      let partnerSyncedAt: Date | null | undefined;
+      if (validated.partnerSyncStatus === "synced") {
+        partnerSyncedAt = new Date();
+      } else if (validated.partnerSyncStatus !== undefined) {
+        partnerSyncedAt = null;
+      }
+
+      const shipment = await storage.updateShipmentPartnerSync(id, {
+        partnerSyncStatus: validated.partnerSyncStatus,
+        externalAwb: externalAwb !== undefined ? externalAwb : undefined,
+        awbNumber: awbNumber !== undefined ? awbNumber : undefined,
+        partnerSyncError: validated.partnerSyncError,
+        partnerSyncedAt,
+      });
+
+      if (!shipment) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+
+      const withRelations = await storage.getShipment(id);
+      res.json(withRelations ?? shipment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating partner sync:", error);
+      res.status(500).json({ message: "Failed to update partner sync" });
+    }
+  });
+
+  app.get("/api/integrations/delhivery/status", isAuthenticated, async (_req: any, res) => {
+    const config = getDelhiveryConfigFromEnv();
+    res.json({
+      configured: !!config,
+      baseUrl: config?.baseUrl ?? null,
+      pickupLocation: config?.pickupLocation ?? null,
+    });
+  });
+
+  app.post("/api/shipments/:id/delhivery-sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const officeId = await getOrCreateOffice(userId);
+
+      const shipment = await storage.getShipment(id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+
+      const partner = shipment.courierPartnerId
+        ? await storage.getPartner(shipment.courierPartnerId)
+        : shipment.courierPartner;
+
+      if (!partner || !isDelhiveryPartner(partner.code, partner.name)) {
+        return res.status(400).json({ message: "This shipment is not assigned to Delhivery" });
+      }
+
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(503).json({
+          message:
+            "Delhivery API not configured. Set DELHIVERY_API_TOKEN and DELHIVERY_PICKUP_LOCATION in .env",
+        });
+      }
+
+      if (shipment.externalAwb?.trim()) {
+        return res.status(409).json({
+          message: "Already synced to Delhivery",
+          waybill: shipment.externalAwb,
+        });
+      }
+
+      const result = await createDelhiveryShipment(config, {
+        shipment,
+        pickupLocation: config.pickupLocation,
+      });
+
+      await storage.updateShipmentPartnerSync(id, {
+        partnerSyncStatus: "synced",
+        externalAwb: result.waybill,
+        awbNumber: shipment.awbNumber?.trim() ? shipment.awbNumber : result.waybill,
+        partnerSyncError: null,
+        partnerSyncedAt: new Date(),
+      });
+
+      const updated = await storage.getShipment(id);
+      res.json({ waybill: result.waybill, shipment: updated });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delhivery sync failed";
+      console.error("Delhivery sync error:", error);
+
+      try {
+        await storage.updateShipmentPartnerSync(req.params.id, {
+          partnerSyncStatus: "failed",
+          partnerSyncError: message,
+        });
+      } catch {
+        /* ignore */
+      }
+
+      res.status(502).json({ message });
     }
   });
 
@@ -858,14 +1500,25 @@ export async function registerRoutes(
     }
   });
 
-  // Public offices listing (for customer discovery)
-  app.get("/api/public/offices", async (req, res) => {
+  // Default office for the public booking portal (single booking system)
+  app.get("/api/public/booking-office", async (_req, res) => {
     try {
-      const officesList = await storage.getPublicOffices();
-      res.json(officesList);
+      const office = await storage.getDefaultBookingOffice();
+      if (!office || !office.publicSlug) {
+        return res.status(404).json({ message: "Booking is not available yet" });
+      }
+      res.json({
+        id: office.id,
+        name: office.name,
+        city: office.city,
+        state: office.state,
+        phone: office.phone,
+        email: office.email,
+        slug: office.publicSlug,
+      });
     } catch (error) {
-      console.error("Error fetching public offices:", error);
-      res.status(500).json({ message: "Failed to fetch offices" });
+      console.error("Error fetching booking office:", error);
+      res.status(500).json({ message: "Failed to load booking service" });
     }
   });
 
@@ -921,10 +1574,12 @@ export async function registerRoutes(
       }
 
       const validated = bookingRequestCreateSchema.parse(req.body);
+      const branchId = await resolveBranchIdForBooking(office.id, validated);
 
       const request = await storage.createBookingRequest({
         ...validated,
         officeId: office.id,
+        branchId,
         status: "pending",
       });
 
@@ -1220,6 +1875,77 @@ export async function registerRoutes(
     }
   });
 
+  const customerAddressSchema = z.object({
+    label: z.string().min(1, "Label is required"),
+    name: z.string().min(1, "Name is required"),
+    phone: z.string().min(10, "Valid phone required"),
+    address: z.string().min(1, "Address is required"),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    pincode: z.string().optional(),
+    lat: z.string().optional().nullable(),
+    lng: z.string().optional().nullable(),
+    addressType: z.enum(["sender", "receiver"]).default("sender"),
+    isDefault: z.boolean().optional(),
+  });
+
+  app.get("/api/customer/addresses", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const addresses = await storage.getCustomerAddresses(req.customerUser.id);
+      res.json(addresses);
+    } catch (error) {
+      console.error("Error fetching addresses:", error);
+      res.status(500).json({ message: "Failed to fetch addresses" });
+    }
+  });
+
+  app.post("/api/customer/addresses", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = customerAddressSchema.parse(req.body);
+      const created = await storage.createCustomerAddress({
+        ...validated,
+        customerUserId: req.customerUser.id,
+      });
+      res.json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating address:", error);
+      res.status(500).json({ message: "Failed to save address" });
+    }
+  });
+
+  app.patch("/api/customer/addresses/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = customerAddressSchema.partial().parse(req.body);
+      const updated = await storage.updateCustomerAddress(req.params.id, req.customerUser.id, validated);
+      if (!updated) {
+        return res.status(404).json({ message: "Address not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating address:", error);
+      res.status(500).json({ message: "Failed to update address" });
+    }
+  });
+
+  app.delete("/api/customer/addresses/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const deleted = await storage.deleteCustomerAddress(req.params.id, req.customerUser.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Address not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting address:", error);
+      res.status(500).json({ message: "Failed to delete address" });
+    }
+  });
+
   // Get customer's booking requests
   app.get("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
     try {
@@ -1260,12 +1986,20 @@ export async function registerRoutes(
         pickupLat: req.body.pickupLat || null,
         pickupLng: req.body.pickupLng || null,
         pickupLocationName: req.body.pickupLocationName || null,
+        pickupDate: req.body.pickupDate || null,
+        pickupTimeSlot: req.body.pickupTimeSlot || null,
       };
+
+      const branchId = await resolveBranchIdForBooking(req.customerUser.officeId, {
+        ...validated,
+        ...pickupData,
+      });
 
       const request = await storage.createBookingRequest({
         ...validated,
         ...pickupData,
         officeId: req.customerUser.officeId,
+        branchId,
         customerUserId: req.customerUser.id,
         status: "pending",
       });

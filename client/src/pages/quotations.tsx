@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -120,7 +121,8 @@ function formatCurrency(amount: string | number) {
   }).format(num);
 }
 
-export default function QuotationsPage() {
+export default function QuotationsPage({ embedded = false }: { embedded?: boolean }) {
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingQuotation, setEditingQuotation] = useState<QuotationWithPartner | null>(null);
@@ -298,91 +300,8 @@ XGoo Team`;
     window.location.href = mailtoUrl;
   };
 
-  const handlePrint = (quotation: QuotationWithPartner) => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Quotation - ${quotation.quotationNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            .header { text-align: center; border-bottom: 2px solid #f97316; padding-bottom: 20px; margin-bottom: 30px; }
-            .header h1 { color: #f97316; margin: 0; font-size: 28px; }
-            .header p { color: #666; margin: 5px 0 0 0; }
-            .quotation-number { background: #f97316; color: white; padding: 8px 16px; border-radius: 4px; display: inline-block; margin-top: 15px; }
-            .section { margin-bottom: 25px; }
-            .section-title { font-weight: bold; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-bottom: 15px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-            .label { color: #666; }
-            .value { font-weight: 500; }
-            .amount-section { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-top: 20px; }
-            .total { font-size: 24px; color: #f97316; font-weight: bold; text-align: right; margin-top: 10px; }
-            .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px; }
-            .status { padding: 4px 12px; border-radius: 4px; font-size: 12px; text-transform: uppercase; }
-            .status.draft { background: #e2e8f0; color: #475569; }
-            .status.sent { background: #dbeafe; color: #1d4ed8; }
-            .status.accepted { background: #dcfce7; color: #16a34a; }
-            .status.rejected { background: #fee2e2; color: #dc2626; }
-            .status.expired { background: #fef3c7; color: #d97706; }
-            @media print { body { padding: 20px; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>XGoo Courier Services</h1>
-            <p>Professional Courier & Logistics</p>
-            <div class="quotation-number">${quotation.quotationNumber}</div>
-          </div>
-          
-          <div class="section">
-            <div class="section-title">Customer Details</div>
-            <div class="row"><span class="label">Name:</span><span class="value">${quotation.customerName}</span></div>
-            ${quotation.customerPhone ? `<div class="row"><span class="label">Phone:</span><span class="value">${quotation.customerPhone}</span></div>` : ""}
-            ${quotation.customerEmail ? `<div class="row"><span class="label">Email:</span><span class="value">${quotation.customerEmail}</span></div>` : ""}
-          </div>
-
-          <div class="section">
-            <div class="section-title">Shipment Details</div>
-            <div class="row"><span class="label">From:</span><span class="value">${quotation.senderCity || "N/A"}${quotation.senderState ? `, ${quotation.senderState}` : ""}${quotation.senderPincode ? ` - ${quotation.senderPincode}` : ""}</span></div>
-            <div class="row"><span class="label">To:</span><span class="value">${quotation.receiverCity || "N/A"}${quotation.receiverState ? `, ${quotation.receiverState}` : ""}${quotation.receiverPincode ? ` - ${quotation.receiverPincode}` : ""}</span></div>
-            <div class="row"><span class="label">Weight:</span><span class="value">${quotation.weight} kg</span></div>
-            <div class="row"><span class="label">Pieces:</span><span class="value">${quotation.numberOfPieces || 1}</span></div>
-            <div class="row"><span class="label">Service:</span><span class="value">${quotation.serviceType === "air" ? "Air Express" : "Surface"}</span></div>
-            ${quotation.contentDescription ? `<div class="row"><span class="label">Contents:</span><span class="value">${quotation.contentDescription}</span></div>` : ""}
-            ${quotation.declaredValue ? `<div class="row"><span class="label">Declared Value:</span><span class="value">${formatCurrency(quotation.declaredValue)}</span></div>` : ""}
-          </div>
-
-          <div class="amount-section">
-            <div class="section-title">Pricing</div>
-            <div class="row"><span class="label">Base Amount:</span><span class="value">${formatCurrency(quotation.baseAmount || 0)}</span></div>
-            ${quotation.additionalCharges ? `<div class="row"><span class="label">Additional Charges:</span><span class="value">${formatCurrency(quotation.additionalCharges)}</span></div>` : ""}
-            ${quotation.gstAmount ? `<div class="row"><span class="label">GST:</span><span class="value">${formatCurrency(quotation.gstAmount)}</span></div>` : ""}
-            <div class="total">Total: ${formatCurrency(quotation.totalAmount)}</div>
-          </div>
-
-          <div class="section" style="margin-top: 25px;">
-            <div class="row"><span class="label">Status:</span><span class="status ${quotation.status}">${statusLabels[quotation.status]}</span></div>
-            ${quotation.validUntil ? `<div class="row"><span class="label">Valid Until:</span><span class="value">${format(new Date(quotation.validUntil), "dd MMM yyyy")}</span></div>` : ""}
-            ${quotation.notes ? `<div class="row"><span class="label">Notes:</span><span class="value">${quotation.notes}</span></div>` : ""}
-          </div>
-
-          <div class="footer">
-            <p>Thank you for choosing XGoo Courier Services!</p>
-            <p>Generated on ${format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+  const openDocument = (quotationId: string) => {
+    setLocation(`/quotations/${quotationId}/document`);
   };
 
   const filteredQuotations = quotations?.filter(
@@ -396,11 +315,13 @@ XGoo Team`;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Quotations</h1>
-          <p className="text-muted-foreground">Create and manage customer quotations</p>
-        </div>
+      <div className={`flex flex-col gap-4 sm:flex-row sm:items-center ${embedded ? "sm:justify-end" : "sm:justify-between"}`}>
+        {!embedded && (
+          <div>
+            <h1 className="text-2xl font-bold">Quotations</h1>
+            <p className="text-muted-foreground">Create and manage customer quotations</p>
+          </div>
+        )}
         <Dialog
           open={isDialogOpen}
           onOpenChange={(open) => {
@@ -915,8 +836,8 @@ XGoo Team`;
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => handlePrint(quotation)}
-                            title="Print Quotation"
+                            onClick={() => openDocument(quotation.id)}
+                            title="View & Print"
                             data-testid={`button-print-${quotation.id}`}
                           >
                             <Printer className="h-4 w-4" />

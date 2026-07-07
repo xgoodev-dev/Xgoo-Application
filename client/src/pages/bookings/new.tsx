@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,7 +44,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { AddressMapField } from "@/components/bookings/AddressMapField";
 import type { Customer, CourierPartner } from "@shared/schema";
+import type { PricingQuoteResult } from "@shared/pricing";
 
 const bookingSchema = z.object({
   customerId: z.string().optional(),
@@ -125,13 +127,77 @@ export default function NewBookingPage() {
     },
   });
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.toString()) return;
+
+    const textFields = [
+      "senderName",
+      "senderPhone",
+      "senderAddress",
+      "senderCity",
+      "senderState",
+      "senderPincode",
+      "receiverName",
+      "receiverPhone",
+      "receiverAddress",
+      "receiverCity",
+      "receiverState",
+      "receiverPincode",
+      "weight",
+      "numberOfPieces",
+      "contentDescription",
+      "declaredValue",
+      "serviceType",
+    ] as const;
+
+    for (const key of textFields) {
+      const val = params.get(key);
+      if (val) form.setValue(key, val);
+    }
+  }, [form]);
+
   const selectedPartnerId = form.watch("courierPartnerId");
   const serviceType = form.watch("serviceType");
   const weight = form.watch("weight");
+  const senderPincode = form.watch("senderPincode");
+  const receiverPincode = form.watch("receiverPincode");
+  const length = form.watch("length");
+  const width = form.watch("width");
+  const height = form.watch("height");
 
   const selectedPartner = partners?.find((p) => p.id === selectedPartnerId);
 
+  const { data: priceQuote, isFetching: isPricing } = useQuery<PricingQuoteResult>({
+    queryKey: [
+      "booking-price-quote",
+      selectedPartnerId,
+      serviceType,
+      weight,
+      senderPincode,
+      receiverPincode,
+      length,
+      width,
+      height,
+    ],
+    queryFn: async () => {
+      const res = await apiRequest("POST", "/api/pricing/quote", {
+        courierPartnerId: selectedPartnerId,
+        serviceType,
+        senderPincode: senderPincode || undefined,
+        receiverPincode: receiverPincode || undefined,
+        weight,
+        length: length || undefined,
+        width: width || undefined,
+        height: height || undefined,
+      });
+      return res.json();
+    },
+    enabled: !!selectedPartnerId && !!weight && parseFloat(weight) > 0,
+  });
+
   const calculatePrice = () => {
+    if (priceQuote?.sellPrice != null) return priceQuote.sellPrice;
     if (!selectedPartner || !weight) return 0;
     const weightNum = parseFloat(weight) || 0;
     const baseRate =
@@ -543,14 +609,15 @@ export default function NewBookingPage() {
       };
       return apiRequest("POST", "/api/shipments", payload);
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
+      const shipment = (await res.json()) as { id: string };
       toast({
         title: "Booking Created",
-        description: "Shipment has been booked successfully.",
+        description: "Print the customer bill to hand over immediately.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      setLocation("/shipments");
+      setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
     },
     onError: (error: Error) => {
       toast({
@@ -784,6 +851,22 @@ export default function NewBookingPage() {
                     </FormItem>
                   )}
                 />
+                <AddressMapField
+                  label="Pin sender on map"
+                  testIdPrefix="sender"
+                  value={{
+                    address: form.watch("senderAddress") || "",
+                    city: form.watch("senderCity"),
+                    state: form.watch("senderState"),
+                    pincode: form.watch("senderPincode"),
+                  }}
+                  onChange={(v) => {
+                    if (v.address) form.setValue("senderAddress", v.address, { shouldDirty: true });
+                    if (v.city) form.setValue("senderCity", v.city, { shouldDirty: true });
+                    if (v.state) form.setValue("senderState", v.state, { shouldDirty: true });
+                    if (v.pincode) form.setValue("senderPincode", v.pincode, { shouldDirty: true });
+                  }}
+                />
                 <div className="grid gap-4 sm:grid-cols-3">
                   <FormField
                     control={form.control}
@@ -900,6 +983,22 @@ export default function NewBookingPage() {
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+                <AddressMapField
+                  label="Pin receiver on map"
+                  testIdPrefix="receiver"
+                  value={{
+                    address: form.watch("receiverAddress") || "",
+                    city: form.watch("receiverCity"),
+                    state: form.watch("receiverState"),
+                    pincode: form.watch("receiverPincode"),
+                  }}
+                  onChange={(v) => {
+                    if (v.address) form.setValue("receiverAddress", v.address, { shouldDirty: true });
+                    if (v.city) form.setValue("receiverCity", v.city, { shouldDirty: true });
+                    if (v.state) form.setValue("receiverState", v.state, { shouldDirty: true });
+                    if (v.pincode) form.setValue("receiverPincode", v.pincode, { shouldDirty: true });
+                  }}
                 />
                 <div className="grid gap-4 sm:grid-cols-3">
                   <FormField
@@ -1390,10 +1489,20 @@ export default function NewBookingPage() {
                 />
                 <div>
                   <FormLabel>Calculated Amount</FormLabel>
-                  <div className="mt-2 text-2xl font-bold text-primary">
+                  <div className="mt-2 text-2xl font-bold text-primary flex items-center gap-2">
+                    {isPricing && <Loader2 className="h-5 w-5 animate-spin" />}
                     Rs. {calculatePrice().toFixed(2)}
                   </div>
-                  {selectedPartner && (
+                  {priceQuote && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Tariff: Rs. {priceQuote.tariffAmount.toFixed(2)} + Margin: Rs. {priceQuote.marginTotal.toFixed(2)}
+                      {priceQuote.chargeableWeight > parseFloat(weight || "0") && (
+                        <> · Chg. weight: {priceQuote.chargeableWeight.toFixed(2)} kg</>
+                      )}
+                      {priceQuote.source === "tariff" ? " · from tariff sheet" : " · fallback rate card"}
+                    </p>
+                  )}
+                  {!priceQuote && selectedPartner && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Base: Rs. {serviceType === "air" ? selectedPartner.baseRateAir : selectedPartner.baseRateSurface} +
                       Rs. {serviceType === "air" ? selectedPartner.ratePerKgAir : selectedPartner.ratePerKgSurface}/kg

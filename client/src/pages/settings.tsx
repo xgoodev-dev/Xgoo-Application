@@ -30,6 +30,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Office } from "@shared/schema";
+import { BranchManagement } from "@/components/branches/BranchManagement";
+import { DemoDataSettings } from "@/components/settings/DemoDataSettings";
 
 const officeSchema = z.object({
   name: z.string().min(1, "Office name is required"),
@@ -108,9 +110,11 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Office Settings</h1>
-        <p className="text-muted-foreground">Manage your office profile and preferences</p>
+        <h1 className="text-2xl font-bold">Organization Settings</h1>
+        <p className="text-muted-foreground">Manage your XGoo organization profile and branches</p>
       </div>
+
+      <BookingPortalLink />
 
       {isLoading ? (
         <Card>
@@ -125,8 +129,6 @@ export default function SettingsPage() {
         </Card>
       ) : (
         <>
-        <BookingPortalLink office={office!} />
-
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <Card>
@@ -136,7 +138,7 @@ export default function SettingsPage() {
                   Office Details
                 </CardTitle>
                 <CardDescription>
-                  Basic information about your courier office
+                  Company-wide branding and GST (applies to all branches)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -147,7 +149,7 @@ export default function SettingsPage() {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Office Name *</FormLabel>
+                            <FormLabel>Organization Name *</FormLabel>
                           <FormControl>
                             <Input {...field} placeholder="Your courier office name" data-testid="input-office-name" />
                           </FormControl>
@@ -326,18 +328,21 @@ export default function SettingsPage() {
             </Card>
           </div>
         </div>
+
+        {office && <BranchManagement />}
+
+        <DemoDataSettings />
+
         </>
       )}
     </div>
   );
 }
 
-function BookingPortalLink({ office }: { office: Office }) {
+function BookingPortalLink() {
   const [copied, setCopied] = useState(false);
 
-  if (!office?.publicSlug) return null;
-
-  const portalUrl = `${window.location.origin}/book/${office.publicSlug}`;
+  const portalUrl = `${window.location.origin}/book`;
 
   const copyToClipboard = async () => {
     try {

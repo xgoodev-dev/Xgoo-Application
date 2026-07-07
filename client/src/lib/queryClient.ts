@@ -19,7 +19,10 @@ async function throwIfResNotOk(res: Response) {
         detail = j.message.trim();
       }
     } catch {
-      /* not JSON */
+      if (text.trimStart().startsWith("<")) {
+        detail =
+          "Server error (received HTML instead of JSON). Restart the dev server and run npm run db:push if you recently updated the app.";
+      }
     }
     throw new Error(`${res.status}: ${detail}`);
   }

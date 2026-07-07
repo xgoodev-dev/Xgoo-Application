@@ -1,7 +1,11 @@
 import {
   offices,
+  branches,
+  branchServiceAreas,
   customers,
   courierPartners,
+  tariffVersions,
+  tariffRateRows,
   shipments,
   payments,
   invoices,
@@ -9,12 +13,22 @@ import {
   bookingRequests,
   customerUsers,
   customerSessions,
+  customerAddresses,
   type Office,
   type InsertOffice,
+  type Branch,
+  type InsertBranch,
+  type BranchServiceArea,
+  type InsertBranchServiceArea,
+  type BranchWithServiceAreas,
   type Customer,
   type InsertCustomer,
   type CourierPartner,
   type InsertCourierPartner,
+  type TariffVersion,
+  type InsertTariffVersion,
+  type TariffRateRow,
+  type InsertTariffRateRow,
   type Shipment,
   type InsertShipment,
   type Payment,
@@ -27,13 +41,17 @@ import {
   type InsertBookingRequest,
   type CustomerUser,
   type InsertCustomerUser,
+  type CustomerAddress,
+  type InsertCustomerAddress,
   type CustomerSession,
   type InsertCustomerSession,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, gte, lte, desc, sql, count, sum, isNotNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, inArray, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
+import { buildQuote, type PricingQuoteInput, type PricingQuoteResult } from "@shared/pricing";
 
 export interface IStorage {
   // Office operations
@@ -41,6 +59,22 @@ export interface IStorage {
   createOffice(office: InsertOffice): Promise<Office>;
   updateOffice(id: string, office: Partial<InsertOffice>): Promise<Office | undefined>;
   backfillPublicSlugs(): Promise<void>;
+
+  // Branch operations
+  getBranchesByOffice(officeId: string): Promise<BranchWithServiceAreas[]>;
+  getBranch(id: string): Promise<BranchWithServiceAreas | undefined>;
+  createBranch(branch: InsertBranch): Promise<Branch>;
+  updateBranch(id: string, branch: Partial<InsertBranch>): Promise<Branch | undefined>;
+  deleteBranch(id: string): Promise<boolean>;
+  createBranchServiceArea(area: InsertBranchServiceArea): Promise<BranchServiceArea>;
+  updateBranchServiceArea(id: string, area: Partial<InsertBranchServiceArea>): Promise<BranchServiceArea | undefined>;
+  deleteBranchServiceArea(id: string): Promise<boolean>;
+  ensureDefaultBranchForOffice(office: Office): Promise<Branch>;
+  backfillBranches(): Promise<void>;
+  findBranchForPickup(
+    officeId: string,
+    options: { pincode?: string | null; lat?: number | null; lng?: number | null },
+  ): Promise<Branch | undefined>;
 
   // Customer operations
   getCustomersByOffice(officeId: string): Promise<Customer[]>;
@@ -56,11 +90,37 @@ export interface IStorage {
   updatePartner(id: string, partner: Partial<InsertCourierPartner>): Promise<CourierPartner | undefined>;
   deletePartner(id: string): Promise<boolean>;
 
+  // Tariff & pricing
+  getTariffVersionsByOffice(officeId: string): Promise<(TariffVersion & { partnerName?: string | null })[]>;
+  getTariffVersion(id: string): Promise<TariffVersion | undefined>;
+  createTariffVersion(version: InsertTariffVersion): Promise<TariffVersion>;
+  updateTariffVersion(id: string, data: Partial<InsertTariffVersion>): Promise<TariffVersion | undefined>;
+  deleteTariffVersion(id: string): Promise<boolean>;
+  activateTariffVersion(id: string, officeId: string): Promise<TariffVersion | undefined>;
+  insertTariffRateRows(rows: InsertTariffRateRow[]): Promise<number>;
+  getActiveTariffRows(officeId: string, courierPartnerId: string): Promise<TariffRateRow[]>;
+  getTariffRateRowsByVersion(tariffVersionId: string): Promise<TariffRateRow[]>;
+  quotePrice(officeId: string, input: PricingQuoteInput): Promise<PricingQuoteResult | null>;
+  quoteAllPartners(
+    officeId: string,
+    input: Omit<PricingQuoteInput, "courierPartnerId">,
+  ): Promise<Array<PricingQuoteResult & { partnerName: string; partnerCode: string }>>;
+
   // Shipment operations
   getShipmentsByOffice(officeId: string): Promise<ShipmentWithRelations[]>;
   getShipment(id: string): Promise<ShipmentWithRelations | undefined>;
   createShipment(shipment: InsertShipment): Promise<Shipment>;
   updateShipmentStatus(id: string, status: string): Promise<Shipment | undefined>;
+  updateShipmentPartnerSync(
+    id: string,
+    data: {
+      partnerSyncStatus?: string;
+      externalAwb?: string | null;
+      awbNumber?: string | null;
+      partnerSyncError?: string | null;
+      partnerSyncedAt?: Date | null;
+    },
+  ): Promise<Shipment | undefined>;
 
   // Payment operations
   createPayment(payment: InsertPayment): Promise<Payment>;
@@ -99,6 +159,12 @@ export interface IStorage {
   // Customer booking requests (by customer user)
   getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]>;
 
+  // Customer saved addresses
+  getCustomerAddresses(customerUserId: string): Promise<CustomerAddress[]>;
+  createCustomerAddress(address: InsertCustomerAddress): Promise<CustomerAddress>;
+  updateCustomerAddress(id: string, customerUserId: string, data: Partial<InsertCustomerAddress>): Promise<CustomerAddress | undefined>;
+  deleteCustomerAddress(id: string, customerUserId: string): Promise<boolean>;
+
   /** Public portal: shipment in this office by booking # or AWB */
   getShipmentByOfficeAndTracking(officeId: string, trackingNumber: string): Promise<Shipment | undefined>;
   /** Public portal: booking request in this office by request # (e.g. BR...) */
@@ -106,7 +172,7 @@ export interface IStorage {
 
   // Office lookup
   getOfficeBySlug(slug: string): Promise<Office | undefined>;
-  getPublicOffices(): Promise<Pick<Office, "id" | "name" | "city" | "state" | "pincode" | "phone" | "email" | "publicSlug">[]>;
+  getDefaultBookingOffice(): Promise<Office | undefined>;
 
   // Dashboard stats
   getDashboardStats(officeId: string): Promise<{
@@ -115,6 +181,8 @@ export interface IStorage {
     pendingPayments: string;
     monthlyBookings: number;
     monthlyRevenue: string;
+    pendingBookingRequests: number;
+    todayBookingRequests: number;
     statusCounts: Record<string, number>;
   }>;
 
@@ -127,7 +195,18 @@ export interface IStorage {
   }>;
 
   // Seed data
+  getDemoDataStatus(officeId: string): Promise<{
+    hasDemoData: boolean;
+    counts: {
+      partners: number;
+      customers: number;
+      shipments: number;
+      quotations: number;
+      bookingRequests: number;
+    };
+  }>;
   seedData(officeId: string): Promise<void>;
+  clearDemoData(officeId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -142,6 +221,7 @@ export class DatabaseStorage implements IStorage {
       office.publicSlug = await this.generateUniqueSlug(office.name || "office");
     }
     const [created] = await db.insert(offices).values(office).returning();
+    await this.ensureDefaultBranchForOffice(created);
     return created;
   }
 
@@ -231,6 +311,142 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
+  // Tariff & pricing
+  async getTariffVersionsByOffice(officeId: string): Promise<(TariffVersion & { partnerName?: string | null })[]> {
+    const rows = await db
+      .select({
+        version: tariffVersions,
+        partnerName: courierPartners.name,
+      })
+      .from(tariffVersions)
+      .leftJoin(courierPartners, eq(tariffVersions.courierPartnerId, courierPartners.id))
+      .where(eq(tariffVersions.officeId, officeId))
+      .orderBy(desc(tariffVersions.createdAt));
+    return rows.map((r) => ({ ...r.version, partnerName: r.partnerName }));
+  }
+
+  async getTariffVersion(id: string): Promise<TariffVersion | undefined> {
+    const [row] = await db.select().from(tariffVersions).where(eq(tariffVersions.id, id));
+    return row;
+  }
+
+  async createTariffVersion(version: InsertTariffVersion): Promise<TariffVersion> {
+    const [created] = await db.insert(tariffVersions).values(version).returning();
+    return created;
+  }
+
+  async updateTariffVersion(id: string, data: Partial<InsertTariffVersion>): Promise<TariffVersion | undefined> {
+    const [updated] = await db
+      .update(tariffVersions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tariffVersions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTariffVersion(id: string): Promise<boolean> {
+    await db.delete(tariffVersions).where(eq(tariffVersions.id, id));
+    return true;
+  }
+
+  async activateTariffVersion(id: string, officeId: string): Promise<TariffVersion | undefined> {
+    const version = await this.getTariffVersion(id);
+    if (!version || version.officeId !== officeId) return undefined;
+
+    const now = new Date();
+    await db
+      .update(tariffVersions)
+      .set({ status: "expired", updatedAt: now })
+      .where(
+        and(
+          eq(tariffVersions.officeId, officeId),
+          eq(tariffVersions.status, "active"),
+          ne(tariffVersions.id, id),
+        ),
+      );
+
+    const [activated] = await db
+      .update(tariffVersions)
+      .set({ status: "active", validFrom: version.validFrom || now, updatedAt: now })
+      .where(eq(tariffVersions.id, id))
+      .returning();
+    return activated;
+  }
+
+  async insertTariffRateRows(rows: InsertTariffRateRow[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    const batchSize = 500;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      await db.insert(tariffRateRows).values(rows.slice(i, i + batchSize));
+    }
+    return rows.length;
+  }
+
+  async getActiveTariffRows(officeId: string, courierPartnerId: string): Promise<TariffRateRow[]> {
+    const activeVersions = await db
+      .select({ id: tariffVersions.id })
+      .from(tariffVersions)
+      .where(
+        and(
+          eq(tariffVersions.officeId, officeId),
+          eq(tariffVersions.status, "active"),
+          or(
+            eq(tariffVersions.courierPartnerId, courierPartnerId),
+            sql`${tariffVersions.courierPartnerId} IS NULL`,
+          ),
+        ),
+      );
+
+    if (activeVersions.length === 0) return [];
+
+    const versionIds = activeVersions.map((v) => v.id);
+    return db
+      .select()
+      .from(tariffRateRows)
+      .where(
+        and(
+          eq(tariffRateRows.officeId, officeId),
+          eq(tariffRateRows.courierPartnerId, courierPartnerId),
+          inArray(tariffRateRows.tariffVersionId, versionIds),
+        ),
+      );
+  }
+
+  async getTariffRateRowsByVersion(tariffVersionId: string): Promise<TariffRateRow[]> {
+    return db
+      .select()
+      .from(tariffRateRows)
+      .where(eq(tariffRateRows.tariffVersionId, tariffVersionId))
+      .orderBy(asc(tariffRateRows.weightMin));
+  }
+
+  async quotePrice(officeId: string, input: PricingQuoteInput): Promise<PricingQuoteResult | null> {
+    const partner = await this.getPartner(input.courierPartnerId);
+    if (!partner || partner.officeId !== officeId || !partner.isActive) return null;
+    const rows = await this.getActiveTariffRows(officeId, input.courierPartnerId);
+    return buildQuote(partner, rows, input);
+  }
+
+  async quoteAllPartners(
+    officeId: string,
+    input: Omit<PricingQuoteInput, "courierPartnerId">,
+  ): Promise<Array<PricingQuoteResult & { partnerName: string; partnerCode: string }>> {
+    const partners = (await this.getPartnersByOffice(officeId)).filter((p) => p.isActive);
+    const results: Array<PricingQuoteResult & { partnerName: string; partnerCode: string }> = [];
+
+    for (const partner of partners) {
+      const rows = await this.getActiveTariffRows(officeId, partner.id);
+      const quote = buildQuote(partner, rows, { ...input, courierPartnerId: partner.id });
+      results.push({
+        ...quote,
+        partnerName: partner.name,
+        partnerCode: partner.code,
+      });
+    }
+
+    return results.sort((a, b) => a.sellPrice - b.sellPrice);
+  }
+
   // Shipment operations
   async getShipmentsByOffice(officeId: string): Promise<ShipmentWithRelations[]> {
     const results = await db
@@ -285,6 +501,44 @@ export class DatabaseStorage implements IStorage {
       updates.pickedUpAt = new Date();
     } else if (status === "delivered") {
       updates.deliveredAt = new Date();
+    }
+
+    const [updated] = await db
+      .update(shipments)
+      .set(updates)
+      .where(eq(shipments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateShipmentPartnerSync(
+    id: string,
+    data: {
+      partnerSyncStatus?: string;
+      externalAwb?: string | null;
+      awbNumber?: string | null;
+      partnerSyncError?: string | null;
+      partnerSyncedAt?: Date | null;
+    },
+  ): Promise<Shipment | undefined> {
+    const updates: Partial<Shipment> = {
+      updatedAt: new Date(),
+    };
+
+    if (data.partnerSyncStatus !== undefined) {
+      updates.partnerSyncStatus = data.partnerSyncStatus;
+    }
+    if (data.externalAwb !== undefined) {
+      updates.externalAwb = data.externalAwb;
+    }
+    if (data.awbNumber !== undefined) {
+      updates.awbNumber = data.awbNumber;
+    }
+    if (data.partnerSyncError !== undefined) {
+      updates.partnerSyncError = data.partnerSyncError;
+    }
+    if (data.partnerSyncedAt !== undefined) {
+      updates.partnerSyncedAt = data.partnerSyncedAt;
     }
 
     const [updated] = await db
@@ -448,6 +702,64 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(bookingRequests.createdAt));
   }
 
+  async getCustomerAddresses(customerUserId: string): Promise<CustomerAddress[]> {
+    return db
+      .select()
+      .from(customerAddresses)
+      .where(eq(customerAddresses.customerUserId, customerUserId))
+      .orderBy(desc(customerAddresses.isDefault), desc(customerAddresses.createdAt));
+  }
+
+  async createCustomerAddress(address: InsertCustomerAddress): Promise<CustomerAddress> {
+    if (address.isDefault) {
+      await db
+        .update(customerAddresses)
+        .set({ isDefault: false })
+        .where(
+          and(
+            eq(customerAddresses.customerUserId, address.customerUserId),
+            eq(customerAddresses.addressType, address.addressType || "sender")
+          )
+        );
+    }
+    const [created] = await db.insert(customerAddresses).values(address).returning();
+    return created;
+  }
+
+  async updateCustomerAddress(
+    id: string,
+    customerUserId: string,
+    data: Partial<InsertCustomerAddress>
+  ): Promise<CustomerAddress | undefined> {
+    if (data.isDefault) {
+      const [existing] = await db.select().from(customerAddresses).where(eq(customerAddresses.id, id));
+      if (existing) {
+        await db
+          .update(customerAddresses)
+          .set({ isDefault: false })
+          .where(
+            and(
+              eq(customerAddresses.customerUserId, customerUserId),
+              eq(customerAddresses.addressType, existing.addressType)
+            )
+          );
+      }
+    }
+    const [updated] = await db
+      .update(customerAddresses)
+      .set(data)
+      .where(and(eq(customerAddresses.id, id), eq(customerAddresses.customerUserId, customerUserId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteCustomerAddress(id: string, customerUserId: string): Promise<boolean> {
+    const result = await db
+      .delete(customerAddresses)
+      .where(and(eq(customerAddresses.id, id), eq(customerAddresses.customerUserId, customerUserId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async getShipmentByOfficeAndTracking(officeId: string, trackingNumber: string): Promise<Shipment | undefined> {
     const q = trackingNumber.trim();
     if (!q) return undefined;
@@ -486,26 +798,287 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  private async loadBranchWithAreas(branchId: string): Promise<BranchWithServiceAreas | undefined> {
+    const [branch] = await db.select().from(branches).where(eq(branches.id, branchId));
+    if (!branch) return undefined;
+    const serviceAreas = await db
+      .select()
+      .from(branchServiceAreas)
+      .where(eq(branchServiceAreas.branchId, branchId))
+      .orderBy(asc(branchServiceAreas.pincode));
+    return { ...branch, serviceAreas };
+  }
+
+  async getBranchesByOffice(officeId: string): Promise<BranchWithServiceAreas[]> {
+    const branchRows = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.officeId, officeId))
+      .orderBy(desc(branches.isPrimary), asc(branches.name));
+    const result: BranchWithServiceAreas[] = [];
+    for (const branch of branchRows) {
+      const serviceAreas = await db
+        .select()
+        .from(branchServiceAreas)
+        .where(eq(branchServiceAreas.branchId, branch.id))
+        .orderBy(asc(branchServiceAreas.pincode));
+      result.push({ ...branch, serviceAreas });
+    }
+    return result;
+  }
+
+  async getBranch(id: string): Promise<BranchWithServiceAreas | undefined> {
+    return this.loadBranchWithAreas(id);
+  }
+
+  async ensureDefaultBranchForOffice(office: Office): Promise<Branch> {
+    const existing = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.officeId, office.id))
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+
+    const [branch] = await db
+      .insert(branches)
+      .values({
+        officeId: office.id,
+        name: office.name || "Main Branch",
+        address: office.address,
+        city: office.city,
+        state: office.state,
+        pincode: office.pincode,
+        phone: office.phone,
+        email: office.email,
+        isPrimary: true,
+        isActive: true,
+      })
+      .returning();
+
+    if (office.pincode) {
+      try {
+        const coords = await geocodeIndianPincode(office.pincode);
+        await db.insert(branchServiceAreas).values({
+          branchId: branch.id,
+          pincode: normalizePincode(office.pincode),
+          radiusKm: "25",
+          centerLat: coords ? String(coords.lat) : null,
+          centerLng: coords ? String(coords.lng) : null,
+          label: "Primary service area",
+        });
+      } catch (geoErr) {
+        console.warn("Could not geocode branch pincode:", geoErr);
+        await db.insert(branchServiceAreas).values({
+          branchId: branch.id,
+          pincode: normalizePincode(office.pincode),
+          radiusKm: "25",
+          label: "Primary service area",
+        });
+      }
+    }
+
+    return branch;
+  }
+
+  async backfillBranches(): Promise<void> {
+    const allOffices = await db.select().from(offices);
+    let count = 0;
+    for (const office of allOffices) {
+      const [existing] = await db
+        .select()
+        .from(branches)
+        .where(eq(branches.officeId, office.id))
+        .limit(1);
+      if (!existing) {
+        await this.ensureDefaultBranchForOffice(office);
+        count++;
+      }
+    }
+    if (count > 0) {
+      console.log(`Created default branch for ${count} office(s)`);
+    }
+  }
+
+  async createBranch(branch: InsertBranch): Promise<Branch> {
+    if (branch.isPrimary) {
+      await db
+        .update(branches)
+        .set({ isPrimary: false })
+        .where(eq(branches.officeId, branch.officeId));
+    }
+    const [created] = await db.insert(branches).values(branch).returning();
+    return created;
+  }
+
+  async updateBranch(id: string, data: Partial<InsertBranch>): Promise<Branch | undefined> {
+    const [existing] = await db.select().from(branches).where(eq(branches.id, id));
+    if (!existing) return undefined;
+
+    if (data.isPrimary) {
+      await db
+        .update(branches)
+        .set({ isPrimary: false })
+        .where(eq(branches.officeId, existing.officeId));
+    }
+
+    const [updated] = await db
+      .update(branches)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(branches.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteBranch(id: string): Promise<boolean> {
+    const [branch] = await db.select().from(branches).where(eq(branches.id, id));
+    if (!branch) return false;
+
+    const officeBranches = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.officeId, branch.officeId));
+    if (officeBranches.length <= 1) return false;
+
+    if (branch.isPrimary) {
+      const next = officeBranches.find((b) => b.id !== id);
+      if (next) {
+        await db.update(branches).set({ isPrimary: true }).where(eq(branches.id, next.id));
+      }
+    }
+
+    await db.delete(branches).where(eq(branches.id, id));
+    return true;
+  }
+
+  async createBranchServiceArea(area: InsertBranchServiceArea): Promise<BranchServiceArea> {
+    const pincode = normalizePincode(area.pincode);
+    let centerLat = area.centerLat;
+    let centerLng = area.centerLng;
+    if (!centerLat || !centerLng) {
+      const coords = await geocodeIndianPincode(pincode);
+      if (coords) {
+        centerLat = String(coords.lat);
+        centerLng = String(coords.lng);
+      }
+    }
+    const [created] = await db
+      .insert(branchServiceAreas)
+      .values({
+        ...area,
+        pincode,
+        centerLat,
+        centerLng,
+      })
+      .returning();
+    return created;
+  }
+
+  async updateBranchServiceArea(
+    id: string,
+    data: Partial<InsertBranchServiceArea>,
+  ): Promise<BranchServiceArea | undefined> {
+    const patch = { ...data };
+    if (patch.pincode) {
+      patch.pincode = normalizePincode(patch.pincode);
+      const coords = await geocodeIndianPincode(patch.pincode);
+      if (coords) {
+        patch.centerLat = String(coords.lat);
+        patch.centerLng = String(coords.lng);
+      }
+    }
+    const [updated] = await db
+      .update(branchServiceAreas)
+      .set(patch)
+      .where(eq(branchServiceAreas.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteBranchServiceArea(id: string): Promise<boolean> {
+    const deleted = await db
+      .delete(branchServiceAreas)
+      .where(eq(branchServiceAreas.id, id))
+      .returning();
+    return deleted.length > 0;
+  }
+
+  async findBranchForPickup(
+    officeId: string,
+    options: { pincode?: string | null; lat?: number | null; lng?: number | null },
+  ): Promise<Branch | undefined> {
+    const branchList = await this.getBranchesByOffice(officeId);
+    const activeBranches = branchList.filter((b) => b.isActive);
+    if (!activeBranches.length) return undefined;
+
+    const pincode = options.pincode ? normalizePincode(options.pincode) : "";
+    let pickupLat = options.lat ?? null;
+    let pickupLng = options.lng ?? null;
+
+    if ((pickupLat == null || pickupLng == null) && pincode.length === 6) {
+      const coords = await geocodeIndianPincode(pincode);
+      if (coords) {
+        pickupLat = coords.lat;
+        pickupLng = coords.lng;
+      }
+    }
+
+    type Match = { branch: Branch; distance: number; exact: boolean };
+    const matches: Match[] = [];
+
+    for (const branch of activeBranches) {
+      for (const area of branch.serviceAreas) {
+        const areaPincode = normalizePincode(area.pincode);
+        if (pincode && areaPincode === pincode) {
+          matches.push({ branch, distance: 0, exact: true });
+          continue;
+        }
+
+        const radius = parseFloat(area.radiusKm || "0");
+        if (radius > 0 && pickupLat != null && pickupLng != null && area.centerLat && area.centerLng) {
+          const dist = distanceKm(
+            pickupLat,
+            pickupLng,
+            parseFloat(area.centerLat),
+            parseFloat(area.centerLng),
+          );
+          if (dist <= radius) {
+            matches.push({ branch, distance: dist, exact: false });
+          }
+        }
+      }
+    }
+
+    if (!matches.length) {
+      const primary = activeBranches.find((b) => b.isPrimary);
+      return primary || activeBranches[0];
+    }
+
+    matches.sort((a, b) => {
+      if (a.exact !== b.exact) return a.exact ? -1 : 1;
+      return a.distance - b.distance;
+    });
+    return matches[0].branch;
+  }
+
   // Office lookup by slug
   async getOfficeBySlug(slug: string): Promise<Office | undefined> {
     const [office] = await db.select().from(offices).where(eq(offices.publicSlug, slug));
     return office;
   }
 
-  async getPublicOffices(): Promise<Pick<Office, "id" | "name" | "city" | "state" | "pincode" | "phone" | "email" | "publicSlug">[]> {
-    return db
-      .select({
-        id: offices.id,
-        name: offices.name,
-        city: offices.city,
-        state: offices.state,
-        pincode: offices.pincode,
-        phone: offices.phone,
-        email: offices.email,
-        publicSlug: offices.publicSlug,
-      })
+  async getDefaultBookingOffice(): Promise<Office | undefined> {
+    const envSlug = process.env.DEFAULT_OFFICE_SLUG?.trim();
+    if (envSlug) {
+      const office = await this.getOfficeBySlug(envSlug);
+      if (office) return office;
+    }
+    const [office] = await db
+      .select()
       .from(offices)
-      .where(isNotNull(offices.publicSlug));
+      .where(isNotNull(offices.publicSlug))
+      .orderBy(asc(offices.createdAt))
+      .limit(1);
+    return office;
   }
 
   // Dashboard stats
@@ -515,6 +1088,8 @@ export class DatabaseStorage implements IStorage {
     pendingPayments: string;
     monthlyBookings: number;
     monthlyRevenue: string;
+    pendingBookingRequests: number;
+    todayBookingRequests: number;
     statusCounts: Record<string, number>;
   }> {
     const today = new Date();
@@ -590,12 +1165,30 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
+    const pendingRequests = await db
+      .select({ count: count() })
+      .from(bookingRequests)
+      .where(and(eq(bookingRequests.officeId, officeId), eq(bookingRequests.status, "pending")));
+
+    const todayRequests = await db
+      .select({ count: count() })
+      .from(bookingRequests)
+      .where(
+        and(
+          eq(bookingRequests.officeId, officeId),
+          gte(bookingRequests.createdAt, today),
+          lte(bookingRequests.createdAt, todayEnd)
+        )
+      );
+
     return {
       todayBookings: todayStats[0]?.count || 0,
       todayRevenue: todayStats[0]?.revenue || "0",
       pendingPayments: pendingPayments[0]?.total || "0",
       monthlyBookings: monthlyStats[0]?.count || 0,
       monthlyRevenue: monthlyStats[0]?.revenue || "0",
+      pendingBookingRequests: pendingRequests[0]?.count || 0,
+      todayBookingRequests: todayRequests[0]?.count || 0,
       statusCounts,
     };
   }
@@ -717,10 +1310,85 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Seed data
+  async getDemoDataStatus(officeId: string): Promise<{
+    hasDemoData: boolean;
+    counts: {
+      partners: number;
+      customers: number;
+      shipments: number;
+      quotations: number;
+      bookingRequests: number;
+    };
+  }> {
+    const [partnersRow] = await db
+      .select({ count: count() })
+      .from(courierPartners)
+      .where(and(eq(courierPartners.officeId, officeId), eq(courierPartners.isDemo, true)));
+    const [customersRow] = await db
+      .select({ count: count() })
+      .from(customers)
+      .where(and(eq(customers.officeId, officeId), eq(customers.isDemo, true)));
+    const [shipmentsRow] = await db
+      .select({ count: count() })
+      .from(shipments)
+      .where(and(eq(shipments.officeId, officeId), eq(shipments.isDemo, true)));
+    const [quotationsRow] = await db
+      .select({ count: count() })
+      .from(quotations)
+      .where(and(eq(quotations.officeId, officeId), eq(quotations.isDemo, true)));
+    const [bookingRequestsRow] = await db
+      .select({ count: count() })
+      .from(bookingRequests)
+      .where(and(eq(bookingRequests.officeId, officeId), eq(bookingRequests.isDemo, true)));
+
+    const counts = {
+      partners: partnersRow?.count || 0,
+      customers: customersRow?.count || 0,
+      shipments: shipmentsRow?.count || 0,
+      quotations: quotationsRow?.count || 0,
+      bookingRequests: bookingRequestsRow?.count || 0,
+    };
+
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { hasDemoData: total > 0, counts };
+  }
+
+  async clearDemoData(officeId: string): Promise<void> {
+    const demoShipments = await db
+      .select({ id: shipments.id })
+      .from(shipments)
+      .where(and(eq(shipments.officeId, officeId), eq(shipments.isDemo, true)));
+    const shipmentIds = demoShipments.map((s) => s.id);
+
+    if (shipmentIds.length > 0) {
+      await db.delete(payments).where(inArray(payments.shipmentId, shipmentIds));
+      await db.delete(invoices).where(inArray(invoices.shipmentId, shipmentIds));
+      await db
+        .update(bookingRequests)
+        .set({ convertedShipmentId: null })
+        .where(inArray(bookingRequests.convertedShipmentId, shipmentIds));
+    }
+
+    await db
+      .delete(shipments)
+      .where(and(eq(shipments.officeId, officeId), eq(shipments.isDemo, true)));
+    await db
+      .delete(bookingRequests)
+      .where(and(eq(bookingRequests.officeId, officeId), eq(bookingRequests.isDemo, true)));
+    await db
+      .delete(quotations)
+      .where(and(eq(quotations.officeId, officeId), eq(quotations.isDemo, true)));
+    await db
+      .delete(customers)
+      .where(and(eq(customers.officeId, officeId), eq(customers.isDemo, true)));
+    await db
+      .delete(courierPartners)
+      .where(and(eq(courierPartners.officeId, officeId), eq(courierPartners.isDemo, true)));
+  }
+
   async seedData(officeId: string): Promise<void> {
-    // Check if data already exists
-    const existingPartners = await this.getPartnersByOffice(officeId);
-    if (existingPartners.length > 0) return;
+    const status = await this.getDemoDataStatus(officeId);
+    if (status.hasDemoData) return;
 
     // Seed courier partners
     const partnersData: InsertCourierPartner[] = [
@@ -737,6 +1405,7 @@ export class DatabaseStorage implements IStorage {
         ratePerKgAir: "60",
         awbPrefix: "DT",
         isActive: true,
+        isDemo: true,
       },
       {
         officeId,
@@ -751,6 +1420,7 @@ export class DatabaseStorage implements IStorage {
         ratePerKgAir: "90",
         awbPrefix: "FX",
         isActive: true,
+        isDemo: true,
       },
       {
         officeId,
@@ -765,6 +1435,7 @@ export class DatabaseStorage implements IStorage {
         ratePerKgAir: "75",
         awbPrefix: "BD",
         isActive: true,
+        isDemo: true,
       },
       {
         officeId,
@@ -779,6 +1450,7 @@ export class DatabaseStorage implements IStorage {
         ratePerKgAir: "55",
         awbPrefix: "DL",
         isActive: true,
+        isDemo: true,
       },
     ];
 
@@ -803,6 +1475,7 @@ export class DatabaseStorage implements IStorage {
         customerType: "business",
         paymentType: "credit",
         creditLimit: "50000",
+        isDemo: true,
       },
       {
         officeId,
@@ -817,6 +1490,7 @@ export class DatabaseStorage implements IStorage {
         customerType: "business",
         paymentType: "credit",
         creditLimit: "100000",
+        isDemo: true,
       },
       {
         officeId,
@@ -828,6 +1502,7 @@ export class DatabaseStorage implements IStorage {
         pincode: "110001",
         customerType: "walk_in",
         paymentType: "prepaid",
+        isDemo: true,
       },
       {
         officeId,
@@ -842,6 +1517,7 @@ export class DatabaseStorage implements IStorage {
         customerType: "business",
         paymentType: "credit",
         creditLimit: "200000",
+        isDemo: true,
       },
     ];
 
@@ -878,6 +1554,7 @@ export class DatabaseStorage implements IStorage {
         totalAmount: "125",
         bookedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
         deliveredAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
+        isDemo: true,
       },
       {
         officeId,
@@ -902,6 +1579,7 @@ export class DatabaseStorage implements IStorage {
         baseAmount: "600",
         totalAmount: "600",
         bookedAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
+        isDemo: true,
       },
       {
         officeId,
@@ -927,6 +1605,7 @@ export class DatabaseStorage implements IStorage {
         totalAmount: "100",
         bookedAt: new Date(),
         pickedUpAt: new Date(),
+        isDemo: true,
       },
       {
         officeId,
@@ -951,6 +1630,7 @@ export class DatabaseStorage implements IStorage {
         baseAmount: "280",
         totalAmount: "280",
         bookedAt: new Date(),
+        isDemo: true,
       },
       {
         officeId,
@@ -973,11 +1653,111 @@ export class DatabaseStorage implements IStorage {
         baseAmount: "57.50",
         totalAmount: "57.50",
         bookedAt: new Date(),
+        isDemo: true,
       },
     ];
 
     for (const shipment of shipmentsData) {
       await this.createShipment(shipment);
+    }
+
+    const quotationsData: InsertQuotation[] = [
+      {
+        officeId,
+        customerName: "Demo Retail Store",
+        customerPhone: "9876500001",
+        customerEmail: "demo.retail@example.com",
+        senderCity: "Hyderabad",
+        senderState: "Telangana",
+        senderPincode: "500001",
+        receiverCity: "Chennai",
+        receiverState: "Tamil Nadu",
+        receiverPincode: "600001",
+        weight: "8",
+        numberOfPieces: 2,
+        contentDescription: "Electronics sample",
+        serviceType: "surface",
+        courierPartnerId: createdPartners[3].id,
+        baseAmount: "450",
+        totalAmount: "450",
+        status: "sent",
+        isDemo: true,
+      },
+      {
+        officeId,
+        customerName: "Sample Exporter",
+        customerPhone: "9876500002",
+        senderCity: "Mumbai",
+        senderState: "Maharashtra",
+        senderPincode: "400001",
+        receiverCity: "Dubai",
+        receiverState: "UAE",
+        receiverPincode: "00000",
+        weight: "15",
+        numberOfPieces: 1,
+        contentDescription: "Documents",
+        serviceType: "air",
+        courierPartnerId: createdPartners[1].id,
+        baseAmount: "3200",
+        totalAmount: "3200",
+        status: "draft",
+        isDemo: true,
+      },
+    ];
+
+    for (const quotation of quotationsData) {
+      await this.createQuotation(quotation);
+    }
+
+    const bookingRequestsData: InsertBookingRequest[] = [
+      {
+        officeId,
+        senderName: "Demo Portal User",
+        senderPhone: "9876500003",
+        senderEmail: "portal.demo@example.com",
+        senderAddress: "12 Sample Street, Gachibowli",
+        senderCity: "Hyderabad",
+        senderState: "Telangana",
+        senderPincode: "500032",
+        receiverName: "Demo Receiver",
+        receiverPhone: "9876500004",
+        receiverAddress: "88 MG Road",
+        receiverCity: "Bangalore",
+        receiverState: "Karnataka",
+        receiverPincode: "560001",
+        weight: "3.5",
+        numberOfPieces: 1,
+        contentDescription: "Books",
+        declaredValue: "1500",
+        serviceType: "surface",
+        courierPreference: "Delhivery",
+        status: "pending",
+        isDemo: true,
+      },
+      {
+        officeId,
+        senderName: "Walk-in Demo",
+        senderPhone: "9876500005",
+        senderAddress: "Counter booking sample",
+        senderCity: "Delhi",
+        senderState: "Delhi",
+        senderPincode: "110001",
+        receiverName: "Remote Demo",
+        receiverPhone: "9876500006",
+        receiverAddress: "Jaipur hub",
+        receiverCity: "Jaipur",
+        receiverState: "Rajasthan",
+        receiverPincode: "302001",
+        weight: "1",
+        numberOfPieces: 1,
+        serviceType: "surface",
+        status: "pending",
+        isDemo: true,
+      },
+    ];
+
+    for (const request of bookingRequestsData) {
+      await this.createBookingRequest(request);
     }
   }
 }

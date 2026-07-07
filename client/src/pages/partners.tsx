@@ -52,6 +52,22 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { CourierPartner } from "@shared/schema";
 
+function normalizePortalUrlInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+const portalUrlSchema = z
+  .string()
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => normalizePortalUrlInput(v ?? ""))
+  .refine((v) => v === "" || z.string().url().safeParse(v).success, {
+    message: "Enter a valid URL (e.g. https://one.delhivery.com/)",
+  });
+
 const partnerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   code: z.string().min(1, "Code is required").max(10, "Code must be 10 characters or less"),
@@ -62,9 +78,13 @@ const partnerSchema = z.object({
   baseRateSurface: z.string().optional(),
   ratePerKgAir: z.string().optional(),
   ratePerKgSurface: z.string().optional(),
+  marginAmount: z.string().optional(),
+  marginPercent: z.string().optional(),
+  useTariffPricing: z.boolean().optional(),
   awbPrefix: z.string().optional(),
   awbRangeStart: z.string().optional(),
   awbRangeEnd: z.string().optional(),
+  portalUrl: portalUrlSchema,
   isActive: z.boolean().default(true),
 });
 
@@ -89,6 +109,10 @@ export default function PartnersPage() {
       baseRateSurface: "0",
       ratePerKgAir: "0",
       ratePerKgSurface: "0",
+      marginAmount: "0",
+      marginPercent: "0",
+      useTariffPricing: true,
+      portalUrl: "",
     },
   });
 
@@ -99,6 +123,7 @@ export default function PartnersPage() {
     onSuccess: () => {
       toast({ title: "Partner Added", description: "New courier partner has been added." });
       queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
       setIsDialogOpen(false);
       form.reset();
     },
@@ -118,6 +143,7 @@ export default function PartnersPage() {
     onSuccess: () => {
       toast({ title: "Partner Updated", description: "Partner details have been updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
       setIsDialogOpen(false);
       setEditingPartner(null);
       form.reset();
@@ -160,9 +186,13 @@ export default function PartnersPage() {
       baseRateSurface: partner.baseRateSurface || "0",
       ratePerKgAir: partner.ratePerKgAir || "0",
       ratePerKgSurface: partner.ratePerKgSurface || "0",
+      marginAmount: partner.marginAmount || "0",
+      marginPercent: partner.marginPercent || "0",
+      useTariffPricing: partner.useTariffPricing ?? true,
       awbPrefix: partner.awbPrefix || "",
       awbRangeStart: partner.awbRangeStart || "",
       awbRangeEnd: partner.awbRangeEnd || "",
+      portalUrl: partner.portalUrl || "",
       isActive: partner.isActive ?? true,
     });
     setIsDialogOpen(true);
@@ -220,7 +250,7 @@ export default function PartnersPage() {
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -344,6 +374,51 @@ export default function PartnersPage() {
                 </div>
 
                 <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">XGoo Margin (on partner tariff)</h4>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <FormField
+                      control={form.control}
+                      name="marginAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fixed margin (₹)</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="number" step="0.01" placeholder="0" />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="marginPercent"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Margin (%)</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="number" step="0.01" placeholder="0" />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="useTariffPricing"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-end">
+                          <div className="flex items-center gap-2 h-10">
+                            <Switch checked={field.value ?? true} onCheckedChange={field.onChange} />
+                            <FormLabel className="!mt-0">Use uploaded tariffs</FormLabel>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Sell price = partner tariff + ₹ margin + % margin. Upload tariffs under Price Estimator.
+                  </p>
+                </div>
+
+                <div className="border-t pt-4">
                   <h4 className="font-medium mb-3">AWB Settings</h4>
                   <div className="grid gap-4 sm:grid-cols-3">
                     <FormField
@@ -384,6 +459,30 @@ export default function PartnersPage() {
                     />
                   </div>
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="portalUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Booking portal URL</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="text"
+                          inputMode="url"
+                          placeholder="https://one.delhivery.com/"
+                          data-testid="input-portal-url"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Used by Partner sync to open the courier booking site. Leave blank to use a
+                        default for known partner codes (DEL, ICL, etc.).
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}

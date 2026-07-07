@@ -17,13 +17,6 @@ export default function ShipmentLabelPage() {
 
   const { data, isLoading, error } = useQuery<LabelData>({
     queryKey: ["/api/shipments", params.id, "label"],
-    queryFn: async () => {
-      const response = await fetch(`/api/shipments/${params.id}/label`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch label data");
-      }
-      return response.json();
-    },
     enabled: !!params.id,
   });
 

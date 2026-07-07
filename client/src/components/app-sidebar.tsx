@@ -1,27 +1,24 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Package,
+  PackagePlus,
   Users,
   Truck,
   FileText,
   Settings,
   LogOut,
-  Building2,
-} from "lucide-react";
-import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
-import {
-  FileSpreadsheet,
+  Files,
   Inbox,
   Link2,
   Copy,
   Check,
+  Calculator,
 } from "lucide-react";
+import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { useAuth } from "@/hooks/use-auth";
-import type { Office } from "@shared/schema";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
   SidebarContent,
@@ -33,68 +30,28 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 
 const mainNavItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "New Booking",
-    url: "/bookings/new",
-    icon: Package,
-  },
-  {
-    title: "Shipments",
-    url: "/shipments",
-    icon: Package,
-  },
-  {
-    title: "Quotations",
-    url: "/quotations",
-    icon: FileSpreadsheet,
-  },
-  {
-    title: "Booking Requests",
-    url: "/booking-requests",
-    icon: Inbox,
-  },
-  {
-    title: "Customers",
-    url: "/customers",
-    icon: Users,
-  },
-  {
-    title: "Courier Partners",
-    url: "/partners",
-    icon: Truck,
-  },
-  {
-    title: "Reports",
-    url: "/reports",
-    icon: FileText,
-  },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
+  { title: "Shipments", url: "/shipments", icon: Package },
+  { title: "Documents", url: "/documents", icon: Files },
+  { title: "Booking Requests", url: "/booking-requests", icon: Inbox },
+  { title: "Customers", url: "/customers", icon: Users },
+  { title: "Courier Partners", url: "/partners", icon: Truck },
+  { title: "Price Estimator", url: "/pricing", icon: Calculator },
+  { title: "Reports", url: "/reports", icon: FileText },
 ];
 
-const settingsNavItems = [
-  {
-    title: "Office Settings",
-    url: "/settings",
-    icon: Settings,
-  },
-];
+const settingsNavItems = [{ title: "Office Settings", url: "/settings", icon: Settings }];
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const [portalCopied, setPortalCopied] = useState(false);
-
-  const { data: office } = useQuery<Office>({
-    queryKey: ["/api/office"],
-  });
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -110,9 +67,7 @@ export function AppSidebar() {
     ? `${user.user_metadata.firstName}${user.user_metadata.lastName ? ` ${user.user_metadata.lastName}` : ""}`
     : user?.email || "User";
 
-  const portalUrl = office?.publicSlug
-    ? `${window.location.origin}/book/${office.publicSlug}`
-    : null;
+  const portalUrl = `${window.location.origin}/book`;
 
   const copyPortalLink = async () => {
     if (!portalUrl) return;
@@ -130,18 +85,27 @@ export function AppSidebar() {
     setTimeout(() => setPortalCopied(false), 2000);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    setLocation("/");
+  };
+
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4">
-        <Link href="/" data-testid="link-home">
-          <div className="flex items-center gap-3">
-            <img src={xgooLogo} alt="XGoo" className="h-10 w-10 rounded-lg" />
-            <div className="flex flex-col">
-              <span className="text-lg font-semibold">XGoo</span>
-              <span className="text-xs text-muted-foreground">Courier Management</span>
-            </div>
-          </div>
-        </Link>
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild tooltip="XGoo — Home">
+              <Link href="/" data-testid="link-home">
+                <img src={xgooLogo} alt="XGoo" className="size-8 shrink-0 object-contain" />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">XGoo</span>
+                  <span className="truncate text-xs text-muted-foreground">Courier Management</span>
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarSeparator />
@@ -155,10 +119,18 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={location === item.url}
+                    tooltip={item.title}
+                    isActive={
+                      item.url === "/documents"
+                        ? location.startsWith("/documents")
+                        : location === item.url
+                    }
                   >
-                    <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
+                    <Link
+                      href={item.url}
+                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <item.icon className="size-4 shrink-0" />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -168,29 +140,36 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {portalUrl && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Booking Portal</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton onClick={copyPortalLink} data-testid="button-sidebar-copy-portal">
-                    {portalCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    <span>{portalCopied ? "Link Copied!" : "Copy Portal Link"}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <a href={portalUrl} target="_blank" rel="noopener noreferrer" data-testid="link-open-portal">
-                      <Link2 className="h-4 w-4" />
-                      <span>Open Portal</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <SidebarGroup>
+          <SidebarGroupLabel>Booking Portal</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={copyPortalLink}
+                  tooltip={portalCopied ? "Link Copied!" : "Copy Portal Link"}
+                  data-testid="button-sidebar-copy-portal"
+                >
+                  {portalCopied ? <Check className="size-4 shrink-0" /> : <Copy className="size-4 shrink-0" />}
+                  <span>{portalCopied ? "Link Copied!" : "Copy Portal Link"}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Open Portal">
+                  <a
+                    href={portalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="link-open-portal"
+                  >
+                    <Link2 className="size-4 shrink-0" />
+                    <span>Open Portal</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         <SidebarGroup>
           <SidebarGroupLabel>Settings</SidebarGroupLabel>
@@ -198,12 +177,12 @@ export function AppSidebar() {
             <SidebarMenu>
               {settingsNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === item.url}
-                  >
-                    <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={location === item.url}>
+                    <Link
+                      href={item.url}
+                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <item.icon className="size-4 shrink-0" />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -214,32 +193,31 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
-            {/* <AvatarImage src={user?.profileImageUrl || ""} alt={displayName} />  */}
-            <AvatarFallback className="bg-muted text-primary text-sm">
-              {getInitials(displayName)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <span className="truncate text-sm font-medium">{displayName}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              {user?.email || ""}
-            </span>
-          </div>
-          <SidebarMenuButton
-            onClick={async () => {
-              await logout();
-              setLocation("/");
-            }}
-            className="h-8 w-8 p-0"
-            data-testid="button-logout"
-          >
-            <LogOut className="h-4 w-4" />
-          </SidebarMenuButton>
-        </div>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" tooltip={displayName} className="cursor-default">
+              <Avatar className="size-8 shrink-0">
+                <AvatarFallback className="bg-muted text-primary text-xs">
+                  {getInitials(displayName)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{displayName}</span>
+                <span className="truncate text-xs text-muted-foreground">{user?.email || ""}</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Log out" onClick={handleLogout} data-testid="button-logout">
+              <LogOut className="size-4 shrink-0" />
+              <span>Log out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
+
+      <SidebarRail />
     </Sidebar>
   );
 }

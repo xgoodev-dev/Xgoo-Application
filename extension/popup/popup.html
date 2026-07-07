@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XGoo Partner Sync</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <strong>XGoo Partner Sync</strong>
+    </header>
+    <main>
+      <p id="status" class="muted">Checking…</p>
+      <div id="payload-info" class="hidden">
+        <p><span class="label">Booking</span> <span id="booking"></span></p>
+        <p><span class="label">Partner</span> <span id="partner"></span></p>
+      </div>
+      <button id="fill-tab" type="button" disabled>Autofill current tab</button>
+      <button id="clear" type="button" class="secondary" disabled>Clear pending</button>
+    </main>
+    <footer class="muted">Open a booking in XGoo, then use Partner sync → Open portal.</footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -12,6 +12,7 @@ import {
   XCircle,
   Loader2,
   MapPin,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -435,6 +436,22 @@ export default function BookingRequestsPage() {
                   </div>
                 </div>
               </div>
+
+              {(selectedRequest.pickupDate || selectedRequest.pickupTimeSlot) && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                      Scheduled Pickup
+                    </h4>
+                    <p className="text-sm flex items-center gap-2">
+                      <Clock className="h-3 w-3" />
+                      {selectedRequest.pickupDate || "—"}
+                      {selectedRequest.pickupTimeSlot && ` · ${selectedRequest.pickupTimeSlot.replace("-", " – ")}`}
+                    </p>
+                  </div>
+                </>
+              )}
 
               {selectedRequest.pickupLocationName && (
                 <>
