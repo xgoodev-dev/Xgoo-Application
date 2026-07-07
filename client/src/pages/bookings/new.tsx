@@ -21,6 +21,9 @@ import {
   X,
   Mic,
   ScanLine,
+  Plus,
+  Trash2,
+  GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +45,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { AddressMapField } from "@/components/bookings/AddressMapField";
@@ -79,6 +90,41 @@ const bookingSchema = z.object({
 
 type BookingFormData = z.infer<typeof bookingSchema>;
 
+type ExtraPackageRow = {
+  id: string;
+  weight: string;
+  length: string;
+  width: string;
+  height: string;
+  numberOfPieces: string;
+  contentDescription: string;
+  declaredValue: string;
+};
+
+type PackageColumnKey =
+  | "weight"
+  | "numberOfPieces"
+  | "length"
+  | "width"
+  | "height"
+  | "contentDescription"
+  | "declaredValue";
+
+type BookingDetailsColumnKey =
+  | "name"
+  | "phone"
+  | "address"
+  | "city"
+  | "state"
+  | "pincode";
+
+type ServiceBillingColumnKey =
+  | "courierPartner"
+  | "serviceType"
+  | "awb"
+  | "payment"
+  | "amountOverride";
+
 export default function NewBookingPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -93,6 +139,7 @@ export default function NewBookingPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
   const [isScanningPhotos, setIsScanningPhotos] = useState(false);
+  const [bookingView, setBookingView] = useState<"form" | "table">("table");
   const [recommendation, setRecommendation] = useState<{
     recommendedPartnerId: string;
     reason: string;
@@ -101,6 +148,34 @@ export default function NewBookingPage() {
     alternativeReason?: string;
   } | null>(null);
   const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
+  const [extraPackages, setExtraPackages] = useState<ExtraPackageRow[]>([]);
+  const [draggingColumn, setDraggingColumn] = useState<PackageColumnKey | null>(null);
+  const [bookingDetailsColumnOrder, setBookingDetailsColumnOrder] = useState<BookingDetailsColumnKey[]>([
+    "name",
+    "phone",
+    "address",
+    "city",
+    "state",
+    "pincode",
+  ]);
+  const [serviceBillingColumnOrder, setServiceBillingColumnOrder] = useState<ServiceBillingColumnKey[]>([
+    "courierPartner",
+    "serviceType",
+    "awb",
+    "payment",
+    "amountOverride",
+  ]);
+  const [draggingBookingColumn, setDraggingBookingColumn] = useState<BookingDetailsColumnKey | null>(null);
+  const [draggingServiceColumn, setDraggingServiceColumn] = useState<ServiceBillingColumnKey | null>(null);
+  const [packageColumnOrder, setPackageColumnOrder] = useState<PackageColumnKey[]>([
+    "weight",
+    "numberOfPieces",
+    "length",
+    "width",
+    "height",
+    "contentDescription",
+    "declaredValue",
+  ]);
 
   const [recordingSection, setRecordingSection] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -165,6 +240,285 @@ export default function NewBookingPage() {
   const length = form.watch("length");
   const width = form.watch("width");
   const height = form.watch("height");
+  const numberOfPieces = form.watch("numberOfPieces");
+  const contentDescription = form.watch("contentDescription");
+  const declaredValue = form.watch("declaredValue");
+
+  const toNum = (v?: string) => {
+    const n = parseFloat(v || "");
+    return Number.isFinite(n) ? n : 0;
+  };
+  const toInt = (v?: string) => {
+    const n = parseInt(v || "", 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const packageRows = [
+    {
+      id: "primary",
+      weight: weight || "",
+      length: length || "",
+      width: width || "",
+      height: height || "",
+      numberOfPieces: numberOfPieces || "1",
+      contentDescription: contentDescription || "",
+      declaredValue: declaredValue || "",
+      isPrimary: true,
+    },
+    ...extraPackages.map((p) => ({ ...p, isPrimary: false })),
+  ];
+
+  const totalWeight = packageRows.reduce((sum, row) => sum + toNum(row.weight), 0);
+  const totalPieces = packageRows.reduce((sum, row) => sum + Math.max(1, toInt(row.numberOfPieces) || 1), 0);
+  const maxLength = packageRows.reduce((m, row) => Math.max(m, toNum(row.length)), 0);
+  const maxWidth = packageRows.reduce((m, row) => Math.max(m, toNum(row.width)), 0);
+  const maxHeight = packageRows.reduce((m, row) => Math.max(m, toNum(row.height)), 0);
+  const totalDeclaredValue = packageRows.reduce((sum, row) => sum + toNum(row.declaredValue), 0);
+  const combinedDescription = packageRows
+    .map((row) => row.contentDescription.trim())
+    .filter(Boolean)
+    .join(", ");
+
+  const updateExtraPackage = (id: string, field: keyof ExtraPackageRow, value: string) => {
+    setExtraPackages((prev) => prev.map((pkg) => (pkg.id === id ? { ...pkg, [field]: value } : pkg)));
+    setTimeout(updateCalculatedAmount, 50);
+  };
+
+  const addPackageRow = () => {
+    setExtraPackages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        weight: "",
+        length: "",
+        width: "",
+        height: "",
+        numberOfPieces: "1",
+        contentDescription: "",
+        declaredValue: "",
+      },
+    ]);
+  };
+
+  const removePackageRow = (id: string) => {
+    setExtraPackages((prev) => prev.filter((pkg) => pkg.id !== id));
+    setTimeout(updateCalculatedAmount, 50);
+  };
+
+  const packageColumnLabels: Record<PackageColumnKey, string> = {
+    weight: "Weight (kg)",
+    numberOfPieces: "Pieces",
+    length: "L (cm)",
+    width: "W (cm)",
+    height: "H (cm)",
+    contentDescription: "Content",
+    declaredValue: "Value (Rs.)",
+  };
+
+  const movePackageColumnToPosition = (key: PackageColumnKey, targetIndex: number) => {
+    setPackageColumnOrder((prev) => {
+      const idx = prev.indexOf(key);
+      if (idx === -1) return prev;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      if (idx === targetIndex) return prev;
+      const next = [...prev];
+      next.splice(idx, 1);
+      next.splice(targetIndex, 0, key);
+      return next;
+    });
+  };
+
+  const resetPackageColumnOrder = () => {
+    setPackageColumnOrder([
+      "weight",
+      "numberOfPieces",
+      "length",
+      "width",
+      "height",
+      "contentDescription",
+      "declaredValue",
+    ]);
+  };
+
+  const handleColumnDragStart = (key: PackageColumnKey) => {
+    setDraggingColumn(key);
+  };
+
+  const handleColumnDrop = (targetKey: PackageColumnKey) => {
+    if (!draggingColumn || draggingColumn === targetKey) {
+      setDraggingColumn(null);
+      return;
+    }
+
+    setPackageColumnOrder((prev) => {
+      const from = prev.indexOf(draggingColumn);
+      const to = prev.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+
+    setDraggingColumn(null);
+  };
+
+  const bookingDetailsColumnLabels: Record<BookingDetailsColumnKey, string> = {
+    name: "Name",
+    phone: "Phone",
+    address: "Address",
+    city: "City",
+    state: "State",
+    pincode: "Pincode",
+  };
+
+  const serviceBillingColumnLabels: Record<ServiceBillingColumnKey, string> = {
+    courierPartner: "Courier Partner",
+    serviceType: "Service Type",
+    awb: "AWB",
+    payment: "Payment",
+    amountOverride: "Amount Override",
+  };
+
+  const handleBookingColumnDragStart = (key: BookingDetailsColumnKey) => {
+    setDraggingBookingColumn(key);
+  };
+
+  const handleBookingColumnDrop = (targetKey: BookingDetailsColumnKey) => {
+    if (!draggingBookingColumn || draggingBookingColumn === targetKey) {
+      setDraggingBookingColumn(null);
+      return;
+    }
+    setBookingDetailsColumnOrder((prev) => {
+      const from = prev.indexOf(draggingBookingColumn);
+      const to = prev.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDraggingBookingColumn(null);
+  };
+
+  const handleServiceColumnDragStart = (key: ServiceBillingColumnKey) => {
+    setDraggingServiceColumn(key);
+  };
+
+  const handleServiceColumnDrop = (targetKey: ServiceBillingColumnKey) => {
+    if (!draggingServiceColumn || draggingServiceColumn === targetKey) {
+      setDraggingServiceColumn(null);
+      return;
+    }
+    setServiceBillingColumnOrder((prev) => {
+      const from = prev.indexOf(draggingServiceColumn);
+      const to = prev.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDraggingServiceColumn(null);
+  };
+
+  const renderPackageCell = (
+    pkg: (ExtraPackageRow & { isPrimary: boolean }) | (typeof packageRows)[number],
+    index: number,
+    key: PackageColumnKey,
+    testPrefix: string,
+  ) => {
+    if (key === "weight") {
+      return (
+        <Input
+          type="number"
+          step="0.1"
+          value={pkg.weight}
+          onChange={(e) => {
+            if (pkg.isPrimary) form.setValue("weight", e.target.value, { shouldValidate: true });
+            else updateExtraPackage(pkg.id, "weight", e.target.value);
+          }}
+          data-testid={`${testPrefix}-weight-${index}`}
+        />
+      );
+    }
+    if (key === "numberOfPieces") {
+      return (
+        <Input
+          type="number"
+          min="1"
+          value={pkg.numberOfPieces}
+          onChange={(e) => {
+            if (pkg.isPrimary) form.setValue("numberOfPieces", e.target.value, { shouldValidate: true });
+            else updateExtraPackage(pkg.id, "numberOfPieces", e.target.value);
+          }}
+          data-testid={`${testPrefix}-pieces-${index}`}
+        />
+      );
+    }
+    if (key === "length") {
+      return (
+        <Input
+          type="number"
+          value={pkg.length}
+          onChange={(e) =>
+            pkg.isPrimary ? form.setValue("length", e.target.value) : updateExtraPackage(pkg.id, "length", e.target.value)
+          }
+          data-testid={`${testPrefix}-length-${index}`}
+        />
+      );
+    }
+    if (key === "width") {
+      return (
+        <Input
+          type="number"
+          value={pkg.width}
+          onChange={(e) =>
+            pkg.isPrimary ? form.setValue("width", e.target.value) : updateExtraPackage(pkg.id, "width", e.target.value)
+          }
+          data-testid={`${testPrefix}-width-${index}`}
+        />
+      );
+    }
+    if (key === "height") {
+      return (
+        <Input
+          type="number"
+          value={pkg.height}
+          onChange={(e) =>
+            pkg.isPrimary ? form.setValue("height", e.target.value) : updateExtraPackage(pkg.id, "height", e.target.value)
+          }
+          data-testid={`${testPrefix}-height-${index}`}
+        />
+      );
+    }
+    if (key === "contentDescription") {
+      return (
+        <Input
+          value={pkg.contentDescription}
+          onChange={(e) =>
+            pkg.isPrimary
+              ? form.setValue("contentDescription", e.target.value)
+              : updateExtraPackage(pkg.id, "contentDescription", e.target.value)
+          }
+          data-testid={`${testPrefix}-content-${index}`}
+        />
+      );
+    }
+
+    return (
+      <Input
+        type="number"
+        value={pkg.declaredValue}
+        onChange={(e) =>
+          pkg.isPrimary
+            ? form.setValue("declaredValue", e.target.value)
+            : updateExtraPackage(pkg.id, "declaredValue", e.target.value)
+        }
+        data-testid={`${testPrefix}-value-${index}`}
+      />
+    );
+  };
 
   const selectedPartner = partners?.find((p) => p.id === selectedPartnerId);
 
@@ -173,12 +527,12 @@ export default function NewBookingPage() {
       "booking-price-quote",
       selectedPartnerId,
       serviceType,
-      weight,
+      totalWeight,
       senderPincode,
       receiverPincode,
-      length,
-      width,
-      height,
+      maxLength,
+      maxWidth,
+      maxHeight,
     ],
     queryFn: async () => {
       const res = await apiRequest("POST", "/api/pricing/quote", {
@@ -186,20 +540,20 @@ export default function NewBookingPage() {
         serviceType,
         senderPincode: senderPincode || undefined,
         receiverPincode: receiverPincode || undefined,
-        weight,
-        length: length || undefined,
-        width: width || undefined,
-        height: height || undefined,
+        weight: totalWeight.toString(),
+        length: maxLength > 0 ? maxLength.toString() : undefined,
+        width: maxWidth > 0 ? maxWidth.toString() : undefined,
+        height: maxHeight > 0 ? maxHeight.toString() : undefined,
       });
       return res.json();
     },
-    enabled: !!selectedPartnerId && !!weight && parseFloat(weight) > 0,
+    enabled: !!selectedPartnerId && totalWeight > 0,
   });
 
   const calculatePrice = () => {
     if (priceQuote?.sellPrice != null) return priceQuote.sellPrice;
-    if (!selectedPartner || !weight) return 0;
-    const weightNum = parseFloat(weight) || 0;
+    if (!selectedPartner || totalWeight <= 0) return 0;
+    const weightNum = totalWeight;
     const baseRate =
       serviceType === "air"
         ? parseFloat(selectedPartner.baseRateAir || "0")
@@ -597,12 +951,13 @@ export default function NewBookingPage() {
       const amount = data.manualAmount ? parseFloat(data.manualAmount) : calculatePrice();
       const payload = {
         ...data,
-        weight: data.weight,
-        length: data.length || null,
-        width: data.width || null,
-        height: data.height || null,
-        numberOfPieces: parseInt(data.numberOfPieces) || 1,
-        declaredValue: data.declaredValue || null,
+        weight: totalWeight.toString(),
+        length: maxLength > 0 ? maxLength.toString() : null,
+        width: maxWidth > 0 ? maxWidth.toString() : null,
+        height: maxHeight > 0 ? maxHeight.toString() : null,
+        numberOfPieces: totalPieces || 1,
+        declaredValue: totalDeclaredValue > 0 ? totalDeclaredValue.toString() : null,
+        contentDescription: combinedDescription || data.contentDescription || "",
         totalAmount: amount.toString(),
         baseAmount: amount.toString(),
         packagePhotoUrls: data.packagePhotoUrls || [],
@@ -656,6 +1011,26 @@ export default function NewBookingPage() {
         <div>
           <h1 className="text-2xl font-bold">New Booking</h1>
           <p className="text-muted-foreground">Create a new shipment</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={bookingView === "table" ? "default" : "outline"}
+            onClick={() => setBookingView("table")}
+            data-testid="button-booking-view-table"
+          >
+            Table View
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={bookingView === "form" ? "default" : "outline"}
+            onClick={() => setBookingView("form")}
+            data-testid="button-booking-view-form"
+          >
+            Form View
+          </Button>
         </div>
       </div>
 
@@ -745,6 +1120,282 @@ export default function NewBookingPage() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {bookingView === "table" ? (
+            <>
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <User className="h-4 w-4" />
+                    Booking Details (Table)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Section</TableHead>
+                          {bookingDetailsColumnOrder.map((key) => (
+                            <TableHead
+                              key={`booking-head-${key}`}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => handleBookingColumnDrop(key)}
+                              className={draggingBookingColumn === key ? "opacity-60" : ""}
+                            >
+                              <div
+                                draggable
+                                onDragStart={() => handleBookingColumnDragStart(key)}
+                                onDragEnd={() => setDraggingBookingColumn(null)}
+                                className="flex cursor-grab items-center gap-1"
+                                title="Drag to rearrange column"
+                              >
+                                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                {bookingDetailsColumnLabels[key]}
+                              </div>
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell className="font-medium">Sender</TableCell>
+                          {bookingDetailsColumnOrder.map((key) => (
+                            <TableCell key={`sender-cell-${key}`}>
+                              {key === "name" && (
+                                <Input value={form.watch("senderName") || ""} onChange={(e) => form.setValue("senderName", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-name" />
+                              )}
+                              {key === "phone" && (
+                                <Input value={form.watch("senderPhone") || ""} onChange={(e) => form.setValue("senderPhone", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-phone" />
+                              )}
+                              {key === "address" && (
+                                <Input value={form.watch("senderAddress") || ""} onChange={(e) => form.setValue("senderAddress", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-address" />
+                              )}
+                              {key === "city" && (
+                                <Input value={form.watch("senderCity") || ""} onChange={(e) => form.setValue("senderCity", e.target.value)} data-testid="table-input-sender-city" />
+                              )}
+                              {key === "state" && (
+                                <Input value={form.watch("senderState") || ""} onChange={(e) => form.setValue("senderState", e.target.value)} data-testid="table-input-sender-state" />
+                              )}
+                              {key === "pincode" && (
+                                <Input value={form.watch("senderPincode") || ""} onChange={(e) => form.setValue("senderPincode", e.target.value)} data-testid="table-input-sender-pincode" />
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                        <TableRow>
+                          <TableCell className="font-medium">Receiver</TableCell>
+                          {bookingDetailsColumnOrder.map((key) => (
+                            <TableCell key={`receiver-cell-${key}`}>
+                              {key === "name" && (
+                                <Input value={form.watch("receiverName") || ""} onChange={(e) => form.setValue("receiverName", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-name" />
+                              )}
+                              {key === "phone" && (
+                                <Input value={form.watch("receiverPhone") || ""} onChange={(e) => form.setValue("receiverPhone", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-phone" />
+                              )}
+                              {key === "address" && (
+                                <Input value={form.watch("receiverAddress") || ""} onChange={(e) => form.setValue("receiverAddress", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-address" />
+                              )}
+                              {key === "city" && (
+                                <Input value={form.watch("receiverCity") || ""} onChange={(e) => form.setValue("receiverCity", e.target.value)} data-testid="table-input-receiver-city" />
+                              )}
+                              {key === "state" && (
+                                <Input value={form.watch("receiverState") || ""} onChange={(e) => form.setValue("receiverState", e.target.value)} data-testid="table-input-receiver-state" />
+                              )}
+                              {key === "pincode" && (
+                                <Input value={form.watch("receiverPincode") || ""} onChange={(e) => form.setValue("receiverPincode", e.target.value)} data-testid="table-input-receiver-pincode" />
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Truck className="h-4 w-4" />
+                    Service & Billing (Table)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {serviceBillingColumnOrder.map((key) => (
+                            <TableHead
+                              key={`service-head-${key}`}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => handleServiceColumnDrop(key)}
+                              className={draggingServiceColumn === key ? "opacity-60" : ""}
+                            >
+                              <div
+                                draggable
+                                onDragStart={() => handleServiceColumnDragStart(key)}
+                                onDragEnd={() => setDraggingServiceColumn(null)}
+                                className="flex cursor-grab items-center gap-1"
+                                title="Drag to rearrange column"
+                              >
+                                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                {serviceBillingColumnLabels[key]}
+                              </div>
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          {serviceBillingColumnOrder.map((key) => (
+                            <TableCell key={`service-cell-${key}`}>
+                              {key === "courierPartner" && (
+                                <Select
+                                  onValueChange={(value) => {
+                                    form.setValue("courierPartnerId", value, { shouldValidate: true });
+                                    setTimeout(updateCalculatedAmount, 100);
+                                  }}
+                                  value={form.watch("courierPartnerId")}
+                                >
+                                  <SelectTrigger data-testid="table-select-partner">
+                                    <SelectValue placeholder="Select partner" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {partners?.map((partner) => (
+                                      <SelectItem key={partner.id} value={partner.id}>
+                                        {partner.name} ({partner.code})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              {key === "serviceType" && (
+                                <Select
+                                  onValueChange={(value) => {
+                                    form.setValue("serviceType", value as "air" | "surface");
+                                    setTimeout(updateCalculatedAmount, 100);
+                                  }}
+                                  value={form.watch("serviceType")}
+                                >
+                                  <SelectTrigger data-testid="table-select-service-type">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="surface">Surface</SelectItem>
+                                    <SelectItem value="air">Air</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              {key === "awb" && (
+                                <Input
+                                  value={form.watch("awbNumber") || ""}
+                                  onChange={(e) => form.setValue("awbNumber", e.target.value)}
+                                  data-testid="table-input-awb"
+                                />
+                              )}
+                              {key === "payment" && (
+                                <Select onValueChange={(value) => form.setValue("paymentMode", value as BookingFormData["paymentMode"])} value={form.watch("paymentMode")}>
+                                  <SelectTrigger data-testid="table-select-payment-mode">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="upi">UPI</SelectItem>
+                                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                                    <SelectItem value="credit">Credit</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              {key === "amountOverride" && (
+                                <Input
+                                  value={form.watch("manualAmount") || ""}
+                                  onChange={(e) => form.setValue("manualAmount", e.target.value)}
+                                  data-testid="table-input-manual-amount"
+                                />
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Scale className="h-4 w-4" />
+                    Package Details (Table)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>#</TableHead>
+                          {packageColumnOrder.map((key) => (
+                            <TableHead
+                              key={`table-view-head-${key}`}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => handleColumnDrop(key)}
+                              className={draggingColumn === key ? "opacity-60" : ""}
+                            >
+                              <div
+                                draggable
+                                onDragStart={() => handleColumnDragStart(key)}
+                                onDragEnd={() => setDraggingColumn(null)}
+                                className="flex cursor-grab items-center gap-1"
+                                title="Drag to rearrange column"
+                              >
+                                <GripVertical className="h-3 w-3 text-muted-foreground" />
+                                {packageColumnLabels[key]}
+                              </div>
+                            </TableHead>
+                          ))}
+                          <TableHead className="w-12" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {packageRows.map((pkg, index) => (
+                          <TableRow key={`table-view-${pkg.id}`}>
+                            <TableCell>{index + 1}</TableCell>
+                            {packageColumnOrder.map((key) => (
+                              <TableCell key={`table-view-cell-${pkg.id}-${key}`}>
+                                {renderPackageCell(pkg, index, key, "table-view-input-package")}
+                              </TableCell>
+                            ))}
+                            <TableCell>
+                              {!pkg.isPrimary && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removePackageRow(pkg.id)}
+                                  data-testid={`table-view-button-remove-package-${index}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Total: {totalWeight.toFixed(2)} kg, {totalPieces} piece(s), Declared Rs. {totalDeclaredValue.toFixed(2)}
+                    </p>
+                    <Button type="button" variant="outline" size="sm" onClick={addPackageRow} data-testid="table-view-button-add-package-row">
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      Add Package
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-4">
@@ -1103,105 +1754,69 @@ export default function NewBookingPage() {
                     {sectionAiLoading.package ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                   </Button>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="weight"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Weight (kg) *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.1"
-                            placeholder="0.5"
-                            onChange={(e) => {
-                              field.onChange(e);
-                              setTimeout(updateCalculatedAmount, 100);
-                            }}
-                            data-testid="input-weight"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="numberOfPieces"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>No. of Pieces</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" min="1" data-testid="input-pieces" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>#</TableHead>
+                        {packageColumnOrder.map((key) => (
+                          <TableHead
+                            key={`form-view-head-${key}`}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={() => handleColumnDrop(key)}
+                            className={draggingColumn === key ? "opacity-60" : ""}
+                          >
+                            <div
+                              draggable
+                              onDragStart={() => handleColumnDragStart(key)}
+                              onDragEnd={() => setDraggingColumn(null)}
+                              className="flex cursor-grab items-center gap-1"
+                              title="Drag to rearrange column"
+                            >
+                              <GripVertical className="h-3 w-3 text-muted-foreground" />
+                              {packageColumnLabels[key]}
+                            </div>
+                          </TableHead>
+                        ))}
+                        <TableHead className="w-12" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {packageRows.map((pkg, index) => (
+                        <TableRow key={pkg.id}>
+                          <TableCell>{index + 1}</TableCell>
+                          {packageColumnOrder.map((key) => (
+                            <TableCell key={`form-view-cell-${pkg.id}-${key}`}>
+                              {renderPackageCell(pkg, index, key, "input-package")}
+                            </TableCell>
+                          ))}
+                          <TableCell>
+                            {!pkg.isPrimary && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removePackageRow(pkg.id)}
+                                data-testid={`button-remove-package-${index}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <FormField
-                    control={form.control}
-                    name="length"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Length (cm)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" placeholder="L" data-testid="input-length" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="width"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Width (cm)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" placeholder="W" data-testid="input-width" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="height"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Height (cm)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" placeholder="H" data-testid="input-height" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Total: {totalWeight.toFixed(2)} kg, {totalPieces} piece(s), Declared Rs. {totalDeclaredValue.toFixed(2)}
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={addPackageRow} data-testid="button-add-package-row">
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Add Package
+                  </Button>
                 </div>
-                <FormField
-                  control={form.control}
-                  name="contentDescription"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Content Description</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g., Documents, Electronics" data-testid="input-content" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="declaredValue"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Declared Value (Rs.)</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" placeholder="0" data-testid="input-declared-value" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
 
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -1455,6 +2070,7 @@ export default function NewBookingPage() {
               </CardContent>
             </Card>
           </div>
+          )}
 
           <Card>
             <CardHeader className="pb-4">
