@@ -8,7 +8,7 @@ import fs from "fs";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
-import { db } from "./db";
+import { db, verifyDatabaseConnection } from "./db";
 import { shipments, offices } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
@@ -311,6 +311,10 @@ const bookingRequestCreateSchema = z.object({
   pickupDate: z.string().optional().nullable(),
   pickupTimeSlot: z.string().optional().nullable(),
 });
+
+function parseBookingRequestBody(body: unknown) {
+  return bookingRequestCreateSchema.parse(normalizeBookingRequestBody(body));
+}
 
 function trackingFromBookingRequest(
   request: {
@@ -2104,8 +2108,25 @@ export async function registerRoutes(
         slug: office.publicSlug,
       });
     } catch (error) {
-      console.error("Error fetching booking office:", error);
-      res.status(500).json({ message: "Failed to load booking service" });
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error fetching booking office:", message);
+      res.status(503).json({
+        message: "Booking service is temporarily unavailable",
+        hint: process.env.VERCEL
+          ? "Check DATABASE_URL or DATABASE_POOL_URL in Vercel environment variables."
+          : "Check DATABASE_URL and database connectivity.",
+      });
+    }
+  });
+
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await verifyDatabaseConnection();
+      res.json({ ok: true, database: "connected" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Health check failed:", message);
+      res.status(503).json({ ok: false, database: "disconnected", error: message });
     }
   });
 

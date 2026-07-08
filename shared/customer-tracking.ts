@@ -21,7 +21,7 @@ export interface CustomerTrackingView {
 
 export interface BookingRequestTrackingInput {
   status: string;
-  createdAt: string | Date;
+  createdAt: string | Date | null;
   reviewedAt?: string | Date | null;
   pickupLocationName?: string | null;
   senderCity?: string | null;

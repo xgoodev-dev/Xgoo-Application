@@ -2291,6 +2291,18 @@ export default function CustomerPortalPage() {
           return;
         }
 
+        const defaultSlug = import.meta.env.VITE_DEFAULT_OFFICE_SLUG?.trim();
+        if (defaultSlug) {
+          const r = await fetch(`/api/public/office/${encodeURIComponent(defaultSlug)}`);
+          if (r.ok) {
+            const data = await r.json();
+            if (cancelled) return;
+            setSlug(defaultSlug);
+            setOffice(data);
+            return;
+          }
+        }
+
         const r = await fetch("/api/public/booking-office");
         if (!r.ok) throw new Error();
         const data = await r.json();
@@ -2349,7 +2361,13 @@ export default function CustomerPortalPage() {
         </header>
         <div className="mx-auto max-w-3xl px-4 py-20 text-center">
           <h1 className="text-2xl font-bold mb-4">Booking Unavailable</h1>
-          <p className="text-muted-foreground">Parcel booking is not set up yet. Please try again later.</p>
+          <p className="text-muted-foreground mb-2">
+            Parcel booking could not connect to the server. This is usually a database configuration issue on the live site.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            If you manage this site, set <code className="text-xs">DATABASE_URL</code> (or Supabase{" "}
+            <code className="text-xs">DATABASE_POOL_URL</code> on port 6543) in Vercel environment variables, then redeploy.
+          </p>
         </div>
       </div>
     );
