@@ -14,9 +14,28 @@ async function throwIfResNotOk(res: Response) {
     const text = (await res.text()) || res.statusText;
     let detail = text;
     try {
-      const j = JSON.parse(text) as { message?: string };
+      const j = JSON.parse(text) as {
+        message?: string;
+        step?: string;
+        details?: {
+          type?: string;
+          code?: number;
+          error_subcode?: number;
+          fbtrace_id?: string;
+          requestPath?: string;
+          wabaId?: string;
+          phoneNumberId?: string;
+        };
+      };
       if (typeof j.message === "string" && j.message.trim()) {
         detail = j.message.trim();
+        const parts: string[] = [];
+        if (j.step) parts.push(`step: ${j.step}`);
+        if (j.details?.code != null) parts.push(`Meta #${j.details.code}`);
+        if (j.details?.error_subcode != null) parts.push(`subcode ${j.details.error_subcode}`);
+        if (j.details?.fbtrace_id) parts.push(`trace ${j.details.fbtrace_id}`);
+        if (j.details?.wabaId) parts.push(`WABA ${j.details.wabaId}`);
+        if (parts.length) detail += ` (${parts.join(", ")})`;
       }
     } catch {
       if (text.trimStart().startsWith("<")) {

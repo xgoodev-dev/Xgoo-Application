@@ -9,16 +9,37 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { shipments } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { shipments, offices } from "@shared/schema";
+import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
 import { searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
 import { parseTariffSheetRows, parsedRowsToInsert } from "./pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
+import { shipmentPackageSchema } from "@shared/document-template";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
+import {
+  buildWhatsAppTemplateComponents,
+  getTemplateDefinition,
+  mergeWhatsAppSettings,
+  resolveAccessTokenForSave,
+  sanitizeWhatsAppSettingsForClient,
+  templateParamsFilled,
+  whatsAppSettingsSchema,
+} from "@shared/whatsapp";
+import { buildCustomerTracking, buildCustomerTrackingSummary } from "@shared/customer-tracking";
+import {
+  configFromSettings,
+  fetchWhatsAppTemplates,
+  formatMetaGraphError,
+  resolveWhatsAppApiConfig,
+  sendWhatsAppTemplateMessage,
+  sendWhatsAppTextMessage,
+  testWhatsAppConnection,
+} from "./integrations/whatsapp";
+import { triggerBookingRequestWhatsApp } from "./integrations/whatsapp-notifications";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -32,6 +53,7 @@ const officeCreateSchema = z.object({
   gstNumber: z.string().optional(),
   publicSlug: z.string().optional(),
   documentSettings: z.record(z.unknown()).optional(),
+  whatsappSettings: z.record(z.unknown()).optional(),
 });
 
 const officeUpdateSchema = z.object({
@@ -45,6 +67,7 @@ const officeUpdateSchema = z.object({
   gstNumber: z.string().optional(),
   publicSlug: z.string().optional(),
   documentSettings: z.record(z.unknown()).optional(),
+  whatsappSettings: z.record(z.unknown()).optional(),
 });
 
 const branchCreateSchema = z.object({
@@ -144,6 +167,7 @@ const shipmentCreateSchema = z.object({
   contentDescription: z.string().optional(),
   declaredValue: z.string().optional().nullable(),
   packagePhotoUrls: z.array(z.string()).optional(),
+  packages: z.array(shipmentPackageSchema).optional(),
   serviceType: z.enum(["air", "surface"]),
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   baseAmount: z.string().optional(),
@@ -191,16 +215,84 @@ const quotationCreateSchema = z.object({
   notes: z.string().optional(),
 });
 
+function uploadExtensionForContentType(contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes("jpeg") || ct.includes("jpg")) return ".jpg";
+  if (ct.includes("png")) return ".png";
+  if (ct.includes("webp")) return ".webp";
+  if (ct.includes("gif")) return ".gif";
+  return "";
+}
+
+function normalizeBookingRequestBody(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const b = { ...(body as Record<string, unknown>) };
+
+  for (const key of ["senderPhone", "receiverPhone"]) {
+    if (typeof b[key] === "string") {
+      b[key] = (b[key] as string).replace(/\D/g, "");
+    }
+  }
+
+  if (
+    b.courierPreference === null ||
+    b.courierPreference === undefined ||
+    b.courierPreference === "" ||
+    b.courierPreference === "none"
+  ) {
+    delete b.courierPreference;
+  }
+
+  if (b.senderEmail === null || b.senderEmail === undefined) {
+    b.senderEmail = "";
+  }
+
+  if (b.declaredValue === null || b.declaredValue === undefined || b.declaredValue === "") {
+    delete b.declaredValue;
+  } else {
+    b.declaredValue = String(b.declaredValue);
+  }
+
+  if (b.weight === null || b.weight === undefined || b.weight === "") {
+    delete b.weight;
+  } else {
+    b.weight = String(b.weight);
+  }
+
+  for (const key of [
+    "senderCity",
+    "senderState",
+    "senderPincode",
+    "receiverCity",
+    "receiverState",
+    "receiverPincode",
+    "contentDescription",
+    "notes",
+    "pickupLocationName",
+  ]) {
+    if (b[key] === null || b[key] === "") {
+      delete b[key];
+    }
+  }
+
+  if (typeof b.numberOfPieces === "string") {
+    const parsed = parseInt(b.numberOfPieces, 10);
+    b.numberOfPieces = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }
+
+  return b;
+}
+
 const bookingRequestCreateSchema = z.object({
   senderName: z.string().min(1, "Sender name required"),
-  senderPhone: z.string().min(10, "Valid phone required"),
-  senderEmail: z.string().email().optional().or(z.literal("")),
+  senderPhone: z.string().min(10, "Valid phone required").max(15),
+  senderEmail: z.union([z.literal(""), z.string().email()]).optional(),
   senderAddress: z.string().min(1, "Address required"),
   senderCity: z.string().optional(),
   senderState: z.string().optional(),
   senderPincode: z.string().optional(),
   receiverName: z.string().min(1, "Receiver name required"),
-  receiverPhone: z.string().min(10, "Valid phone required"),
+  receiverPhone: z.string().min(10, "Valid phone required").max(15),
   receiverAddress: z.string().min(1, "Address required"),
   receiverCity: z.string().optional(),
   receiverState: z.string().optional(),
@@ -208,7 +300,7 @@ const bookingRequestCreateSchema = z.object({
   weight: z.string().optional(),
   numberOfPieces: z.number().int().positive().default(1),
   contentDescription: z.string().optional(),
-  declaredValue: z.string().optional().nullable(),
+  declaredValue: z.string().optional(),
   serviceType: z.enum(["air", "surface"]).default("surface"),
   courierPreference: z.string().optional(),
   notes: z.string().optional(),
@@ -219,6 +311,66 @@ const bookingRequestCreateSchema = z.object({
   pickupDate: z.string().optional().nullable(),
   pickupTimeSlot: z.string().optional().nullable(),
 });
+
+function trackingFromBookingRequest(
+  request: {
+    status: string;
+    createdAt: Date | null;
+    reviewedAt?: Date | null;
+    pickupLocationName?: string | null;
+    senderCity?: string | null;
+    senderState?: string | null;
+    senderAddress?: string | null;
+    receiverCity?: string | null;
+    receiverState?: string | null;
+    receiverAddress?: string | null;
+  },
+  shipment?: {
+    status: string;
+    bookedAt?: Date | null;
+    pickedUpAt?: Date | null;
+    deliveredAt?: Date | null;
+    senderCity?: string | null;
+    senderState?: string | null;
+    senderAddress?: string | null;
+    receiverCity?: string | null;
+    receiverState?: string | null;
+    receiverAddress?: string | null;
+    bookingNumber?: string | null;
+    awbNumber?: string | null;
+  } | null,
+) {
+  return buildCustomerTracking(
+    {
+      status: request.status,
+      createdAt: request.createdAt ?? new Date(),
+      reviewedAt: request.reviewedAt,
+      pickupLocationName: request.pickupLocationName,
+      senderCity: request.senderCity,
+      senderState: request.senderState,
+      senderAddress: request.senderAddress,
+      receiverCity: request.receiverCity,
+      receiverState: request.receiverState,
+      receiverAddress: request.receiverAddress,
+    },
+    shipment
+      ? {
+          status: shipment.status,
+          bookedAt: shipment.bookedAt,
+          pickedUpAt: shipment.pickedUpAt,
+          deliveredAt: shipment.deliveredAt,
+          senderCity: shipment.senderCity,
+          senderState: shipment.senderState,
+          senderAddress: shipment.senderAddress,
+          receiverCity: shipment.receiverCity,
+          receiverState: shipment.receiverState,
+          receiverAddress: shipment.receiverAddress,
+          bookingNumber: shipment.bookingNumber,
+          awbNumber: shipment.awbNumber,
+        }
+      : null,
+  );
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -249,10 +401,33 @@ export async function registerRoutes(
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB
   });
 
+  async function isCustomerAuthenticated(req: any, res: Response, next: NextFunction) {
+    const token = req.headers["x-customer-token"] as string;
+    if (!token) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const session = await storage.getCustomerSessionByToken(token);
+    if (!session) {
+      return res.status(401).json({ message: "Invalid or expired session" });
+    }
+    const customerUser = await storage.getCustomerUser(session.customerUserId);
+    if (!customerUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    req.customerUser = customerUser;
+    next();
+  }
+
+  async function isOfficeOrCustomerAuthenticated(req: any, res: Response, next: NextFunction) {
+    const customerToken = req.headers["x-customer-token"] as string;
+    if (customerToken) {
+      return isCustomerAuthenticated(req, res, next);
+    }
+    return isAuthenticated(req, res, next);
+  }
+
   // Local Storage Routes
-  app.post("/api/uploads/request-url", isAuthenticated, (req, res) => {
-    // Return a dummy URL and path to keep frontend happy
-    // The frontend will then POST/PUT to this "URL"
+  app.post("/api/uploads/request-url", isOfficeOrCustomerAuthenticated, (req, res) => {
     const id = randomUUID();
     res.json({
       uploadURL: `/api/uploads/direct/${id}`,
@@ -260,13 +435,33 @@ export async function registerRoutes(
     });
   });
 
-  app.put("/api/uploads/direct/:id", isAuthenticated, upload.single("file"), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-    const publicUrl = `/objects/${req.file.filename}`;
-    res.json({ publicUrl, objectPath: publicUrl });
-  });
+  app.put(
+    "/api/uploads/direct/:id",
+    isOfficeOrCustomerAuthenticated,
+    express.raw({ type: () => true, limit: "10mb" }),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!/^[0-9a-f-]{36}$/i.test(id)) {
+          return res.status(400).json({ error: "Invalid upload id" });
+        }
+        const data = req.body;
+        if (!Buffer.isBuffer(data) || data.length === 0) {
+          return res.status(400).json({ error: "No file uploaded" });
+        }
+        const contentType = (req.headers["content-type"] as string) || "application/octet-stream";
+        const ext = uploadExtensionForContentType(contentType);
+        const filename = `${id}${ext}`;
+        const filePath = path.join(uploadDir, filename);
+        await fs.promises.writeFile(filePath, data);
+        const objectPath = `/objects/${filename}`;
+        res.json({ publicUrl: objectPath, objectPath });
+      } catch (error) {
+        console.error("Error saving upload:", error);
+        res.status(500).json({ error: "Failed to save upload" });
+      }
+    },
+  );
 
   storage.backfillPublicSlugs().catch((err) =>
     console.error("Failed to backfill public slugs:", err)
@@ -369,6 +564,388 @@ export async function registerRoutes(
       }
       console.error("Error updating office:", error);
       res.status(500).json({ message: "Failed to update office" });
+    }
+  });
+
+  // WhatsApp Business API settings
+  app.get("/api/whatsapp/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const settings = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      res.json(sanitizeWhatsAppSettingsForClient(settings));
+    } catch (error) {
+      console.error("Error fetching WhatsApp settings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp settings" });
+    }
+  });
+
+  app.patch("/api/whatsapp/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const existing = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      const incoming = whatsAppSettingsSchema.partial().parse(req.body);
+
+      const merged = mergeWhatsAppSettings({
+        ...existing,
+        ...incoming,
+        accessToken: resolveAccessTokenForSave(incoming.accessToken, existing.accessToken),
+        automation: {
+          ...existing.automation,
+          ...(incoming.automation || {}),
+        },
+      });
+
+      let toSave = merged;
+      try {
+        const resolved = await resolveWhatsAppApiConfig(merged);
+        if (resolved?.wabaId) {
+          toSave = { ...merged, wabaId: resolved.wabaId };
+        }
+      } catch {
+        // WABA auto-detect is best-effort on save; test/sync will retry.
+      }
+
+      const updated = await storage.updateOffice(office.id, {
+        whatsappSettings: toSave,
+      } as Parameters<typeof storage.updateOffice>[1]);
+
+      if (!updated) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const saved = mergeWhatsAppSettings(
+        (updated as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      res.json(sanitizeWhatsAppSettingsForClient(saved));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating WhatsApp settings:", error);
+      res.status(500).json({ message: "Failed to update WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/whatsapp/templates/sync", isAuthenticated, async (req: any, res) => {
+    const userId = req.user.id;
+    let phoneNumberId: string | undefined;
+    let wabaId: string | undefined;
+
+    try {
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const saved = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      const body = z
+        .object({
+          phoneNumberId: z.string().optional(),
+          wabaId: z.string().optional(),
+          accessToken: z.string().optional(),
+        })
+        .parse(req.body || {});
+
+      const settings = mergeWhatsAppSettings({
+        ...saved,
+        phoneNumberId: body.phoneNumberId?.trim() || saved.phoneNumberId,
+        wabaId: body.wabaId?.trim() || saved.wabaId,
+        accessToken: resolveAccessTokenForSave(body.accessToken, saved.accessToken),
+      });
+      phoneNumberId = settings.phoneNumberId;
+
+      if (!configFromSettings(settings)) {
+        return res.status(400).json({
+          message: "Configure Phone Number ID and Access Token before syncing templates.",
+          step: "validate_settings",
+        });
+      }
+
+      console.info("[WhatsApp sync] Resolving WABA from phone number", {
+        officeId: office.id,
+        phoneNumberId: settings.phoneNumberId,
+      });
+
+      const config = await resolveWhatsAppApiConfig(settings);
+      if (!config) {
+        return res.status(400).json({
+          message: "Configure Phone Number ID and Access Token before syncing templates.",
+          step: "resolve_config",
+        });
+      }
+      wabaId = config.wabaId;
+
+      console.info("[WhatsApp sync] Fetching templates", {
+        officeId: office.id,
+        phoneNumberId: config.phoneNumberId,
+        wabaId: config.wabaId,
+      });
+
+      const templates = await fetchWhatsAppTemplates(config);
+      const updatedSettings = {
+        ...settings,
+        wabaId: config.wabaId,
+        templates,
+        lastSyncedAt: new Date().toISOString(),
+      };
+
+      await storage.updateOffice(office.id, {
+        whatsappSettings: updatedSettings,
+      } as Parameters<typeof storage.updateOffice>[1]);
+
+      console.info("[WhatsApp sync] Success", {
+        officeId: office.id,
+        wabaId: config.wabaId,
+        templateCount: templates.length,
+      });
+
+      res.json({
+        templates,
+        wabaId: config.wabaId,
+        lastSyncedAt: updatedSettings.lastSyncedAt,
+      });
+    } catch (error) {
+      const meta = formatMetaGraphError(error);
+      console.error("[WhatsApp sync] Failed", {
+        userId,
+        phoneNumberId,
+        wabaId,
+        step: meta.requestPath?.includes("message_templates")
+          ? "fetch_templates"
+          : meta.requestPath?.includes("debug_token") || meta.requestPath?.includes("resolve_waba")
+            ? "resolve_waba"
+            : "unknown",
+        message: meta.message,
+        metaType: meta.type,
+        metaCode: meta.code,
+        metaSubcode: meta.error_subcode,
+        fbtraceId: meta.fbtrace_id,
+        httpStatus: meta.httpStatus,
+        requestPath: meta.requestPath,
+        raw: meta.raw,
+      });
+      res.status(500).json({
+        message: meta.message,
+        step: meta.requestPath?.includes("message_templates")
+          ? "fetch_templates"
+          : meta.requestPath?.includes("debug_token") || meta.requestPath?.includes("resolve_waba")
+            ? "resolve_waba"
+            : "sync",
+        details: {
+          type: meta.type,
+          code: meta.code,
+          error_subcode: meta.error_subcode,
+          fbtrace_id: meta.fbtrace_id,
+          httpStatus: meta.httpStatus,
+          requestPath: meta.requestPath,
+          phoneNumberId,
+          wabaId,
+        },
+      });
+    }
+  });
+
+  app.post("/api/whatsapp/connection/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const saved = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      const body = z
+        .object({
+          phoneNumberId: z.string().optional(),
+          wabaId: z.string().optional(),
+          accessToken: z.string().optional(),
+        })
+        .parse(req.body || {});
+
+      const settings = mergeWhatsAppSettings({
+        ...saved,
+        phoneNumberId: body.phoneNumberId?.trim() || saved.phoneNumberId,
+        wabaId: body.wabaId?.trim() || saved.wabaId,
+        accessToken: resolveAccessTokenForSave(body.accessToken, saved.accessToken),
+      });
+
+      const baseConfig = configFromSettings(settings);
+      if (!baseConfig) {
+        return res.status(400).json({
+          message: "Configure Phone Number ID and Access Token before testing.",
+        });
+      }
+
+      const result = await testWhatsAppConnection(baseConfig, settings);
+
+      if (result.wabaId) {
+        await storage.updateOffice(office.id, {
+          whatsappSettings: { ...settings, wabaId: result.wabaId },
+        } as Parameters<typeof storage.updateOffice>[1]);
+      }
+
+      res.json(result);
+    } catch (error) {
+      const meta = formatMetaGraphError(error);
+      console.error("[WhatsApp connection test] Failed", {
+        userId: req.user.id,
+        message: meta.message,
+        metaType: meta.type,
+        metaCode: meta.code,
+        fbtraceId: meta.fbtrace_id,
+        requestPath: meta.requestPath,
+        raw: meta.raw,
+      });
+      res.status(500).json({
+        message: meta.message,
+        step: "connection_test",
+        details: {
+          type: meta.type,
+          code: meta.code,
+          error_subcode: meta.error_subcode,
+          fbtrace_id: meta.fbtrace_id,
+          requestPath: meta.requestPath,
+        },
+      });
+    }
+  });
+
+  app.post("/api/whatsapp/messages/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const body = z
+        .object({
+          to: z.string().min(10, "Valid phone number required"),
+          messageType: z.enum(["template", "text"]).default("template"),
+          templateName: z.string().optional(),
+          languageCode: z.string().default("en"),
+          text: z.string().optional(),
+          bodyParams: z.array(z.string()).optional(),
+          headerParams: z.array(z.string()).optional(),
+          buttonParams: z.array(z.string()).optional(),
+        })
+        .superRefine((data, ctx) => {
+          if (data.messageType === "template" && !data.templateName?.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Template name is required for template messages",
+              path: ["templateName"],
+            });
+          }
+          if (data.messageType === "text" && !data.text?.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Message text is required for custom text messages",
+              path: ["text"],
+            });
+          }
+        })
+        .parse(req.body);
+
+      const settings = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      const config = configFromSettings(settings);
+      if (!config) {
+        return res.status(400).json({ message: "WhatsApp is not fully configured." });
+      }
+
+      if (body.messageType === "template") {
+        const templateMeta = getTemplateDefinition(
+          settings.templates,
+          body.templateName!.trim(),
+          body.languageCode,
+        );
+        const expectedCounts = {
+          bodyParamCount: templateMeta?.bodyParamCount ?? body.bodyParams?.length ?? 0,
+          headerParamCount: templateMeta?.headerParamCount ?? body.headerParams?.length ?? 0,
+          buttonParamCount: templateMeta?.buttonParamCount ?? body.buttonParams?.length ?? 0,
+        };
+        const paramValues = {
+          bodyParams: body.bodyParams || [],
+          headerParams: body.headerParams || [],
+          buttonParams: body.buttonParams || [],
+        };
+        if (!templateParamsFilled(expectedCounts, paramValues)) {
+          const parts: string[] = [];
+          if (expectedCounts.headerParamCount > 0) {
+            parts.push(`${expectedCounts.headerParamCount} header`);
+          }
+          if (expectedCounts.bodyParamCount > 0) {
+            parts.push(`${expectedCounts.bodyParamCount} body`);
+          }
+          if (expectedCounts.buttonParamCount > 0) {
+            parts.push(`${expectedCounts.buttonParamCount} button`);
+          }
+          return res.status(400).json({
+            message: `Template requires ${parts.join(", ")} parameter(s). Fill all parameter fields before sending.`,
+          });
+        }
+      }
+
+      const components =
+        body.messageType === "template"
+          ? buildWhatsAppTemplateComponents({
+              bodyParams: body.bodyParams,
+              headerParams: body.headerParams,
+              buttonParams: body.buttonParams,
+            })
+          : undefined;
+
+      const result =
+        body.messageType === "text"
+          ? await sendWhatsAppTextMessage(config, {
+              to: body.to,
+              text: body.text!.trim(),
+            })
+          : await sendWhatsAppTemplateMessage(config, {
+              to: body.to,
+              templateName: body.templateName!.trim(),
+              languageCode: body.languageCode,
+              components,
+            });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const meta = formatMetaGraphError(error);
+      console.error("[WhatsApp test send] Failed", {
+        message: meta.message,
+        metaCode: meta.code,
+        fbtraceId: meta.fbtrace_id,
+        raw: meta.raw,
+      });
+      res.status(500).json({
+        message: meta.message,
+        details: {
+          code: meta.code,
+          fbtrace_id: meta.fbtrace_id,
+        },
+      });
     }
   });
 
@@ -1583,7 +2160,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Office not found" });
       }
 
-      const validated = bookingRequestCreateSchema.parse(req.body);
+      const validated = parseBookingRequestBody(req.body);
       const branchId = await resolveBranchIdForBooking(office.id, validated);
 
       const request = await storage.createBookingRequest({
@@ -1592,6 +2169,11 @@ export async function registerRoutes(
         branchId,
         status: "pending",
       });
+
+      triggerBookingRequestWhatsApp(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+        request,
+      );
 
       res.json({
         success: true,
@@ -1623,6 +2205,19 @@ export async function registerRoutes(
 
       const shipmentDirect = await storage.getShipmentByOfficeAndTracking(office.id, raw);
       if (shipmentDirect) {
+        const tracking = trackingFromBookingRequest(
+          {
+            status: "converted",
+            createdAt: shipmentDirect.bookedAt ?? shipmentDirect.createdAt,
+            senderCity: shipmentDirect.senderCity,
+            senderState: shipmentDirect.senderState,
+            senderAddress: shipmentDirect.senderAddress,
+            receiverCity: shipmentDirect.receiverCity,
+            receiverState: shipmentDirect.receiverState,
+            receiverAddress: shipmentDirect.receiverAddress,
+          },
+          shipmentDirect,
+        );
         return res.json({
           kind: "shipment" as const,
           bookingNumber: shipmentDirect.bookingNumber,
@@ -1635,6 +2230,7 @@ export async function registerRoutes(
           bookedAt: shipmentDirect.bookedAt,
           pickedUpAt: shipmentDirect.pickedUpAt,
           deliveredAt: shipmentDirect.deliveredAt,
+          tracking,
         });
       }
 
@@ -1646,6 +2242,7 @@ export async function registerRoutes(
       if (br.convertedShipmentId) {
         const s = await storage.getShipment(br.convertedShipmentId);
         if (s) {
+          const tracking = trackingFromBookingRequest(br, s);
           return res.json({
             kind: "shipment" as const,
             bookingNumber: s.bookingNumber,
@@ -1658,10 +2255,12 @@ export async function registerRoutes(
             bookedAt: s.bookedAt,
             pickedUpAt: s.pickedUpAt,
             deliveredAt: s.deliveredAt,
+            tracking,
           });
         }
       }
 
+      const tracking = trackingFromBookingRequest(br, null);
       return res.json({
         kind: "booking_request" as const,
         requestNumber: br.requestNumber,
@@ -1671,6 +2270,7 @@ export async function registerRoutes(
         createdAt: br.createdAt,
         message:
           "Your request is with the office. When it becomes a shipment, full tracking will appear here.",
+        tracking,
       });
     } catch (error) {
       console.error("Error in office track:", error);
@@ -1697,7 +2297,8 @@ export async function registerRoutes(
       if (request.convertedShipmentId) {
         shipment = await storage.getShipment(request.convertedShipmentId);
       }
-      res.json({ request, shipment });
+      const tracking = trackingFromBookingRequest(request, shipment);
+      res.json({ request, shipment, tracking });
     } catch (error) {
       console.error("Error fetching public booking request:", error);
       res.status(500).json({ message: "Failed to load booking" });
@@ -1735,24 +2336,6 @@ export async function registerRoutes(
     defaultPickupLat: z.string().optional().nullable(),
     defaultPickupLng: z.string().optional().nullable(),
   });
-
-  // Middleware to authenticate customer portal users
-  async function isCustomerAuthenticated(req: any, res: Response, next: NextFunction) {
-    const token = req.headers["x-customer-token"] as string;
-    if (!token) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    const session = await storage.getCustomerSessionByToken(token);
-    if (!session) {
-      return res.status(401).json({ message: "Invalid or expired session" });
-    }
-    const customerUser = await storage.getCustomerUser(session.customerUserId);
-    if (!customerUser) {
-      return res.status(401).json({ message: "User not found" });
-    }
-    req.customerUser = customerUser;
-    next();
-  }
 
   // Customer Register
   app.post("/api/public/office/:slug/customer/register", async (req, res) => {
@@ -1960,7 +2543,19 @@ export async function registerRoutes(
   app.get("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
     try {
       const requests = await storage.getBookingRequestsByCustomerUser(req.customerUser.id);
-      res.json(requests);
+      const enriched = await Promise.all(
+        requests.map(async (request) => {
+          let shipment = null;
+          if (request.convertedShipmentId) {
+            shipment = await storage.getShipment(request.convertedShipmentId);
+          }
+          return {
+            ...request,
+            tracking: buildCustomerTrackingSummary(request, shipment),
+          };
+        }),
+      );
+      res.json(enriched);
     } catch (error) {
       console.error("Error fetching customer bookings:", error);
       res.status(500).json({ message: "Failed to fetch bookings" });
@@ -1981,7 +2576,8 @@ export async function registerRoutes(
         shipment = await storage.getShipment(request.convertedShipmentId);
       }
 
-      res.json({ request, shipment });
+      const tracking = trackingFromBookingRequest(request, shipment);
+      res.json({ request, shipment, tracking });
     } catch (error) {
       console.error("Error fetching booking detail:", error);
       res.status(500).json({ message: "Failed to fetch booking" });
@@ -1991,7 +2587,7 @@ export async function registerRoutes(
   // Customer submits a new booking (authenticated)
   app.post("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      const validated = bookingRequestCreateSchema.parse(req.body);
+      const validated = parseBookingRequestBody(req.body);
       const pickupData = {
         pickupLat: req.body.pickupLat || null,
         pickupLng: req.body.pickupLng || null,
@@ -2013,6 +2609,18 @@ export async function registerRoutes(
         customerUserId: req.customerUser.id,
         status: "pending",
       });
+
+      const [office] = await db
+        .select()
+        .from(offices)
+        .where(eq(offices.id, req.customerUser.officeId))
+        .limit(1);
+      if (office) {
+        triggerBookingRequestWhatsApp(
+          (office as { whatsappSettings?: unknown }).whatsappSettings,
+          request,
+        );
+      }
 
       res.json({
         success: true,

@@ -296,3 +296,23 @@
     inset: -1px;
   }
 }
+
+/* Leaflet panes use z-index 400–800; contain them so sticky headers stay on top. */
+.leaflet-map-contained {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.leaflet-map-contained .leaflet-container,
+.leaflet-map-contained .leaflet-pane,
+.leaflet-map-contained .leaflet-top,
+.leaflet-map-contained .leaflet-bottom,
+.leaflet-map-contained .leaflet-control {
+  z-index: 1 !important;
+}
+
+.leaflet-map-contained .leaflet-marker-pane {
+  z-index: 2 !important;
+}

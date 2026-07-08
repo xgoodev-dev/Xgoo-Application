@@ -40,6 +40,37 @@ export interface XgooDocumentPackageLine {
   count: number;
   description: string;
   amount: number;
+  weight?: number;
+  dimensions?: string;
+  content?: string;
+  declaredValue?: number;
+}
+
+/** A single package/parcel captured at booking time. */
+export interface ShipmentPackage {
+  weight?: string | number | null;
+  length?: string | number | null;
+  width?: string | number | null;
+  height?: string | number | null;
+  numberOfPieces?: string | number | null;
+  contentDescription?: string | null;
+  declaredValue?: string | number | null;
+}
+
+export const shipmentPackageSchema = z.object({
+  weight: z.union([z.string(), z.number()]).optional().nullable(),
+  length: z.union([z.string(), z.number()]).optional().nullable(),
+  width: z.union([z.string(), z.number()]).optional().nullable(),
+  height: z.union([z.string(), z.number()]).optional().nullable(),
+  numberOfPieces: z.union([z.string(), z.number()]).optional().nullable(),
+  contentDescription: z.string().optional().nullable(),
+  declaredValue: z.union([z.string(), z.number()]).optional().nullable(),
+});
+
+export function parseShipmentPackages(raw: unknown): ShipmentPackage[] {
+  if (!Array.isArray(raw)) return [];
+  const parsed = z.array(shipmentPackageSchema).safeParse(raw);
+  return parsed.success ? parsed.data : [];
 }
 
 export interface XgooDocumentData {
@@ -53,6 +84,7 @@ export interface XgooDocumentData {
   courierScope: "domestic" | "international";
   packageType: "dox" | "non_dox";
   packageLine: XgooDocumentPackageLine;
+  packageLines: XgooDocumentPackageLine[];
   subtotal: number;
   gstRate: number;
   gstAmount: number;

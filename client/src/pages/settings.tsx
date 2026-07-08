@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
   ExternalLink,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,8 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Office } from "@shared/schema";
 import { BranchManagement } from "@/components/branches/BranchManagement";
 import { DemoDataSettings } from "@/components/settings/DemoDataSettings";
+import { WhatsAppBusinessSync } from "@/components/settings/WhatsAppBusinessSync";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const officeSchema = z.object({
   name: z.string().min(1, "Office name is required"),
@@ -91,7 +94,7 @@ export default function SettingsPage() {
       return apiRequest("POST", "/api/office", data);
     },
     onSuccess: () => {
-      toast({ title: "Settings Saved", description: "Office settings have been updated." });
+      toast({ title: "Settings Saved", description: "Organization settings have been updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/office"] });
     },
     onError: (error: Error) => {
@@ -110,10 +113,25 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Organization Settings</h1>
-        <p className="text-muted-foreground">Manage your XGoo organization profile and branches</p>
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <p className="text-muted-foreground">
+          Manage your organization profile, branches, and WhatsApp Business automation
+        </p>
       </div>
 
+      <Tabs defaultValue="general" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="general" className="gap-2">
+            <Building2 className="h-4 w-4" />
+            General
+          </TabsTrigger>
+          <TabsTrigger value="whatsapp" className="gap-2">
+            <MessageCircle className="h-4 w-4" />
+            WhatsApp Business
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="general" className="space-y-6 mt-0">
       <BookingPortalLink />
 
       {isLoading ? (
@@ -335,6 +353,12 @@ export default function SettingsPage() {
 
         </>
       )}
+        </TabsContent>
+
+        <TabsContent value="whatsapp" className="mt-0">
+          <WhatsAppBusinessSync />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

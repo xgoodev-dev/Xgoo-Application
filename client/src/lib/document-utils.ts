@@ -2,8 +2,10 @@ import type { Office, Quotation, ShipmentWithRelations } from "@shared/schema";
 import {
   DEFAULT_DOCUMENT_SETTINGS,
   mergeDocumentSettings,
+  parseShipmentPackages,
   type DocumentSettings,
   type XgooDocumentData,
+  type XgooDocumentPackageLine,
 } from "@shared/document-template";
 
 export function formatDocCurrency(amount: string | number) {
@@ -64,6 +66,53 @@ export function shipmentToDocument(
       ? `${shipment.length}x${shipment.width}x${shipment.height} CMS`
       : shipment.contentDescription || "";
 
+  const toN = (v: unknown) => {
+    const n = parseFloat(String(v ?? ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const rawPackages = parseShipmentPackages(
+    (shipment as ShipmentWithRelations & { packages?: unknown }).packages,
+  );
+
+  const packageLines: XgooDocumentPackageLine[] =
+    rawPackages.length > 0
+      ? rawPackages.map((p) => {
+          const w = toN(p.weight);
+          const count = Math.max(1, parseInt(String(p.numberOfPieces ?? "1"), 10) || 1);
+          const rowDims =
+            p.length && p.width && p.height
+              ? `${p.length}x${p.width}x${p.height} CMS`
+              : "";
+          const content = (p.contentDescription || "").trim();
+          const descParts = [content, rowDims].filter(Boolean);
+          return {
+            count,
+            description: descParts.join(" · ") || `${w}Kg`,
+            amount: subtotal,
+            weight: w,
+            dimensions: rowDims,
+            content,
+            declaredValue: toN(p.declaredValue),
+          };
+        })
+      : [
+          {
+            count: pieces,
+            description: dims
+              ? `${pieces} Parcel${pieces > 1 ? "s" : ""} · ${weight}KgX${ratePerKg} · ${dims}`
+              : `${weight}KgX${ratePerKg}`,
+            amount: subtotal,
+            weight,
+            dimensions:
+              shipment.length && shipment.width && shipment.height
+                ? `${shipment.length}x${shipment.width}x${shipment.height} CMS`
+                : "",
+            content: (shipment.contentDescription || "").trim(),
+            declaredValue: toN(shipment.declaredValue),
+          },
+        ];
+
   return {
     kind: docKind,
     title: docKind === "bill" ? settings.billTitle : settings.invoiceTitle,
@@ -74,13 +123,8 @@ export function shipmentToDocument(
     consignee: partyFromShipmentReceiver(shipment),
     courierScope: settings.defaultCourierScope,
     packageType: settings.defaultPackageType,
-    packageLine: {
-      count: pieces,
-      description: dims
-        ? `${pieces} Parcel${pieces > 1 ? "s" : ""} · ${weight}KgX${ratePerKg} · ${dims}`
-        : `${weight}KgX${ratePerKg}`,
-      amount: subtotal,
-    },
+    packageLine: packageLines[0],
+    packageLines,
     subtotal,
     gstRate: settings.gstRate,
     gstAmount,
@@ -105,6 +149,16 @@ export function quotationToDocument(
   const senderLoc = [quotation.senderCity, quotation.senderState, quotation.senderPincode].filter(Boolean).join(" - ");
   const receiverLoc = [quotation.receiverCity, quotation.receiverState, quotation.receiverPincode].filter(Boolean).join(" - ");
 
+  const quotationPackageLine: XgooDocumentPackageLine = {
+    count: pieces,
+    description: quotation.contentDescription || `${weight}KgX${ratePerKg}`,
+    amount: subtotal,
+    weight,
+    dimensions: "",
+    content: (quotation.contentDescription || "").trim(),
+    declaredValue: parseFloat(quotation.declaredValue || "0") || 0,
+  };
+
   return {
     kind: "quotation",
     title: settings.quotationTitle,
@@ -121,11 +175,8 @@ export function quotationToDocument(
     },
     courierScope: quotation.serviceType === "air" ? "international" : settings.defaultCourierScope,
     packageType: settings.defaultPackageType,
-    packageLine: {
-      count: pieces,
-      description: quotation.contentDescription || `${weight}KgX${ratePerKg}`,
-      amount: subtotal,
-    },
+    packageLine: quotationPackageLine,
+    packageLines: [quotationPackageLine],
     subtotal,
     gstRate: settings.gstRate,
     gstAmount,

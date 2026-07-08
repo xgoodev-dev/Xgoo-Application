@@ -49,6 +49,17 @@ const SAMPLE_DOCUMENT: XgooDocumentData = {
   courierScope: "domestic",
   packageType: "non_dox",
   packageLine: { count: 2, description: "24KgX100", amount: 2400 },
+  packageLines: [
+    {
+      count: 2,
+      description: "Clothes · 45x30x54 CMS",
+      amount: 2400,
+      weight: 24,
+      dimensions: "45x30x54 CMS",
+      content: "Clothes",
+      declaredValue: 5000,
+    },
+  ],
   subtotal: 2400,
   gstRate: 18,
   gstAmount: 432,

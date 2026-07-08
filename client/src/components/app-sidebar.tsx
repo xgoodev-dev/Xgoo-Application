@@ -46,7 +46,7 @@ const mainNavItems = [
   { title: "Reports", url: "/reports", icon: FileText },
 ];
 
-const settingsNavItems = [{ title: "Office Settings", url: "/settings", icon: Settings }];
+const settingsNavItems = [{ title: "Settings", url: "/settings", icon: Settings }];
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();

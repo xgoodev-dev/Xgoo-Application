@@ -88,7 +88,7 @@ export function useUpload(options: UseUploadOptions = {}) {
    * Upload a file directly to the presigned URL.
    */
   const uploadToPresignedUrl = useCallback(
-    async (file: File, uploadURL: string): Promise<void> => {
+    async (file: File, uploadURL: string): Promise<{ objectPath: string } | null> => {
       const response = await fetch(uploadURL, {
         method: "PUT",
         body: file,
@@ -100,6 +100,9 @@ export function useUpload(options: UseUploadOptions = {}) {
       if (!response.ok) {
         throw new Error("Failed to upload file to storage");
       }
+
+      const data = await response.json().catch(() => ({}));
+      return data.objectPath ? { objectPath: data.objectPath } : null;
     },
     []
   );
@@ -123,11 +126,12 @@ export function useUpload(options: UseUploadOptions = {}) {
 
         // Step 2: Upload file directly to presigned URL
         setProgress(30);
-        await uploadToPresignedUrl(file, uploadResponse.uploadURL);
+      const putRes = await uploadToPresignedUrl(file, uploadResponse.uploadURL);
+      const finalPath = putRes?.objectPath || uploadResponse.objectPath;
 
-        setProgress(100);
-        options.onSuccess?.(uploadResponse);
-        return uploadResponse;
+      setProgress(100);
+      options.onSuccess?.({ ...uploadResponse, objectPath: finalPath });
+      return { ...uploadResponse, objectPath: finalPath };
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Upload failed");
         setError(error);

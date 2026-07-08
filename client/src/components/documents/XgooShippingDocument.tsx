@@ -121,31 +121,75 @@ export function XgooShippingDocument({ office, settings, document }: XgooShippin
         </table>
 
         {/* Package details */}
-        <table className="w-full border border-black mb-3 text-sm">
-          <thead>
-            <tr className="bg-gray-100">
-              <th colSpan={3} className="border-b border-black p-2 text-left font-semibold">Package Details</th>
-            </tr>
-            <tr>
-              <th className="border-r border-black p-2 text-left font-medium w-1/4">No.of.Packages</th>
-              <th className="border-r border-black p-2 text-left font-medium">Dimensions (CMS)/Quantity Amount</th>
-              <th className="p-2 text-right font-medium w-28">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="border-r border-t border-black p-2 align-top">
-                {document.packageLine.count} Parcel{document.packageLine.count > 1 ? "s" : ""}
-              </td>
-              <td className="border-r border-t border-black p-2 align-top text-xs">
-                {document.packageLine.description}
-              </td>
-              <td className="border-t border-black p-2 text-right font-semibold align-top">
-                {formatDocCurrency(document.packageLine.amount)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        {(() => {
+          const lines = document.packageLines?.length ? document.packageLines : [document.packageLine];
+          const totalPkgWeight = lines.reduce((s, l) => s + (l.weight || 0), 0);
+          const totalPieces = lines.reduce((s, l) => s + (l.count || 1), 0);
+          const totalDeclared = lines.reduce((s, l) => s + (l.declaredValue || 0), 0);
+          const showDeclared = lines.some((l) => (l.declaredValue || 0) > 0);
+          return (
+            <table className="w-full border border-black mb-3 text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th colSpan={showDeclared ? 5 : 4} className="border-b border-black p-2 text-left font-semibold">
+                    Package Details
+                  </th>
+                </tr>
+                <tr>
+                  <th className="border-r border-black p-2 text-left font-medium w-8">#</th>
+                  <th className="border-r border-black p-2 text-left font-medium">Contents</th>
+                  <th className="border-r border-black p-2 text-left font-medium w-40">Dimensions (CMS)</th>
+                  <th className={`p-2 text-right font-medium w-24 ${showDeclared ? "border-r border-black" : ""}`}>
+                    Weight (Kg)
+                  </th>
+                  {showDeclared && (
+                    <th className="p-2 text-right font-medium w-28">Declared Value</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, i) => (
+                  <tr key={i}>
+                    <td className="border-r border-t border-black p-2 align-top">{i + 1}</td>
+                    <td className="border-r border-t border-black p-2 align-top text-xs">
+                      {line.content || line.description || "—"}
+                      {line.count > 1 ? ` (${line.count} pcs)` : ""}
+                    </td>
+                    <td className="border-r border-t border-black p-2 align-top text-xs">
+                      {line.dimensions || "—"}
+                    </td>
+                    <td
+                      className={`border-t border-black p-2 text-right align-top ${showDeclared ? "border-r" : ""}`}
+                    >
+                      {line.weight ? line.weight.toFixed(2) : "—"}
+                    </td>
+                    {showDeclared && (
+                      <td className="border-t border-black p-2 text-right align-top">
+                        {line.declaredValue ? formatDocCurrency(line.declaredValue) : "—"}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {lines.length > 1 && (
+                  <tr className="bg-gray-50 font-semibold">
+                    <td className="border-r border-t border-black p-2" colSpan={2}>
+                      Total ({totalPieces} pc{totalPieces > 1 ? "s" : ""})
+                    </td>
+                    <td className="border-r border-t border-black p-2 text-right">—</td>
+                    <td className={`border-t border-black p-2 text-right ${showDeclared ? "border-r" : ""}`}>
+                      {totalPkgWeight.toFixed(2)}
+                    </td>
+                    {showDeclared && (
+                      <td className="border-t border-black p-2 text-right">
+                        {formatDocCurrency(totalDeclared)}
+                      </td>
+                    )}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          );
+        })()}
 
         {/* Terms */}
         <div className="border border-black p-3 mb-3 text-xs text-gray-800">

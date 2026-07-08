@@ -21,6 +21,7 @@ export const offices = pgTable("offices", {
   logoUrl: varchar("logo_url", { length: 500 }),
   publicSlug: varchar("public_slug", { length: 50 }).unique(),
   documentSettings: jsonb("document_settings"),
+  whatsappSettings: jsonb("whatsapp_settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -257,6 +258,7 @@ export const shipments = pgTable("shipments", {
   contentDescription: text("content_description"),
   declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
   packagePhotoUrls: text("package_photo_urls").array(),
+  packages: jsonb("packages"),
   
   // Service details
   serviceType: varchar("service_type", { length: 20 }).notNull().default("surface"), // air, surface

@@ -428,6 +428,15 @@ export default function NewBookingPage() {
     key: PackageColumnKey,
     testPrefix: string,
   ) => {
+    const setPrimary = (
+      field: "weight" | "numberOfPieces" | "length" | "width" | "height" | "contentDescription" | "declaredValue",
+      value: string,
+      validate = false,
+    ) => {
+      form.setValue(field, value, { shouldDirty: true, shouldValidate: validate });
+      setTimeout(updateCalculatedAmount, 30);
+    };
+
     if (key === "weight") {
       return (
         <Input
@@ -435,7 +444,7 @@ export default function NewBookingPage() {
           step="0.1"
           value={pkg.weight}
           onChange={(e) => {
-            if (pkg.isPrimary) form.setValue("weight", e.target.value, { shouldValidate: true });
+            if (pkg.isPrimary) setPrimary("weight", e.target.value, true);
             else updateExtraPackage(pkg.id, "weight", e.target.value);
           }}
           data-testid={`${testPrefix}-weight-${index}`}
@@ -449,7 +458,7 @@ export default function NewBookingPage() {
           min="1"
           value={pkg.numberOfPieces}
           onChange={(e) => {
-            if (pkg.isPrimary) form.setValue("numberOfPieces", e.target.value, { shouldValidate: true });
+            if (pkg.isPrimary) setPrimary("numberOfPieces", e.target.value, true);
             else updateExtraPackage(pkg.id, "numberOfPieces", e.target.value);
           }}
           data-testid={`${testPrefix}-pieces-${index}`}
@@ -461,9 +470,7 @@ export default function NewBookingPage() {
         <Input
           type="number"
           value={pkg.length}
-          onChange={(e) =>
-            pkg.isPrimary ? form.setValue("length", e.target.value) : updateExtraPackage(pkg.id, "length", e.target.value)
-          }
+          onChange={(e) => (pkg.isPrimary ? setPrimary("length", e.target.value) : updateExtraPackage(pkg.id, "length", e.target.value))}
           data-testid={`${testPrefix}-length-${index}`}
         />
       );
@@ -473,9 +480,7 @@ export default function NewBookingPage() {
         <Input
           type="number"
           value={pkg.width}
-          onChange={(e) =>
-            pkg.isPrimary ? form.setValue("width", e.target.value) : updateExtraPackage(pkg.id, "width", e.target.value)
-          }
+          onChange={(e) => (pkg.isPrimary ? setPrimary("width", e.target.value) : updateExtraPackage(pkg.id, "width", e.target.value))}
           data-testid={`${testPrefix}-width-${index}`}
         />
       );
@@ -485,9 +490,7 @@ export default function NewBookingPage() {
         <Input
           type="number"
           value={pkg.height}
-          onChange={(e) =>
-            pkg.isPrimary ? form.setValue("height", e.target.value) : updateExtraPackage(pkg.id, "height", e.target.value)
-          }
+          onChange={(e) => (pkg.isPrimary ? setPrimary("height", e.target.value) : updateExtraPackage(pkg.id, "height", e.target.value))}
           data-testid={`${testPrefix}-height-${index}`}
         />
       );
@@ -498,7 +501,7 @@ export default function NewBookingPage() {
           value={pkg.contentDescription}
           onChange={(e) =>
             pkg.isPrimary
-              ? form.setValue("contentDescription", e.target.value)
+              ? setPrimary("contentDescription", e.target.value)
               : updateExtraPackage(pkg.id, "contentDescription", e.target.value)
           }
           data-testid={`${testPrefix}-content-${index}`}
@@ -512,7 +515,7 @@ export default function NewBookingPage() {
         value={pkg.declaredValue}
         onChange={(e) =>
           pkg.isPrimary
-            ? form.setValue("declaredValue", e.target.value)
+            ? setPrimary("declaredValue", e.target.value)
             : updateExtraPackage(pkg.id, "declaredValue", e.target.value)
         }
         data-testid={`${testPrefix}-value-${index}`}
@@ -851,12 +854,14 @@ export default function NewBookingPage() {
           contentType: file.type,
         });
         const { uploadURL, objectPath } = await urlRes.json();
-        await fetch(uploadURL, {
+        const putRes = await fetch(uploadURL, {
           method: "PUT",
           body: file,
           headers: { "Content-Type": file.type },
         });
-        newUrls.push(objectPath);
+        if (!putRes.ok) throw new Error("Failed to upload photo");
+        const putData = await putRes.json();
+        newUrls.push(putData.objectPath || objectPath);
       }
       const updated = [...packagePhotos, ...newUrls];
       setPackagePhotos(updated);
@@ -961,6 +966,15 @@ export default function NewBookingPage() {
         totalAmount: amount.toString(),
         baseAmount: amount.toString(),
         packagePhotoUrls: data.packagePhotoUrls || [],
+        packages: packageRows.map((row) => ({
+          weight: row.weight || "",
+          length: row.length || "",
+          width: row.width || "",
+          height: row.height || "",
+          numberOfPieces: row.numberOfPieces || "1",
+          contentDescription: row.contentDescription || "",
+          declaredValue: row.declaredValue || "",
+        })),
       };
       return apiRequest("POST", "/api/shipments", payload);
     },
@@ -2107,8 +2121,17 @@ export default function NewBookingPage() {
                   <FormLabel>Calculated Amount</FormLabel>
                   <div className="mt-2 text-2xl font-bold text-primary flex items-center gap-2">
                     {isPricing && <Loader2 className="h-5 w-5 animate-spin" />}
-                    Rs. {calculatePrice().toFixed(2)}
+                    Rs. {(form.watch("manualAmount") ? parseFloat(form.watch("manualAmount") || "0") || 0 : calculatePrice()).toFixed(2)}
                   </div>
+                  {calculatePrice() <= 0 && !form.watch("manualAmount") && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      {!selectedPartnerId
+                        ? "Select a courier partner to calculate the amount."
+                        : totalWeight <= 0
+                        ? "Enter package weight to calculate the amount."
+                        : "No rate configured for this partner. Set rates under Courier Partners or enter an override amount."}
+                    </p>
+                  )}
                   {priceQuote && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Tariff: Rs. {priceQuote.tariffAmount.toFixed(2)} + Margin: Rs. {priceQuote.marginTotal.toFixed(2)}
