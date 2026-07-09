@@ -17,6 +17,16 @@ function cleanEnvValue(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+export function getSupabaseProjectRef(): string | null {
+  const explicit = cleanEnvValue(process.env.SUPABASE_PROJECT_REF);
+  if (explicit) return explicit;
+  const supabaseUrl =
+    cleanEnvValue(process.env.SUPABASE_URL) || cleanEnvValue(process.env.VITE_SUPABASE_URL);
+  if (!supabaseUrl) return null;
+  const match = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/i);
+  return match?.[1] ?? null;
+}
+
 /**
  * Passwords with @, #, etc. break postgres URLs unless encoded.
  * Split on the last @ so user:password can contain @.
@@ -52,6 +62,24 @@ export function normalizePostgresUrl(raw: string): string {
   return `${protoMatch[1]}${user}:${encodedPassword}@${hostpart}`;
 }
 
+/** Supabase pooler requires username postgres.[project-ref], not plain postgres. */
+export function fixSupabasePoolerUrl(raw: string): string {
+  const normalized = normalizePostgresUrl(raw);
+  if (!normalized.includes("pooler.supabase.com")) return normalized;
+
+  const projectRef = getSupabaseProjectRef();
+  if (!projectRef) return normalized;
+
+  const match = normalized.match(/^(postgres(?:ql)?:\/\/)([^:]+):(.+)$/i);
+  if (!match) return normalized;
+
+  const [, proto, user, rest] = match;
+  if (user === "postgres") {
+    return `${proto}postgres.${projectRef}:${rest}`;
+  }
+  return normalized;
+}
+
 export function getDatabaseHost(connectionString: string): string {
   const match = connectionString.match(/@([^/?:]+)/);
   const hostWithPort = match?.[1] ?? "";
@@ -59,8 +87,12 @@ export function getDatabaseHost(connectionString: string): string {
   return host || "unknown";
 }
 
+function isValidConnectionString(url: string): boolean {
+  return /@/.test(url) && getDatabaseHost(url) !== "unknown";
+}
+
 function buildSupabasePoolerUrl(): string | null {
-  const projectRef = cleanEnvValue(process.env.SUPABASE_PROJECT_REF);
+  const projectRef = getSupabaseProjectRef();
   const password = cleanEnvValue(process.env.SUPABASE_DB_PASSWORD);
   const poolerHost = cleanEnvValue(process.env.SUPABASE_POOLER_HOST);
 
@@ -71,26 +103,44 @@ function buildSupabasePoolerUrl(): string | null {
 }
 
 function resolveDatabaseUrl(): string {
+  const poolerFromParts = buildSupabasePoolerUrl();
+  const databasePoolUrl = cleanEnvValue(process.env.DATABASE_POOL_URL);
+  const databaseUrl = cleanEnvValue(process.env.DATABASE_URL);
+  const postgresUrl = cleanEnvValue(process.env.POSTGRES_URL);
+
+  if (isServerless) {
+    const serverlessCandidates = [
+      databasePoolUrl,
+      poolerFromParts,
+      databaseUrl?.includes("pooler.supabase.com") ? databaseUrl : undefined,
+    ]
+      .filter(Boolean)
+      .map((url) => fixSupabasePoolerUrl(url as string));
+
+    for (const value of serverlessCandidates) {
+      if (isValidConnectionString(value)) return value;
+    }
+
+    throw new Error(
+      "On Vercel, set DATABASE_POOL_URL to the Supabase Transaction pooler URI (port 6543, user postgres.[project-ref]). Remove direct db.*.supabase.co URLs.",
+    );
+  }
+
   const candidates = [
-    isServerless ? cleanEnvValue(process.env.DATABASE_POOL_URL) : undefined,
-    buildSupabasePoolerUrl(),
-    cleanEnvValue(process.env.DATABASE_URL),
-    cleanEnvValue(process.env.POSTGRES_URL),
-    cleanEnvValue(process.env.DATABASE_POOL_URL),
-  ];
+    databasePoolUrl,
+    poolerFromParts,
+    databaseUrl,
+    postgresUrl,
+  ]
+    .filter(Boolean)
+    .map((url) => fixSupabasePoolerUrl(url as string));
 
   for (const value of candidates) {
-    if (value) {
-      const normalized = normalizePostgresUrl(value);
-      if (!/@/.test(normalized) || !getDatabaseHost(normalized) || getDatabaseHost(normalized) === "unknown") {
-        continue;
-      }
-      return normalized;
-    }
+    if (isValidConnectionString(value)) return value;
   }
 
   throw new Error(
-    "DATABASE_URL must be set. On Vercel with Supabase, use DATABASE_POOL_URL (pooler port 6543) or set SUPABASE_PROJECT_REF + SUPABASE_DB_PASSWORD + SUPABASE_POOLER_HOST.",
+    "DATABASE_URL must be set. On Supabase, use the pooler URI (port 6543) or set SUPABASE_PROJECT_REF + SUPABASE_DB_PASSWORD + SUPABASE_POOLER_HOST.",
   );
 }
 

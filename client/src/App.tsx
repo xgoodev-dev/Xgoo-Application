@@ -12,6 +12,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import LandingPage from "@/pages/landing";
+import AboutPage from "@/pages/about";
+import ContactPage from "@/pages/contact";
 import DashboardPage from "@/pages/dashboard";
 import NewBookingPage from "@/pages/bookings/new";
 import ShipmentsPage from "@/pages/shipments";
@@ -128,6 +130,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomeRoute} />
+      <Route path="/about" component={AboutPage} />
+      <Route path="/contact" component={ContactPage} />
       <Route path="/auth-page" component={AuthPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />

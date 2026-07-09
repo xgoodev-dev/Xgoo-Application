@@ -2226,6 +2226,76 @@ export async function registerRoutes(
   });
 
   // Public track for this office: request # (BR…), booking #, or AWB
+  async function resolvePublicTrack(officeId: string, raw: string) {
+    const shipmentDirect = await storage.getShipmentByOfficeAndTracking(officeId, raw);
+    if (shipmentDirect) {
+      const tracking = trackingFromBookingRequest(
+        {
+          status: "converted",
+          createdAt: shipmentDirect.bookedAt ?? shipmentDirect.createdAt,
+          senderCity: shipmentDirect.senderCity,
+          senderState: shipmentDirect.senderState,
+          senderAddress: shipmentDirect.senderAddress,
+          receiverCity: shipmentDirect.receiverCity,
+          receiverState: shipmentDirect.receiverState,
+          receiverAddress: shipmentDirect.receiverAddress,
+        },
+        shipmentDirect,
+      );
+      return {
+        kind: "shipment" as const,
+        bookingNumber: shipmentDirect.bookingNumber,
+        awbNumber: shipmentDirect.awbNumber,
+        status: shipmentDirect.status,
+        senderCity: shipmentDirect.senderCity,
+        receiverCity: shipmentDirect.receiverCity,
+        serviceType: shipmentDirect.serviceType,
+        weight: shipmentDirect.weight,
+        bookedAt: shipmentDirect.bookedAt,
+        pickedUpAt: shipmentDirect.pickedUpAt,
+        deliveredAt: shipmentDirect.deliveredAt,
+        tracking,
+      };
+    }
+
+    const br = await storage.getBookingRequestByOfficeAndRequestNumber(officeId, raw);
+    if (!br) return null;
+
+    if (br.convertedShipmentId) {
+      const s = await storage.getShipment(br.convertedShipmentId);
+      if (s) {
+        const tracking = trackingFromBookingRequest(br, s);
+        return {
+          kind: "shipment" as const,
+          bookingNumber: s.bookingNumber,
+          awbNumber: s.awbNumber,
+          status: s.status,
+          senderCity: s.senderCity,
+          receiverCity: s.receiverCity,
+          serviceType: s.serviceType,
+          weight: s.weight,
+          bookedAt: s.bookedAt,
+          pickedUpAt: s.pickedUpAt,
+          deliveredAt: s.deliveredAt,
+          tracking,
+        };
+      }
+    }
+
+    const tracking = trackingFromBookingRequest(br, null);
+    return {
+      kind: "booking_request" as const,
+      requestNumber: br.requestNumber,
+      status: br.status,
+      senderCity: br.senderCity,
+      receiverCity: br.receiverCity,
+      createdAt: br.createdAt,
+      message:
+        "Your request is with the office. When it becomes a shipment, full tracking will appear here.",
+      tracking,
+    };
+  }
+
   app.get("/api/public/office/:slug/track/:trackingNumber", async (req, res) => {
     try {
       const { slug, trackingNumber: rawParam } = req.params;
@@ -2238,75 +2308,11 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Tracking number required" });
       }
 
-      const shipmentDirect = await storage.getShipmentByOfficeAndTracking(office.id, raw);
-      if (shipmentDirect) {
-        const tracking = trackingFromBookingRequest(
-          {
-            status: "converted",
-            createdAt: shipmentDirect.bookedAt ?? shipmentDirect.createdAt,
-            senderCity: shipmentDirect.senderCity,
-            senderState: shipmentDirect.senderState,
-            senderAddress: shipmentDirect.senderAddress,
-            receiverCity: shipmentDirect.receiverCity,
-            receiverState: shipmentDirect.receiverState,
-            receiverAddress: shipmentDirect.receiverAddress,
-          },
-          shipmentDirect,
-        );
-        return res.json({
-          kind: "shipment" as const,
-          bookingNumber: shipmentDirect.bookingNumber,
-          awbNumber: shipmentDirect.awbNumber,
-          status: shipmentDirect.status,
-          senderCity: shipmentDirect.senderCity,
-          receiverCity: shipmentDirect.receiverCity,
-          serviceType: shipmentDirect.serviceType,
-          weight: shipmentDirect.weight,
-          bookedAt: shipmentDirect.bookedAt,
-          pickedUpAt: shipmentDirect.pickedUpAt,
-          deliveredAt: shipmentDirect.deliveredAt,
-          tracking,
-        });
-      }
-
-      const br = await storage.getBookingRequestByOfficeAndRequestNumber(office.id, raw);
-      if (!br) {
+      const result = await resolvePublicTrack(office.id, raw);
+      if (!result) {
         return res.status(404).json({ message: "No booking or shipment found with this number" });
       }
-
-      if (br.convertedShipmentId) {
-        const s = await storage.getShipment(br.convertedShipmentId);
-        if (s) {
-          const tracking = trackingFromBookingRequest(br, s);
-          return res.json({
-            kind: "shipment" as const,
-            bookingNumber: s.bookingNumber,
-            awbNumber: s.awbNumber,
-            status: s.status,
-            senderCity: s.senderCity,
-            receiverCity: s.receiverCity,
-            serviceType: s.serviceType,
-            weight: s.weight,
-            bookedAt: s.bookedAt,
-            pickedUpAt: s.pickedUpAt,
-            deliveredAt: s.deliveredAt,
-            tracking,
-          });
-        }
-      }
-
-      const tracking = trackingFromBookingRequest(br, null);
-      return res.json({
-        kind: "booking_request" as const,
-        requestNumber: br.requestNumber,
-        status: br.status,
-        senderCity: br.senderCity,
-        receiverCity: br.receiverCity,
-        createdAt: br.createdAt,
-        message:
-          "Your request is with the office. When it becomes a shipment, full tracking will appear here.",
-        tracking,
-      });
+      res.json(result);
     } catch (error) {
       console.error("Error in office track:", error);
       res.status(500).json({ message: "Failed to track" });
@@ -3251,37 +3257,54 @@ Important: Focus on extracting receiver details since the sender is the customer
     }
   });
 
-  // Customer track shipment by booking number or AWB (public, no auth needed)
+  // Customer track by request #, booking #, or AWB (public, no login)
   app.get("/api/public/track/:trackingNumber", async (req, res) => {
     try {
-      const { trackingNumber } = req.params;
-      const shipmentResults = await db
-        .select()
-        .from(shipments)
-        .where(
-          sql`${shipments.bookingNumber} = ${trackingNumber} OR ${shipments.awbNumber} = ${trackingNumber}`
-        );
-
-      if (shipmentResults.length === 0) {
-        return res.status(404).json({ message: "No shipment found with this tracking number" });
+      const raw = decodeURIComponent(req.params.trackingNumber || "").trim();
+      if (!raw) {
+        return res.status(400).json({ message: "Tracking number required" });
       }
 
-      const s = shipmentResults[0];
-      res.json({
-        bookingNumber: s.bookingNumber,
-        awbNumber: s.awbNumber,
-        status: s.status,
-        senderCity: s.senderCity,
-        receiverCity: s.receiverCity,
-        serviceType: s.serviceType,
-        weight: s.weight,
-        bookedAt: s.bookedAt,
-        pickedUpAt: s.pickedUpAt,
-        deliveredAt: s.deliveredAt,
-      });
+      const office = await storage.getDefaultBookingOffice();
+      if (!office) {
+        return res.status(503).json({ message: "Tracking is not available yet" });
+      }
+
+      const result = await resolvePublicTrack(office.id, raw);
+      if (!result) {
+        return res.status(404).json({ message: "No booking or shipment found with this number" });
+      }
+      res.json(result);
     } catch (error) {
       console.error("Error tracking shipment:", error);
       res.status(500).json({ message: "Failed to track shipment" });
+    }
+  });
+
+  app.post("/api/public/contact", async (req, res) => {
+    const contactInquirySchema = z.object({
+      name: z.string().trim().min(1).max(120),
+      email: z.string().trim().email().max(255),
+      phone: z.string().trim().max(20).optional().or(z.literal("")),
+      subject: z.string().trim().min(1).max(200),
+      message: z.string().trim().min(1).max(5000),
+    });
+
+    try {
+      const parsed = contactInquirySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Please check your details and try again." });
+      }
+
+      console.log("[contact-inquiry]", {
+        ...parsed.data,
+        receivedAt: new Date().toISOString(),
+      });
+
+      res.json({ message: "Thank you! We will get back to you shortly." });
+    } catch (error) {
+      console.error("Contact inquiry error:", error);
+      res.status(500).json({ message: "Failed to send message" });
     }
   });
 

@@ -2,7 +2,10 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PublicTrackingSearch } from "@/components/customer/PublicTrackingSearch";
 import { InteractiveGlobe } from "@/components/InteractiveGlobe";
+import { MarketingHeader } from "@/components/marketing/MarketingHeader";
+import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import {
   Package,
   Shield,
@@ -10,13 +13,11 @@ import {
   ArrowRight,
   ArrowUpRight,
   CheckCircle,
-  Truck,
   MapPin,
   Search,
   ClipboardList,
   Star,
 } from "lucide-react";
-import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 
 const bookingFeatures = [
   {
@@ -64,30 +65,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg" />
-            <span className="text-xl font-bold text-gray-900 tracking-tight">XGoo</span>
-          </div>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-500">
-            <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How It Works</a>
-            <a href="#features" className="hover:text-gray-900 transition-colors">Features</a>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              size="sm"
-              onClick={() => navigate("/book")}
-              className="bg-[#FF4907] hover:bg-[#e03d00] text-white gap-1 border-0"
-            >
-              Book a Parcel <ArrowUpRight className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" variant="outline" asChild className="hidden sm:flex border-gray-200">
-              <a href="/auth-page">Staff Login</a>
-            </Button>
-          </div>
-        </div>
-      </nav>
+      <MarketingHeader showSectionLinks />
 
       <section className="relative min-h-screen flex items-center bg-white">
         <div
@@ -103,7 +81,7 @@ export default function LandingPage() {
           style={{ background: "radial-gradient(circle, rgba(255,73,7,0.06) 0%, transparent 70%)" }}
         />
 
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-28 pb-16 w-full">
+        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-32 pb-16 w-full">
           <div className="grid lg:grid-cols-2 gap-8 items-center">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[#FF4907]/30 bg-[#FF4907]/5 px-4 py-1.5 text-sm text-[#9B320B] mb-6">
@@ -120,26 +98,18 @@ export default function LandingPage() {
                 deliveries — all from one place. Fast, reliable, and built for India.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-4">
+              <div className="mt-8 space-y-4 max-w-xl">
                 <Button
                   size="lg"
                   onClick={() => navigate("/book")}
-                  className="gap-2 px-6 text-white border-0"
+                  className="gap-2 px-6 text-white border-0 w-full sm:w-auto"
                   style={{ background: "#FF4907" }}
                 >
                   <Package className="h-5 w-5" />
                   Book a Parcel
                   <ArrowUpRight className="h-4 w-4" />
                 </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => navigate("/book")}
-                  className="gap-2 px-6 border-gray-200 text-gray-700"
-                >
-                  <Search className="h-5 w-5" />
-                  Track Shipment
-                </Button>
+                <PublicTrackingSearch variant="hero" />
               </div>
 
               <div className="flex flex-wrap gap-5 mt-8">
@@ -245,32 +215,11 @@ export default function LandingPage() {
               <Package className="h-5 w-5" />
               Book a Parcel
             </Button>
-            <Button size="lg" variant="outline" asChild className="border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white gap-2 px-8">
-              <a href="/auth-page">
-                <Truck className="h-4 w-4" />
-                Staff Login
-              </a>
-            </Button>
           </div>
         </div>
       </section>
 
-      <footer className="py-10 border-t" style={{ background: "#0d0401" }}>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-2">
-              <img src={xgooLogo} alt="XGoo" className="h-7 w-7 rounded-lg" />
-              <span className="font-bold text-white text-lg">XGoo</span>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-white/40">
-              <button onClick={() => navigate("/book")} className="hover:text-white transition-colors">Book</button>
-              <button onClick={() => navigate("/book")} className="hover:text-white transition-colors">Track</button>
-              <a href="/auth-page" className="hover:text-white transition-colors">Staff Login</a>
-            </div>
-            <p className="text-sm text-white/30">&copy; {new Date().getFullYear()} XGoo. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

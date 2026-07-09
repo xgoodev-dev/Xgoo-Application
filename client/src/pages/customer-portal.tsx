@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -160,6 +160,19 @@ const PICKUP_TIME_SLOTS = [
 
 function guestBookingsStorageKey(slug: string) {
   return `xgoo_guest_bookings_${slug}`;
+}
+
+async function fetchJsonWithRetry(url: string, attempts = 3): Promise<Response> {
+  let last: Response | null = null;
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url);
+    if (res.ok) return res;
+    last = res;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+    }
+  }
+  return last ?? new Response(null, { status: 503 });
 }
 
 function guestModeStorageKey(slug: string) {
@@ -546,6 +559,52 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng, autoDete
         </p>
       )}
     </div>
+  );
+}
+
+function CustomerBookingFooter() {
+  return (
+    <footer className="border-t bg-muted/30 mt-auto">
+      <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
+        <p>&copy; {new Date().getFullYear()} XGoo Courier</p>
+        <a href="/auth-page" className="text-primary hover:underline font-medium" data-testid="link-staff-login">
+          Staff Login
+        </a>
+      </div>
+    </footer>
+  );
+}
+
+function CustomerBookingHeader({ showBack = false }: { showBack?: boolean }) {
+  const [, navigate] = useLocation();
+
+  return (
+    <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
+      <div className="mx-auto max-w-3xl px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {showBack && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/")}
+                className="shrink-0 -ml-2"
+                data-testid="button-back-to-home"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Home</span>
+              </Button>
+            )}
+            <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md shrink-0" />
+            <div className="min-w-0">
+              <span className="text-lg font-semibold">XGoo</span>
+              <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| Book a Parcel</span>
+            </div>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1 sm:hidden">Book a Parcel</p>
+      </div>
+    </header>
   );
 }
 
@@ -2275,6 +2334,12 @@ export default function CustomerPortalPage() {
   }, [guestMode, auth.isAuthenticated, activeTab]);
 
   useEffect(() => {
+    if (auth.isAuthenticated && activeTab === "track") {
+      setActiveTab("bookings");
+    }
+  }, [auth.isAuthenticated, activeTab]);
+
+  useEffect(() => {
     let cancelled = false;
     setIsLoadingOffice(true);
     setOfficeError(false);
@@ -2282,7 +2347,7 @@ export default function CustomerPortalPage() {
     const loadOffice = async () => {
       try {
         if (routeSlug) {
-          const r = await fetch(`/api/public/office/${routeSlug}`);
+          const r = await fetchJsonWithRetry(`/api/public/office/${routeSlug}`);
           if (!r.ok) throw new Error();
           const data = await r.json();
           if (cancelled) return;
@@ -2293,7 +2358,7 @@ export default function CustomerPortalPage() {
 
         const defaultSlug = import.meta.env.VITE_DEFAULT_OFFICE_SLUG?.trim();
         if (defaultSlug) {
-          const r = await fetch(`/api/public/office/${encodeURIComponent(defaultSlug)}`);
+          const r = await fetchJsonWithRetry(`/api/public/office/${encodeURIComponent(defaultSlug)}`);
           if (r.ok) {
             const data = await r.json();
             if (cancelled) return;
@@ -2303,7 +2368,7 @@ export default function CustomerPortalPage() {
           }
         }
 
-        const r = await fetch("/api/public/booking-office");
+        const r = await fetchJsonWithRetry("/api/public/booking-office");
         if (!r.ok) throw new Error();
         const data = await r.json();
         if (cancelled) return;
@@ -2350,45 +2415,35 @@ export default function CustomerPortalPage() {
 
   if (officeError || !office) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
-          <div className="mx-auto max-w-3xl px-4 py-4">
-            <div className="flex items-center gap-3">
-              <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md" />
-              <span className="text-xl font-semibold">XGoo</span>
-            </div>
-          </div>
-        </header>
-        <div className="mx-auto max-w-3xl px-4 py-20 text-center">
+      <div className="min-h-screen bg-background flex flex-col">
+        <CustomerBookingHeader showBack />
+        <div className="mx-auto max-w-3xl px-4 py-20 text-center flex-1">
           <h1 className="text-2xl font-bold mb-4">Booking Unavailable</h1>
           <p className="text-muted-foreground mb-2">
             Parcel booking could not connect to the server. This is usually a database configuration issue on the live site.
           </p>
           <p className="text-sm text-muted-foreground">
-            If you manage this site, set <code className="text-xs">DATABASE_URL</code> (or Supabase{" "}
-            <code className="text-xs">DATABASE_POOL_URL</code> on port 6543) in Vercel environment variables, then redeploy.
+            If you manage this site, set <code className="text-xs">DATABASE_POOL_URL</code> (Supabase pooler, port 6543, user{" "}
+            <code className="text-xs">postgres.[project-ref]</code>) and <code className="text-xs">VITE_DEFAULT_OFFICE_SLUG=demo-office</code> in Vercel, then redeploy.
           </p>
         </div>
+        <CustomerBookingFooter />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {!auth.isAuthenticated && !guestMode ? (
         <>
-          <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
-            <div className="mx-auto max-w-3xl px-4 py-3">
-              <div className="flex items-center gap-3">
-                <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md" />
-                <span className="text-lg font-semibold">XGoo</span>
-              </div>
-            </div>
-          </header>
-          <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
+          <CustomerBookingHeader showBack />
+          <div className="flex-1">
+            <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
+          </div>
+          <CustomerBookingFooter />
         </>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-screen">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-screen flex flex-col">
           <div className="sticky top-0 z-[100] border-b bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
             <div className="mx-auto max-w-3xl px-4 py-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2426,20 +2481,18 @@ export default function CustomerPortalPage() {
               <p className="text-sm text-muted-foreground mt-1 sm:hidden">Courier Booking</p>
             </div>
             <div className="mx-auto max-w-3xl px-4 pb-3">
-              <TabsList
-                className={`grid w-full ${guestMode && !auth.isAuthenticated ? "grid-cols-3" : "grid-cols-4"}`}
-                data-testid="tabs-navigation"
-              >
+              <TabsList className="grid w-full grid-cols-3" data-testid="tabs-navigation">
                 <TabsTrigger value="book" data-testid="tab-book">
                   <Plus className="h-4 w-4 mr-1 hidden sm:block" /> Book
                 </TabsTrigger>
                 <TabsTrigger value="bookings" data-testid="tab-bookings">
                   <ClipboardList className="h-4 w-4 mr-1 hidden sm:block" /> My Bookings
                 </TabsTrigger>
-                <TabsTrigger value="track" data-testid="tab-track">
-                  <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
-                </TabsTrigger>
-                {!(guestMode && !auth.isAuthenticated) && (
+                {guestMode && !auth.isAuthenticated ? (
+                  <TabsTrigger value="track" data-testid="tab-track">
+                    <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
+                  </TabsTrigger>
+                ) : (
                   <TabsTrigger value="account" data-testid="tab-account">
                     <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
                   </TabsTrigger>
@@ -2473,9 +2526,11 @@ export default function CustomerPortalPage() {
                 <MyBookingsTab token={auth.token!} />
               )}
             </TabsContent>
-            <TabsContent value="track" className="mt-0">
-              <TrackTab slug={slug} />
-            </TabsContent>
+            {guestMode && !auth.isAuthenticated && (
+              <TabsContent value="track" className="mt-0">
+                <TrackTab slug={slug} />
+              </TabsContent>
+            )}
             {!(guestMode && !auth.isAuthenticated) && (
               <TabsContent value="account" className="mt-0">
                 <AccountTab
@@ -2490,6 +2545,7 @@ export default function CustomerPortalPage() {
               </TabsContent>
             )}
           </main>
+          <CustomerBookingFooter />
         </Tabs>
       )}
     </div>
