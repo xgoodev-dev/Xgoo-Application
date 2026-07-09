@@ -8,7 +8,8 @@ import fs from "fs";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
-import { db, verifyDatabaseConnection } from "./db";
+import { db, verifyDatabaseConnection, databaseHost } from "./db";
+import { isOpenAiConfigured, resolveOpenAiApiKey } from "./openai-config";
 import { shipments, offices } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
@@ -2122,11 +2123,24 @@ export async function registerRoutes(
   app.get("/api/health", async (_req, res) => {
     try {
       await verifyDatabaseConnection();
-      res.json({ ok: true, database: "connected" });
+      res.json({ ok: true, database: "connected", host: databaseHost, openai: isOpenAiConfigured() ? "configured" : "missing" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Health check failed:", message);
-      res.status(503).json({ ok: false, database: "disconnected", error: message });
+      const usePooler =
+        Boolean(process.env.VERCEL) &&
+        databaseHost.startsWith("db.") &&
+        databaseHost.endsWith(".supabase.co");
+      res.status(503).json({
+        ok: false,
+        database: "disconnected",
+        host: databaseHost,
+        openai: isOpenAiConfigured() ? "configured" : "missing",
+        error: message,
+        hint: usePooler
+          ? "Direct Supabase host (db.*.supabase.co) often fails on Vercel. Use the Connection Pooler URL (port 6543) as DATABASE_POOL_URL in Vercel."
+          : "Verify DATABASE_URL / DATABASE_POOL_URL and redeploy.",
+      });
     }
   });
 
@@ -2658,11 +2672,7 @@ export async function registerRoutes(
   });
 
   // === AI ENDPOINTS ===
-  // Support both names: AI_INTEGRATIONS_OPENAI_API_KEY (project convention) and OPENAI_API_KEY (common default).
-  const openaiApiKey =
-    process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() ||
-    process.env.OPENAI_API_KEY?.trim() ||
-    "";
+  const openaiApiKey = resolveOpenAiApiKey();
   const openaiBaseUrlRaw = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim();
   const openaiBaseUrl =
     openaiBaseUrlRaw && openaiBaseUrlRaw.length > 0 ? openaiBaseUrlRaw : undefined;
