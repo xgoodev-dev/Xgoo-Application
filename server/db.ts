@@ -10,12 +10,23 @@ const { Pool } = pg;
  */
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
+function cleanEnvValue(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim().replace(/^["']|["']$/g, "");
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") return undefined;
+  return trimmed;
+}
+
 /**
  * Passwords with @, #, etc. break postgres URLs unless encoded.
  * Split on the last @ so user:password can contain @.
  */
 export function normalizePostgresUrl(raw: string): string {
-  const trimmed = raw.trim();
+  let trimmed = raw.trim().replace(/^["']|["']$/g, "");
+  if (!/^postgres(?:ql)?:\/\//i.test(trimmed)) {
+    trimmed = `postgresql://${trimmed}`;
+  }
+
   const protoMatch = trimmed.match(/^(postgres(?:ql)?:\/\/)(.+)$/i);
   if (!protoMatch) return trimmed;
 
@@ -42,17 +53,16 @@ export function normalizePostgresUrl(raw: string): string {
 }
 
 export function getDatabaseHost(connectionString: string): string {
-  try {
-    return new URL(normalizePostgresUrl(connectionString)).hostname;
-  } catch {
-    return "unknown";
-  }
+  const match = connectionString.match(/@([^/?:]+)/);
+  const hostWithPort = match?.[1] ?? "";
+  const host = hostWithPort.split(":")[0];
+  return host || "unknown";
 }
 
 function buildSupabasePoolerUrl(): string | null {
-  const projectRef = process.env.SUPABASE_PROJECT_REF?.trim();
-  const password = process.env.SUPABASE_DB_PASSWORD?.trim();
-  const poolerHost = process.env.SUPABASE_POOLER_HOST?.trim();
+  const projectRef = cleanEnvValue(process.env.SUPABASE_PROJECT_REF);
+  const password = cleanEnvValue(process.env.SUPABASE_DB_PASSWORD);
+  const poolerHost = cleanEnvValue(process.env.SUPABASE_POOLER_HOST);
 
   if (!projectRef || !password || !poolerHost) return null;
 
@@ -62,16 +72,21 @@ function buildSupabasePoolerUrl(): string | null {
 
 function resolveDatabaseUrl(): string {
   const candidates = [
-    isServerless ? process.env.DATABASE_POOL_URL : undefined,
+    isServerless ? cleanEnvValue(process.env.DATABASE_POOL_URL) : undefined,
     buildSupabasePoolerUrl(),
-    process.env.DATABASE_URL,
-    process.env.POSTGRES_URL,
-    process.env.DATABASE_POOL_URL,
+    cleanEnvValue(process.env.DATABASE_URL),
+    cleanEnvValue(process.env.POSTGRES_URL),
+    cleanEnvValue(process.env.DATABASE_POOL_URL),
   ];
 
   for (const value of candidates) {
-    const trimmed = value?.trim();
-    if (trimmed) return normalizePostgresUrl(trimmed);
+    if (value) {
+      const normalized = normalizePostgresUrl(value);
+      if (!/@/.test(normalized) || !getDatabaseHost(normalized) || getDatabaseHost(normalized) === "unknown") {
+        continue;
+      }
+      return normalized;
+    }
   }
 
   throw new Error(
