@@ -3,6 +3,13 @@ import { z } from "zod";
 export const WHATSAPP_API_VERSION = "v22.0";
 export const WHATSAPP_GRAPH_BASE = `https://graph.facebook.com/${WHATSAPP_API_VERSION}`;
 
+/** Graph API base URL — honors saved settings apiVersion (e.g. v25.0 from Meta API Setup). */
+export function resolveWhatsAppGraphBase(apiVersion?: string): string {
+  const raw = apiVersion?.trim() || WHATSAPP_API_VERSION;
+  const version = raw.startsWith("v") ? raw : `v${raw}`;
+  return `https://graph.facebook.com/${version}`;
+}
+
 export const WHATSAPP_MESSAGE_TYPES = [
   {
     key: "welcome",
@@ -84,6 +91,11 @@ export const whatsAppTemplateSchema = z.object({
   bodyParamNames: z.array(z.string()).default([]),
   headerParamNames: z.array(z.string()).default([]),
   buttonParamIndex: z.number().int().min(0).default(0),
+  /** Example values from Meta template definition — used to auto-fill sends. */
+  bodyParamExamples: z.array(z.string()).default([]),
+  headerParamExamples: z.array(z.string()).default([]),
+  buttonParamExamples: z.array(z.string()).default([]),
+  headerMediaExampleUrl: z.string().default(""),
 });
 
 export const whatsAppSettingsSchema = z.object({
@@ -130,7 +142,12 @@ export function mergeWhatsAppSettings(raw: unknown): WhatsAppSettings {
     },
   });
 
-  return parsed.success ? parsed.data : base;
+  return parsed.success
+    ? {
+        ...parsed.data,
+        templates: parsed.data.templates.map((t) => whatsAppTemplateSchema.parse(t)),
+      }
+    : base;
 }
 
 export const ACCESS_TOKEN_MASK = "••••••••••••••••";
@@ -210,6 +227,10 @@ export function parseTemplateParamCounts(
   bodyParamNames: string[];
   headerParamNames: string[];
   buttonParamIndex: number;
+  bodyParamExamples: string[];
+  headerParamExamples: string[];
+  buttonParamExamples: string[];
+  headerMediaExampleUrl: string;
 } {
   let bodyParamCount = 0;
   let headerParamCount = 0;
@@ -219,6 +240,10 @@ export function parseTemplateParamCounts(
   let bodyParamNames: string[] = [];
   let headerParamNames: string[] = [];
   let buttonParamIndex = 0;
+  let bodyParamExamples: string[] = [];
+  let headerParamExamples: string[] = [];
+  let buttonParamExamples: string[] = [];
+  let headerMediaExampleUrl = "";
 
   if (!Array.isArray(components)) {
     return {
@@ -231,6 +256,10 @@ export function parseTemplateParamCounts(
       bodyParamNames,
       headerParamNames,
       buttonParamIndex,
+      bodyParamExamples,
+      headerParamExamples,
+      buttonParamExamples,
+      headerMediaExampleUrl,
     };
   }
 
@@ -244,11 +273,18 @@ export function parseTemplateParamCounts(
           .map((p) => p.param_name?.trim().toLowerCase())
           .filter((name): name is string => Boolean(name));
         bodyParamCount = bodyParamNames.length;
+        bodyParamExamples = comp.example.body_text_named_params
+          .map((p) => p.example?.trim() || "")
+          .filter(Boolean);
       } else if (parameterFormat === "named") {
         bodyParamNames = extractNamedVariableNames(comp.text);
         bodyParamCount = bodyParamNames.length;
       } else {
         bodyParamCount = Math.max(bodyParamCount, extractPositionalVariableCount(comp.text));
+        const row = comp.example?.body_text?.[0];
+        if (Array.isArray(row) && row.length) {
+          bodyParamExamples = row.map((v) => String(v).trim()).filter(Boolean);
+        }
       }
     } else if (type === "HEADER") {
       headerFormat = (comp.format || "TEXT").toUpperCase();
@@ -258,16 +294,27 @@ export function parseTemplateParamCounts(
             .map((p) => p.param_name?.trim().toLowerCase())
             .filter((name): name is string => Boolean(name));
           headerParamCount = headerParamNames.length;
+          headerParamExamples = comp.example.header_text_named_params
+            .map((p) => p.example?.trim() || "")
+            .filter(Boolean);
         } else if (parameterFormat === "named") {
           headerParamNames = extractNamedVariableNames(comp.text);
           headerParamCount = headerParamNames.length;
         } else {
           headerParamCount = Math.max(headerParamCount, extractPositionalVariableCount(comp.text));
+          const row = comp.example?.header_text?.[0];
+          if (Array.isArray(row) && row.length) {
+            headerParamExamples = row.map((v) => String(v).trim()).filter(Boolean);
+          }
         }
       } else if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
         // Media headers require an image/video/document parameter at send time unless the
         // asset is fully fixed in the approved template (rare — Meta returns #132012 otherwise).
         headerMediaRequired = true;
+        const handle = comp.example?.header_handle?.[0] || comp.example?.header_url?.[0];
+        if (typeof handle === "string" && handle.trim()) {
+          headerMediaExampleUrl = handle.trim();
+        }
       }
     } else if (type === "BUTTONS" && Array.isArray(comp.buttons)) {
       comp.buttons.forEach((btn, index) => {
@@ -279,6 +326,10 @@ export function parseTemplateParamCounts(
           if (urlVarCount > 0) {
             buttonParamCount = Math.max(buttonParamCount, urlVarCount);
             buttonParamIndex = index;
+            const example = btn.example?.[0];
+            if (example?.trim()) {
+              buttonParamExamples = [example.trim()];
+            }
           }
         }
       });
@@ -295,6 +346,10 @@ export function parseTemplateParamCounts(
     bodyParamNames,
     headerParamNames,
     buttonParamIndex,
+    bodyParamExamples,
+    headerParamExamples,
+    buttonParamExamples,
+    headerMediaExampleUrl,
   };
 }
 
@@ -317,6 +372,61 @@ export function templateNeedsHeaderMedia(
   );
 }
 
+/** Templates known to use a dynamic image header when Meta sync metadata is incomplete. */
+export const KNOWN_IMAGE_HEADER_TEMPLATES = new Set([
+  "xgoo_welcome_message",
+  "welcome_message",
+]);
+
+export function enrichTemplateForSend(
+  template: WhatsAppTemplate | undefined,
+  templateName: string,
+  settings?: Pick<WhatsAppSettings, "defaultHeaderMediaUrl">,
+): WhatsAppTemplate | undefined {
+  const normalized = template ? whatsAppTemplateSchema.parse(template) : undefined;
+  const name = templateName.trim().toLowerCase();
+  const knownImage = KNOWN_IMAGE_HEADER_TEMPLATES.has(name);
+
+  if (knownImage) {
+    if (!normalized) {
+      return whatsAppTemplateSchema.parse({
+        id: "inferred",
+        name: templateName,
+        language: "en",
+        status: "APPROVED",
+        headerFormat: "IMAGE",
+        headerMediaRequired: true,
+        bodyParamCount: 1,
+      });
+    }
+    if (!templateNeedsHeaderMedia(normalized)) {
+      return { ...normalized, headerFormat: "IMAGE", headerMediaRequired: true };
+    }
+  }
+
+  return normalized;
+}
+
+export function resolveMessagingHeaderMediaUrl(
+  settings: Pick<WhatsAppSettings, "defaultHeaderMediaUrl">,
+  template: WhatsAppTemplate | undefined,
+  templateName: string,
+  explicitUrl?: string,
+): string | undefined {
+  const explicit = explicitUrl?.trim();
+  if (explicit) return explicit;
+  const enriched = enrichTemplateForSend(template, templateName, settings);
+  const url = settings.defaultHeaderMediaUrl?.trim();
+  if (!url) return undefined;
+  if (
+    templateNeedsHeaderMedia(enriched) ||
+    KNOWN_IMAGE_HEADER_TEMPLATES.has(templateName.trim().toLowerCase())
+  ) {
+    return url;
+  }
+  return undefined;
+}
+
 export function getTemplateDefinition(
   templates: WhatsAppTemplate[],
   name: string,
@@ -325,8 +435,63 @@ export function getTemplateDefinition(
   if (language) {
     const exact = templates.find((t) => t.name === name && t.language === language);
     if (exact) return exact;
+    const langBase = language.split("_")[0];
+    const baseMatch = templates.find(
+      (t) => t.name === name && t.language.split("_")[0] === langBase,
+    );
+    if (baseMatch) return baseMatch;
   }
   return templates.find((t) => t.name === name);
+}
+
+/** Pick the language code Meta expects for a synced template. */
+export function resolveTemplateLanguageForSend(
+  templates: WhatsAppTemplate[],
+  templateName: string,
+  preferredLanguage?: string,
+): string {
+  const name = templateName.trim();
+  const approved = templates.filter((t) => t.name === name && t.status === "APPROVED");
+  if (!approved.length) {
+    return preferredLanguage?.trim() || "en";
+  }
+  if (preferredLanguage?.trim()) {
+    const pref = preferredLanguage.trim();
+    const exact = approved.find((t) => t.language === pref);
+    if (exact) return exact.language;
+    const prefBase = pref.split("_")[0];
+    const baseMatch = approved.find((t) => t.language.split("_")[0] === prefBase);
+    if (baseMatch) return baseMatch.language;
+  }
+  if (approved.length === 1) return approved[0].language;
+  const enUs = approved.find((t) => t.language === "en_US");
+  if (enUs) return enUs.language;
+  const en = approved.find((t) => t.language === "en");
+  if (en) return en.language;
+  return approved[0].language;
+}
+
+/** Best template for a one-click connectivity test from synced Meta templates. */
+export function pickQuickTestTemplate(
+  templates: WhatsAppTemplate[],
+): { name: string; language: string } | null {
+  const approved = templates.filter((t) => t.status === "APPROVED");
+  const hello = approved.find((t) => t.name === "hello_world");
+  if (hello) return { name: hello.name, language: hello.language };
+
+  const simple = approved
+    .filter(
+      (t) =>
+        t.bodyParamCount === 0 &&
+        t.headerParamCount === 0 &&
+        t.buttonParamCount === 0 &&
+        !t.headerMediaRequired,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (simple[0]) return { name: simple[0].name, language: simple[0].language };
+
+  if (approved[0]) return { name: approved[0].name, language: approved[0].language };
+  return null;
 }
 
 export function buildWhatsAppTemplateComponents(input: {
@@ -358,22 +523,23 @@ export function buildWhatsAppTemplateComponents(input: {
   const headerFormat = (template?.headerFormat || "TEXT").toUpperCase();
 
   if (needsHeaderMedia && input.headerMediaUrl?.trim()) {
-    const mediaType = headerFormat.toLowerCase();
-    const link = input.headerMediaUrl.trim();
-    if (mediaType === "image" || mediaType === "video" || mediaType === "document") {
-      components.push({
-        type: "header",
-        parameters: [
-          {
-            type: mediaType,
-            [mediaType]:
-              mediaType === "document"
-                ? { link, filename: link.split("/").pop() || "document.pdf" }
-                : { link },
-          },
-        ],
-      });
+    let mediaType = headerFormat.toLowerCase();
+    if (mediaType === "text" || !["image", "video", "document"].includes(mediaType)) {
+      mediaType = "image";
     }
+    const link = input.headerMediaUrl.trim();
+    components.push({
+      type: "header",
+      parameters: [
+        {
+          type: mediaType,
+          [mediaType]:
+            mediaType === "document"
+              ? { link, filename: link.split("/").pop() || "document.pdf" }
+              : { link },
+        },
+      ],
+    });
   } else if (headerCount > 0 && headerFormat === "TEXT") {
     const headerValues = (input.headerParams || []).slice(0, headerCount).map((s) => s.trim());
     components.push({
@@ -424,6 +590,7 @@ export function templateParamsFilled(
     buttonParamCount: number;
     headerMediaRequired?: boolean;
     headerFormat?: string;
+    templateName?: string;
   },
   values: {
     bodyParams: string[];
@@ -432,7 +599,13 @@ export function templateParamsFilled(
     headerMediaUrl?: string;
   },
 ): boolean {
-  const headerOk = templateNeedsHeaderMedia(counts)
+  const needsMedia =
+    templateNeedsHeaderMedia(counts) ||
+    Boolean(
+      counts.templateName &&
+        KNOWN_IMAGE_HEADER_TEMPLATES.has(counts.templateName.trim().toLowerCase()),
+    );
+  const headerOk = needsMedia
     ? Boolean(values.headerMediaUrl?.trim())
     : counts.headerParamCount === 0 ||
       (values.headerParams.length >= counts.headerParamCount &&
@@ -455,6 +628,10 @@ export function describeTemplateParameterRequirements(template?: WhatsAppTemplat
   const parts: string[] = [];
   if (template.headerMediaRequired || ["IMAGE", "VIDEO", "DOCUMENT"].includes(template.headerFormat)) {
     parts.push(`1 ${template.headerFormat.toLowerCase()} header URL (public HTTPS link)`);
+  } else if (
+    KNOWN_IMAGE_HEADER_TEMPLATES.has(template.name.trim().toLowerCase())
+  ) {
+    parts.push("1 image header URL (set Default header image URL in settings)");
   } else if (template.headerParamCount > 0) {
     const names =
       template.parameterFormat === "named" && template.headerParamNames.length
@@ -473,7 +650,7 @@ export function describeTemplateParameterRequirements(template?: WhatsAppTemplat
     parts.push(`${template.buttonParamCount} button URL`);
   }
   if (!parts.length) return "No parameters required for this template.";
-  return `Requires ${parts.join(", ")}. Language: ${template.language}. Format: ${template.parameterFormat}.`;
+  return `Requires ${parts.join(", ")}. Language: ${template.language}. Format: ${template.parameterFormat}. Example values sync from Meta on template sync.`;
 }
 
 /** Normalize phone to digits; default India +91 for 10-digit local numbers. */
@@ -498,46 +675,132 @@ export function buildWhatsAppReturnUrl(
 
 export function resolveHeaderMediaUrlForAutomation(
   settings: Pick<WhatsAppSettings, "defaultHeaderMediaUrl">,
-  template?: Pick<WhatsAppTemplate, "headerFormat" | "headerMediaRequired">,
+  template: WhatsAppTemplate | undefined,
+  templateName = "",
 ): string | undefined {
-  const url = settings.defaultHeaderMediaUrl?.trim();
-  if (!url || !templateNeedsHeaderMedia(template)) return undefined;
-  return url;
+  return resolveMessagingHeaderMediaUrl(settings, template, templateName);
+}
+
+/** Fill parameter slots from user values, Meta examples, then fallbacks. */
+export function resolveTemplateParamValues(
+  count: number,
+  provided: string[] | undefined,
+  examples: string[] | undefined,
+  fallbacks: string[] = ["XGoo", "Test"],
+): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const explicit = provided?.[i]?.trim();
+    if (explicit) {
+      result.push(explicit);
+      continue;
+    }
+    const example = examples?.[i]?.trim();
+    if (example) {
+      result.push(example);
+      continue;
+    }
+    result.push(fallbacks[i] ?? fallbacks[fallbacks.length - 1] ?? "XGoo");
+  }
+  return result;
+}
+
+export function resolveTemplateSendParams(
+  template: WhatsAppTemplate | undefined,
+  input: {
+    bodyParams?: string[];
+    headerParams?: string[];
+    buttonParams?: string[];
+    headerMediaUrl?: string;
+    defaultHeaderMediaUrl?: string;
+    bookingValues?: { name: string; requestNumber: string; route?: string; bookingNumber?: string };
+  },
+): {
+  bodyParams: string[];
+  headerParams: string[];
+  buttonParams: string[];
+  headerMediaUrl?: string;
+} {
+  const bodyCount = template?.bodyParamCount ?? 0;
+  const headerCount = template?.headerParamCount ?? 0;
+  const buttonCount = template?.buttonParamCount ?? 0;
+  const bookingPool = input.bookingValues
+    ? [
+        input.bookingValues.name,
+        input.bookingValues.requestNumber,
+        input.bookingValues.bookingNumber || input.bookingValues.requestNumber,
+        input.bookingValues.route || "",
+      ].filter((v) => v.trim())
+    : ["XGoo Customer", "BR-TEST-001", "Hyderabad → Mumbai"];
+
+  const bodyParams = resolveTemplateParamValues(
+    bodyCount,
+    input.bodyParams,
+    template?.bodyParamExamples,
+    bookingPool,
+  );
+  const headerParams = resolveTemplateParamValues(
+    headerCount,
+    input.headerParams,
+    template?.headerParamExamples,
+    [input.bookingValues?.requestNumber || "XGoo", "XGoo"],
+  );
+  const buttonParams = resolveTemplateParamValues(
+    buttonCount,
+    input.buttonParams,
+    template?.buttonParamExamples,
+    ["xgoo"],
+  );
+
+  const headerMediaUrl =
+    input.headerMediaUrl?.trim() ||
+    input.defaultHeaderMediaUrl?.trim() ||
+    template?.headerMediaExampleUrl?.trim() ||
+    undefined;
+
+  return { bodyParams, headerParams, buttonParams, headerMediaUrl };
 }
 
 /** Map booking fields to template body slots by count ({{1}}, {{2}}, …). */
 export function mapBodyParamsForTemplate(
   bodyParamCount: number,
   values: { name: string; requestNumber: string; route?: string; bookingNumber?: string },
+  examples?: string[],
 ): string[] {
-  const slots: string[] = [];
   const pool = [
     values.name,
     values.requestNumber,
     values.bookingNumber || values.requestNumber,
     values.route || "",
   ].filter((v) => v.trim());
-  for (let i = 0; i < bodyParamCount; i++) {
-    slots.push(pool[i] ?? pool[pool.length - 1] ?? "");
-  }
-  return slots;
+  return resolveTemplateParamValues(bodyParamCount, undefined, examples, pool);
 }
 
 export function buildAutomationTemplateComponents(
   settings: WhatsAppSettings,
   template: WhatsAppTemplate | undefined,
+  templateName: string,
   input: {
     bodyParams: string[];
     headerParams?: string[];
     buttonParams?: string[];
   },
 ): Array<Record<string, unknown>> | undefined {
-  return buildWhatsAppTemplateComponents({
-    template,
-    headerMediaUrl: resolveHeaderMediaUrlForAutomation(settings, template),
-    headerParams: input.headerParams,
+  const enriched = enrichTemplateForSend(template, templateName, settings);
+  const resolved = resolveTemplateSendParams(enriched, {
     bodyParams: input.bodyParams,
+    headerParams: input.headerParams,
     buttonParams: input.buttonParams,
+    headerMediaUrl: resolveMessagingHeaderMediaUrl(settings, template, templateName),
+  });
+  return buildWhatsAppTemplateComponents({
+    template: enriched,
+    headerMediaUrl:
+      resolved.headerMediaUrl ||
+      resolveMessagingHeaderMediaUrl(settings, template, templateName),
+    headerParams: resolved.headerParams,
+    bodyParams: resolved.bodyParams,
+    buttonParams: resolved.buttonParams,
   });
 }
 
@@ -549,4 +812,47 @@ export function bookingWhatsAppExtras(
   const phone = settings.businessWhatsAppNumber?.trim();
   if (!phone) return {};
   return { whatsappReturnUrl: buildWhatsAppReturnUrl(phone, requestNumber) };
+}
+
+/** User-facing hints when Meta accepts a message but delivery may still fail. */
+export function buildWhatsAppDeliveryHints(input: {
+  templateMeta?: Pick<WhatsAppTemplate, "category">;
+  fromDisplayNumber?: string;
+  messageStatus?: string;
+}): string[] {
+  const hints: string[] = [];
+  const from = input.fromDisplayNumber || "";
+
+  if (from.includes("555") || from.startsWith("+1 555")) {
+    hints.push(
+      "You are on Meta's test number (+1 555…). In Meta Developers → WhatsApp → API Setup, copy the exact Phone Number ID from that page (not a different sandbox line), add the recipient under \"To\", then send again.",
+    );
+  }
+
+  if ((input.templateMeta?.category || "").toUpperCase() === "MARKETING") {
+    hints.push(
+      "This template is MARKETING. WhatsApp often will not deliver to numbers that have not opted in or messaged your business first.",
+    );
+  }
+
+  if (input.messageStatus === "accepted") {
+    hints.push(
+      "Meta queued the message (accepted). If nothing arrives in 1–2 minutes, verify the recipient number, test allow-list, and template category.",
+    );
+  }
+
+  return hints;
+}
+
+/** Hints when staff try to send custom (non-template) text. */
+export function buildCustomTextDeliveryHints(fromDisplayNumber?: string): string[] {
+  const hints = [
+    "Custom text only delivers inside WhatsApp's 24-hour customer service window — after the recipient messages your business number first. For testing and outbound notifications, use an approved template instead.",
+  ];
+  if (fromDisplayNumber?.includes("555")) {
+    hints.push(
+      "On Meta's +1 555 sandbox, custom text almost never delivers unless the recipient has an open chat with that exact test number. Use a template (e.g. hello_world or welcome_message).",
+    );
+  }
+  return hints;
 }

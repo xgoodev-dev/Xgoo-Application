@@ -32,6 +32,7 @@ import SettingsPage from "@/pages/settings";
 import CustomerPortalPage from "@/pages/customer-portal";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
+import { MetaPixel } from "@/components/analytics/MetaPixel";
 
 function QuotationsRedirect() {
   const [, setLocation] = useLocation();
@@ -153,6 +154,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
+          <MetaPixel />
           <Router />
           <Toaster />
         </TooltipProvider>

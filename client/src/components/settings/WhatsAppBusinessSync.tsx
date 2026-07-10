@@ -41,8 +41,13 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   WHATSAPP_MESSAGE_TYPES,
   describeTemplateParameterRequirements,
+  enrichTemplateForSend,
   getTemplateDefinition,
   isMaskedAccessToken,
+  KNOWN_IMAGE_HEADER_TEMPLATES,
+  resolveTemplateParamValues,
+  pickQuickTestTemplate,
+  resolveTemplateLanguageForSend,
   templateParamsFilled,
   templateNeedsHeaderMedia,
   whatsAppSettingsSchema,
@@ -67,7 +72,7 @@ export function WhatsAppBusinessSync() {
   const [testPhone, setTestPhone] = useState("");
   const [testTemplate, setTestTemplate] = useState("");
   const [testLanguage, setTestLanguage] = useState("en");
-  const [testMessageType, setTestMessageType] = useState<"template" | "text">("text");
+  const [testMessageType, setTestMessageType] = useState<"template" | "text">("template");
   const [testText, setTestText] = useState("Hello from XGoo! This is a test message.");
   const [testTemplateSource, setTestTemplateSource] = useState<"auto" | "manual">("auto");
   const [testManualTemplate, setTestManualTemplate] = useState("");
@@ -136,7 +141,7 @@ export function WhatsAppBusinessSync() {
       await queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       toast({
         title: "Templates synced",
-        description: `${result.templates.length} template(s) loaded from Meta.${result.wabaId ? ` WABA ID: ${result.wabaId}` : ""}`,
+        description: `${result.templates.length} template(s) loaded from Meta with parameter examples.${result.wabaId ? ` WABA ID: ${result.wabaId}` : ""} Re-open test send to see auto-filled values.`,
       });
     },
     onError: (err: Error) => {
@@ -184,32 +189,6 @@ export function WhatsAppBusinessSync() {
     },
   });
 
-  const testSendMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/whatsapp/messages/test", {
-        to: testPhone,
-        messageType: testMessageType,
-        templateName: testMessageType === "template" ? effectiveTestTemplate : undefined,
-        languageCode: effectiveTestLanguage,
-        text: testMessageType === "text" ? testText : undefined,
-        bodyParams: testMessageType === "template" ? testBodyParams : undefined,
-        headerParams: testMessageType === "template" ? testHeaderParams : undefined,
-        buttonParams: testMessageType === "template" ? testButtonParams : undefined,
-        headerMediaUrl:
-          testMessageType === "template" && templateNeedsHeaderMedia(selectedTestTemplateMeta)
-            ? testHeaderMediaUrl || watched.defaultHeaderMediaUrl || undefined
-            : undefined,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Test message sent", description: "Check WhatsApp on the recipient phone." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Send failed", description: err.message, variant: "destructive" });
-    },
-  });
-
   const watched = form.watch();
   const approvedTemplates = useMemo(
     () => (watched.templates || []).filter((t) => t.status === "APPROVED"),
@@ -244,20 +223,67 @@ export function WhatsAppBusinessSync() {
     testTemplateSource === "auto" ? testLanguage : testManualLanguage;
 
   const selectedTestTemplateMeta = useMemo(
-    () => getTemplateDefinition(allTemplates, effectiveTestTemplate, effectiveTestLanguage),
-    [allTemplates, effectiveTestTemplate, effectiveTestLanguage],
+    () =>
+      enrichTemplateForSend(
+        getTemplateDefinition(allTemplates, effectiveTestTemplate, effectiveTestLanguage),
+        effectiveTestTemplate,
+        watched,
+      ),
+    [allTemplates, effectiveTestTemplate, effectiveTestLanguage, watched],
   );
+
+  const showHeaderMediaField =
+    templateNeedsHeaderMedia(selectedTestTemplateMeta) ||
+    KNOWN_IMAGE_HEADER_TEMPLATES.has(effectiveTestTemplate.trim().toLowerCase());
+
+  const effectiveHeaderMediaUrl =
+    testHeaderMediaUrl.trim() || watched.defaultHeaderMediaUrl?.trim() || "";
 
   useEffect(() => {
     if (testMessageType !== "template") return;
-    const meta = getTemplateDefinition(allTemplates, effectiveTestTemplate, effectiveTestLanguage);
-    setTestBodyParams(Array(meta?.bodyParamCount ?? 0).fill(""));
-    setTestHeaderParams(
-      meta?.headerMediaRequired ? [] : Array(meta?.headerParamCount ?? 0).fill(""),
+    const meta = enrichTemplateForSend(
+      getTemplateDefinition(allTemplates, effectiveTestTemplate, effectiveTestLanguage),
+      effectiveTestTemplate,
+      watched,
     );
-    setTestButtonParams(Array(meta?.buttonParamCount ?? 0).fill(""));
-    setTestHeaderMediaUrl("");
-  }, [effectiveTestTemplate, effectiveTestLanguage, allTemplates, testMessageType]);
+    setTestBodyParams(
+      resolveTemplateParamValues(
+        meta?.bodyParamCount ?? 0,
+        undefined,
+        meta?.bodyParamExamples,
+        ["XGoo Customer", "BR-TEST-001"],
+      ),
+    );
+    setTestHeaderParams(
+      meta?.headerMediaRequired
+        ? []
+        : resolveTemplateParamValues(
+            meta?.headerParamCount ?? 0,
+            undefined,
+            meta?.headerParamExamples,
+            ["XGoo"],
+          ),
+    );
+    setTestButtonParams(
+      resolveTemplateParamValues(
+        meta?.buttonParamCount ?? 0,
+        undefined,
+        meta?.buttonParamExamples,
+        ["xgoo"],
+      ),
+    );
+    setTestHeaderMediaUrl(
+      watched.defaultHeaderMediaUrl?.trim() ||
+        meta?.headerMediaExampleUrl?.trim() ||
+        "",
+    );
+  }, [
+    effectiveTestTemplate,
+    effectiveTestLanguage,
+    allTemplates,
+    testMessageType,
+    watched.defaultHeaderMediaUrl,
+  ]);
 
   const paramCountsForValidation = useMemo(
     () => ({
@@ -271,8 +297,11 @@ export function WhatsAppBusinessSync() {
       buttonParamCount:
         selectedTestTemplateMeta?.buttonParamCount ??
         (testButtonParams.length > 0 ? testButtonParams.length : 0),
-      headerMediaRequired: templateNeedsHeaderMedia(selectedTestTemplateMeta),
+      headerMediaRequired:
+        templateNeedsHeaderMedia(selectedTestTemplateMeta) ||
+        KNOWN_IMAGE_HEADER_TEMPLATES.has(effectiveTestTemplate.trim().toLowerCase()),
       headerFormat: selectedTestTemplateMeta?.headerFormat,
+      templateName: effectiveTestTemplate.trim(),
     }),
     [
       selectedTestTemplateMeta,
@@ -288,7 +317,7 @@ export function WhatsAppBusinessSync() {
       bodyParams: testBodyParams,
       headerParams: testHeaderParams,
       buttonParams: testButtonParams,
-      headerMediaUrl: testHeaderMediaUrl,
+      headerMediaUrl: effectiveHeaderMediaUrl,
     });
 
   const isConfigured = Boolean(watched.phoneNumberId?.trim() && watched.accessToken?.trim());
@@ -302,6 +331,140 @@ export function WhatsAppBusinessSync() {
       : testTemplateSource === "auto"
         ? testTemplate.trim()
         : testManualTemplate.trim());
+
+  const quickTestTemplate = useMemo(
+    () => pickQuickTestTemplate(approvedTemplates),
+    [approvedTemplates],
+  );
+
+  const testSendMutation = useMutation({
+    mutationFn: async () => {
+      const values = form.getValues();
+      const res = await apiRequest("POST", "/api/whatsapp/messages/test", {
+        to: testPhone,
+        messageType: testMessageType,
+        templateName: testMessageType === "template" ? effectiveTestTemplate : undefined,
+        languageCode: effectiveTestLanguage,
+        text: testMessageType === "text" ? testText : undefined,
+        bodyParams: testMessageType === "template" ? testBodyParams : undefined,
+        headerParams: testMessageType === "template" ? testHeaderParams : undefined,
+        buttonParams: testMessageType === "template" ? testButtonParams : undefined,
+        headerMediaUrl:
+          testMessageType === "template" && showHeaderMediaField
+            ? effectiveHeaderMediaUrl || undefined
+            : undefined,
+        defaultHeaderMediaUrl: values.defaultHeaderMediaUrl?.trim() || undefined,
+        phoneNumberId: values.phoneNumberId,
+        wabaId: values.wabaId,
+        accessToken: values.accessToken,
+        apiVersion: values.apiVersion,
+      });
+      return (await res.json()) as {
+        messageId: string;
+        messageStatus?: string;
+        phoneNumberId?: string;
+        fromDisplayNumber?: string;
+        deliveryHints?: string[];
+      };
+    },
+    onSuccess: (result) => {
+      const fromLine = result.fromDisplayNumber
+        ? ` Sent from ${result.fromDisplayNumber} (ID ${result.phoneNumberId || "?"}).`
+        : result.phoneNumberId
+          ? ` Phone Number ID: ${result.phoneNumberId}.`
+          : "";
+      const hints = result.deliveryHints?.length
+        ? ` ${result.deliveryHints.join(" ")}`
+        : "";
+      toast({
+        title: "Test message sent",
+        description: `Meta status: ${result.messageStatus || "sent"}. Check WhatsApp on ${testPhone}.${fromLine}${hints}`,
+        duration: hints || fromLine ? 15000 : 8000,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Send failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const helloWorldTestMutation = useMutation({
+    mutationFn: async () => {
+      const values = form.getValues();
+      const templates = values.templates || [];
+      const quick = pickQuickTestTemplate(
+        templates.filter((t) => t.status === "APPROVED"),
+      );
+      if (!quick) {
+        throw new Error("No approved templates found. Sync templates from Meta first.");
+      }
+      const meta = enrichTemplateForSend(
+        getTemplateDefinition(templates, quick.name, quick.language),
+        quick.name,
+        values,
+      );
+      const headerMediaUrl =
+        testHeaderMediaUrl.trim() ||
+        values.defaultHeaderMediaUrl?.trim() ||
+        meta?.headerMediaExampleUrl?.trim() ||
+        "";
+      const bodyParams = resolveTemplateParamValues(
+        meta?.bodyParamCount ?? 0,
+        testBodyParams.some((p) => p.trim()) ? testBodyParams : undefined,
+        meta?.bodyParamExamples,
+        ["XGoo Customer", "BR-TEST-001"],
+      );
+      if (
+        (meta?.headerMediaRequired ||
+          KNOWN_IMAGE_HEADER_TEMPLATES.has(quick.name.toLowerCase())) &&
+        !headerMediaUrl
+      ) {
+        throw new Error(
+          "Set Default header image URL above (public HTTPS logo link), then try Quick test again.",
+        );
+      }
+      const res = await apiRequest("POST", "/api/whatsapp/messages/test", {
+        to: testPhone,
+        messageType: "template",
+        templateName: quick.name,
+        languageCode: quick.language,
+        bodyParams,
+        headerMediaUrl: headerMediaUrl || undefined,
+        defaultHeaderMediaUrl: values.defaultHeaderMediaUrl?.trim() || undefined,
+        phoneNumberId: values.phoneNumberId,
+        wabaId: values.wabaId,
+        accessToken: values.accessToken,
+        apiVersion: values.apiVersion,
+      });
+      return (await res.json()) as {
+        messageId: string;
+        messageStatus?: string;
+        phoneNumberId?: string;
+        fromDisplayNumber?: string;
+        deliveryHints?: string[];
+        templateName?: string;
+        languageCode?: string;
+      };
+    },
+    onSuccess: (result, _vars, _ctx) => {
+      const quick = quickTestTemplate;
+      const fromLine = result.fromDisplayNumber
+        ? ` Sent from ${result.fromDisplayNumber} (ID ${result.phoneNumberId || "?"}).`
+        : result.phoneNumberId
+          ? ` Phone Number ID: ${result.phoneNumberId}.`
+          : "";
+      const hints = result.deliveryHints?.length
+        ? ` ${result.deliveryHints.join(" ")}`
+        : "";
+      toast({
+        title: "Quick test sent",
+        description: `Template: ${quick?.name || "template"} (${quick?.language || "en"}). Meta status: ${result.messageStatus || "sent"}. Check WhatsApp on ${testPhone}.${fromLine}${hints}`,
+        duration: 15000,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Send failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -371,10 +534,17 @@ export function WhatsAppBusinessSync() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold">Meta API credentials</h3>
                 <p className="text-sm text-muted-foreground">
-                  From Meta Business Suite → WhatsApp → API Setup. Use a permanent System User
-                  access token with <code className="text-xs">whatsapp_business_messaging</code>{" "}
-                  permission.
+                  From Meta Developer Console → WhatsApp → API Setup. Copy the{" "}
+                  <strong>Phone Number ID</strong> from the same page where &quot;Send message&quot;
+                  works — each +1 555 test line has its own ID. Use the access token from that page
+                  too.
                 </p>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  If Meta&apos;s &quot;Send a message from your test number&quot; works but XGoo
+                  does not, your Phone Number ID here likely does not match API Setup. Compare the
+                  ID in the cURL snippet on that page with the field below.
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
@@ -391,7 +561,7 @@ export function WhatsAppBusinessSync() {
                           />
                         </FormControl>
                         <FormDescription>
-                          Required. Also enter WABA ID from Meta API Setup.
+                          From API Setup cURL URL: graph.facebook.com/v…/{"{this-id}"}/messages
                         </FormDescription>
                       </FormItem>
                     )}
@@ -420,6 +590,26 @@ export function WhatsAppBusinessSync() {
 
                 <FormField
                   control={form.control}
+                  name="apiVersion"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Graph API version</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="v25.0"
+                          data-testid="input-whatsapp-api-version"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Match Meta API Setup (e.g. v25.0). Defaults to v22.0 if empty.
+                      </FormDescription>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="accessToken"
                   render={({ field }) => (
                     <FormItem>
@@ -435,8 +625,8 @@ export function WhatsAppBusinessSync() {
                       </FormControl>
                       <FormDescription>
                         {field.value && isMaskedAccessToken(field.value)
-                          ? `Token saved on server (ends with ${field.value.slice(-4)}). Enter a new value only when rotating.`
-                          : "Paste your permanent System User access token, then save."}
+                          ? `Token saved on server (ends with ${field.value.slice(-4)}). Paste a new token from Meta API Setup if you see "Session has expired" (temporary tokens last ~1 hour).`
+                          : "Paste your access token from Meta API Setup, then Save. Temporary tokens expire in ~1 hour; use a System User token for production."}
                       </FormDescription>
                     </FormItem>
                   )}
@@ -546,6 +736,9 @@ export function WhatsAppBusinessSync() {
               {connectionResult && (
                 <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm dark:border-green-900 dark:bg-green-950/30">
                   <p className="font-medium text-green-800 dark:text-green-200">Connected</p>
+                  <p className="font-mono text-xs text-green-700 dark:text-green-300">
+                    Phone Number ID: {connectionResult.phoneNumberId}
+                  </p>
                   {connectionResult.verifiedName && (
                     <p className="text-green-700 dark:text-green-300">
                       Business: {connectionResult.verifiedName}
@@ -604,7 +797,7 @@ export function WhatsAppBusinessSync() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Input
-                    placeholder="Recipient phone (with country code, e.g. 919876543210)"
+                    placeholder="Recipient (country code + mobile, e.g. 916071125252)"
                     value={testPhone}
                     onChange={(e) => setTestPhone(e.target.value)}
                     data-testid="input-test-whatsapp-phone"
@@ -615,11 +808,17 @@ export function WhatsAppBusinessSync() {
                     onValueChange={(v) => setTestMessageType(v as "template" | "text")}
                   >
                     <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="text">Custom text</TabsTrigger>
                       <TabsTrigger value="template">Template</TabsTrigger>
+                      <TabsTrigger value="text">Custom text</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="text" className="space-y-3 mt-3">
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                        <strong>Custom text rarely delivers for outbound tests.</strong> WhatsApp only
+                        allows free-form messages when the recipient messaged your business number in
+                        the last 24 hours. For sandbox (+1 555) and new customers, always use a
+                        template.
+                      </div>
                       <Textarea
                         placeholder="Type your test message..."
                         value={testText}
@@ -628,9 +827,8 @@ export function WhatsAppBusinessSync() {
                         data-testid="input-test-whatsapp-text"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Custom text only delivers if the recipient messaged your business number in
-                        the last 24 hours, or during Meta&apos;s test/sandbox window. Otherwise use
-                        a template.
+                        Meta may return &quot;accepted&quot; even when custom text is not delivered.
+                        Use the Template tab or &quot;hello_world&quot; quick test instead.
                       </p>
                     </TabsContent>
 
@@ -723,10 +921,12 @@ export function WhatsAppBusinessSync() {
                             <p className="text-xs text-muted-foreground">
                               {selectedTestTemplateMeta
                                 ? describeTemplateParameterRequirements(selectedTestTemplateMeta)
-                                : "Add parameter values matching your template placeholders ({{1}}, {{name}}, …). Re-sync templates to auto-detect requirements."}
+                                : "Re-sync templates from Meta to detect required parameters."}{" "}
+                              Values are auto-filled from Meta when you sync templates — edit only
+                              if you want different test data.
                             </p>
                           </div>
-                          {templateNeedsHeaderMedia(selectedTestTemplateMeta) && (
+                          {showHeaderMediaField && (
                             <div className="space-y-2">
                               <p className="text-xs font-medium text-muted-foreground">
                                 Header image URL *
@@ -738,13 +938,12 @@ export function WhatsAppBusinessSync() {
                                 data-testid="input-test-whatsapp-header-media"
                               />
                               <p className="text-xs text-muted-foreground">
-                                Your template has an image header. Paste a public HTTPS link to the
-                                header image (e.g. your XGoo logo). Quick-reply buttons do not need
-                                parameters.
+                                Uses your saved default URL when this field is empty. Required for
+                                templates with image headers (e.g. xgoo_welcome_message).
                               </p>
                             </div>
                           )}
-                          {!templateNeedsHeaderMedia(selectedTestTemplateMeta) && (
+                          {!showHeaderMediaField && (
                             <TemplateParameterFields
                               label="Header"
                               params={testHeaderParams}
@@ -795,6 +994,32 @@ export function WhatsAppBusinessSync() {
                     )}
                     Send test
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !testPhone.trim() || !isConfigured || helloWorldTestMutation.isPending
+                    }
+                    onClick={() => helloWorldTestMutation.mutate()}
+                    data-testid="button-send-hello-world-test"
+                  >
+                    {helloWorldTestMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Quick test
+                    {quickTestTemplate
+                      ? ` (${quickTestTemplate.name}, ${quickTestTemplate.language})`
+                      : ""}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Quick test uses your simplest synced template
+                    {quickTestTemplate
+                      ? ` — currently ${quickTestTemplate.name} (${quickTestTemplate.language})`
+                      : " — sync templates first"}
+                    . hello_world only exists on Meta&apos;s default API Setup; your account uses
+                    welcome_message (en).
+                  </p>
                 </CardContent>
               </Card>
 

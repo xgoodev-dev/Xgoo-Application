@@ -24,6 +24,7 @@ import {
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { trackMetaLead } from "@/lib/meta-pixel";
 import {
   ClipboardList,
   Search,
@@ -1250,6 +1251,7 @@ function BookingTab({
           requestNumber: result.requestNumber,
           whatsappReturnUrl: result.whatsappReturnUrl,
         });
+        trackMetaLead({ content_category: slug || "public" });
         setPackagePhotos([]);
         toast({ title: "Booking Submitted!", description: `Save request #${result.requestNumber} to track status.` });
         return;
@@ -1303,6 +1305,7 @@ function BookingTab({
         requestNumber: result.requestNumber,
         whatsappReturnUrl: result.whatsappReturnUrl,
       });
+      trackMetaLead({ content_category: slug || "public" });
       setPackagePhotos([]);
       toast({ title: "Booking Submitted!", description: `Request #${result.requestNumber}` });
     } catch (err: any) {

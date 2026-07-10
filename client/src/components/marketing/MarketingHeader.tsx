@@ -13,52 +13,71 @@ import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961
 import { XGOO_BRAND } from "./site-info";
 import { LaunchingSoonRunner } from "./LaunchingSoonRunner";
 
+const SCROLL_TO_SECTION_KEY = "xgoo_scroll_to_section";
+
+export function consumePendingSectionScroll(): string | null {
+  const section = sessionStorage.getItem(SCROLL_TO_SECTION_KEY);
+  if (section) sessionStorage.removeItem(SCROLL_TO_SECTION_KEY);
+  return section;
+}
+
 type MarketingHeaderProps = {
+  /** @deprecated All main nav links are always shown. */
   showSectionLinks?: boolean;
 };
 
-export function MarketingHeader({ showSectionLinks = false }: MarketingHeaderProps) {
+export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   const [location, navigate] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const isActive = (path: string) => location === path;
+  const pathOnly = location.split("?")[0] || "/";
+  const isActive = (path: string) => pathOnly === path;
 
   const goTo = (path: string) => {
     setMenuOpen(false);
     navigate(path);
   };
 
+  const goToSection = (sectionId: string) => {
+    setMenuOpen(false);
+    if (pathOnly === "/") {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
+      window.history.replaceState(null, "", `#${sectionId}`);
+      return;
+    }
+    sessionStorage.setItem(SCROLL_TO_SECTION_KEY, sectionId);
+    navigate("/");
+  };
+
+  const linkClass = (active: boolean) =>
+    `text-left hover:text-gray-900 transition-colors ${active ? "text-gray-900" : ""}`;
+
   const navLinks = (
     <>
-      {showSectionLinks && (
-        <>
-          <a
-            href="#how-it-works"
-            className="hover:text-gray-900 transition-colors"
-            onClick={() => setMenuOpen(false)}
-          >
-            How It Works
-          </a>
-          <a
-            href="#features"
-            className="hover:text-gray-900 transition-colors"
-            onClick={() => setMenuOpen(false)}
-          >
-            Features
-          </a>
-        </>
-      )}
+      <button type="button" onClick={() => goTo("/")} className={linkClass(isActive("/"))}>
+        Home
+      </button>
       <button
         type="button"
-        onClick={() => goTo("/about")}
-        className={`text-left hover:text-gray-900 transition-colors ${isActive("/about") ? "text-gray-900" : ""}`}
+        onClick={() => goToSection("how-it-works")}
+        className="text-left hover:text-gray-900 transition-colors"
       >
+        How It Works
+      </button>
+      <button
+        type="button"
+        onClick={() => goToSection("features")}
+        className="text-left hover:text-gray-900 transition-colors"
+      >
+        Features
+      </button>
+      <button type="button" onClick={() => goTo("/about")} className={linkClass(isActive("/about"))}>
         About Us
       </button>
       <button
         type="button"
         onClick={() => goTo("/contact")}
-        className={`text-left hover:text-gray-900 transition-colors ${isActive("/contact") ? "text-gray-900" : ""}`}
+        className={linkClass(isActive("/contact"))}
       >
         Contact
       </button>
@@ -86,7 +105,7 @@ export function MarketingHeader({ showSectionLinks = false }: MarketingHeaderPro
             </div>
           </button>
 
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-500">
+          <div className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-medium text-gray-500">
             {navLinks}
           </div>
 
@@ -106,7 +125,7 @@ export function MarketingHeader({ showSectionLinks = false }: MarketingHeaderPro
                 <Button
                   variant="outline"
                   size="icon"
-                  className="md:hidden shrink-0"
+                  className="lg:hidden shrink-0"
                   aria-label="Open menu"
                 >
                   <Menu className="h-4 w-4" />

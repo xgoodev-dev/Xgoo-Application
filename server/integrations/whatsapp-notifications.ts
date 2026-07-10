@@ -1,6 +1,7 @@
 import type { BookingRequest, Shipment } from "@shared/schema";
 import {
   buildAutomationTemplateComponents,
+  enrichTemplateForSend,
   getTemplateDefinition,
   mapBodyParamsForTemplate,
   mergeWhatsAppSettings,
@@ -47,23 +48,28 @@ async function sendAutomatedWhatsApp(
   if (to.length < 10) return;
 
   if (rule.templateName?.trim()) {
-    const meta = getTemplateDefinition(
-      settings.templates,
-      rule.templateName.trim(),
-      rule.languageCode,
+    const templateName = rule.templateName.trim();
+    const meta = enrichTemplateForSend(
+      getTemplateDefinition(settings.templates, templateName, rule.languageCode),
+      templateName,
+      settings,
     );
-    const bodyParams = mapBodyParamsForTemplate(meta?.bodyParamCount ?? 1, values);
+    const bodyParams = mapBodyParamsForTemplate(
+      meta?.bodyParamCount ?? 1,
+      values,
+      meta?.bodyParamExamples,
+    );
     const headerParams =
       meta && meta.headerParamCount > 0 && !meta.headerMediaRequired
         ? [values.requestNumber]
         : undefined;
-    const components = buildAutomationTemplateComponents(settings, meta, {
+    const components = buildAutomationTemplateComponents(settings, meta, templateName, {
       bodyParams,
       headerParams,
     });
     await sendWhatsAppTemplateMessage(config, {
       to,
-      templateName: rule.templateName.trim(),
+      templateName,
       languageCode: meta?.language || rule.languageCode || "en",
       components,
     });

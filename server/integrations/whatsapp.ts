@@ -1,6 +1,7 @@
 import {
-  WHATSAPP_GRAPH_BASE,
+  normalizeWhatsAppPhone,
   parseTemplateParamCounts,
+  resolveWhatsAppGraphBase,
   type WhatsAppSettings,
   type WhatsAppTemplate,
 } from "@shared/whatsapp";
@@ -43,6 +44,26 @@ export function formatMetaGraphError(error: unknown): MetaGraphErrorDetails {
   return { message: String(error) };
 }
 
+/** Actionable hints for common Meta WhatsApp errors shown in the staff UI. */
+const META_ERROR_HINTS: Record<number, string> = {
+  190:
+    " Your access token has expired. In Meta Developer Console → WhatsApp → API Setup, click Generate access token, paste the new token into Access Token here, then Save. Temporary tokens last about 1 hour — for production use a permanent System User token.",
+  131037:
+    " Your WhatsApp business display name is not approved yet. In Meta Business Suite → WhatsApp → Phone numbers, check Display Name status (must be Approved, not Pending or Rejected). Review usually takes 24–48 hours.",
+  132012:
+    " Template parameters do not match the approved template. Re-sync templates and fill all required fields (including image header URL if applicable).",
+  132000:
+    " Wrong number of template parameters. Re-sync templates and fill every placeholder.",
+  132001:
+    " That template name/language is not on your WhatsApp account. Sync templates from Meta and use the exact language code shown (e.g. en, not en_US). hello_world only exists on Meta's default test setup — use welcome_message on your own WABA.",
+};
+
+function withMetaErrorHint(code: number | undefined, message: string): string {
+  if (!code) return message;
+  const hint = META_ERROR_HINTS[code];
+  return hint ? `${message}${hint}` : message;
+}
+
 /** Minimum credentials needed before we can call Meta (WABA is resolved from phone number). */
 export function configFromSettings(settings: WhatsAppSettings): WhatsAppApiConfig | null {
   const accessToken = settings.accessToken?.trim();
@@ -64,12 +85,13 @@ function redactToken(url: string): string {
 async function graphRequest<T>(
   pathOrUrl: string,
   accessToken: string,
-  options?: { useFullUrl?: boolean },
+  options?: { useFullUrl?: boolean; apiVersion?: string },
 ): Promise<T> {
   const isAbsolute = options?.useFullUrl || pathOrUrl.startsWith("http");
+  const graphBase = resolveWhatsAppGraphBase(options?.apiVersion);
   const url = isAbsolute
     ? pathOrUrl
-    : `${WHATSAPP_GRAPH_BASE}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
+    : `${graphBase}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
 
   const res = await fetch(url, {
     headers: {
@@ -109,7 +131,10 @@ async function graphRequest<T>(
       `Meta API request failed (HTTP ${res.status})`;
 
     throw new MetaGraphApiError({
-      message: `Meta API error (${res.status}): ${message}`,
+      message: withMetaErrorHint(
+        err?.code,
+        `Meta API error (${res.status}): ${message}`,
+      ),
       type: err?.type,
       code: err?.code,
       error_subcode: err?.error_subcode,
@@ -123,8 +148,12 @@ async function graphRequest<T>(
   return parsed as T;
 }
 
-async function graphGet<T>(path: string, accessToken: string): Promise<T> {
-  return graphRequest<T>(path, accessToken);
+async function graphGet<T>(
+  path: string,
+  accessToken: string,
+  apiVersion?: string,
+): Promise<T> {
+  return graphRequest<T>(path, accessToken, { apiVersion });
 }
 
 type PhoneNumberDetails = {
@@ -137,10 +166,12 @@ type PhoneNumberDetails = {
 async function fetchPhoneNumberDetails(
   phoneNumberId: string,
   accessToken: string,
+  apiVersion?: string,
 ): Promise<PhoneNumberDetails> {
   return graphGet<PhoneNumberDetails>(
     `/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`,
     accessToken,
+    apiVersion,
   );
 }
 
@@ -363,7 +394,11 @@ export async function testWhatsAppConnection(
   config: WhatsAppApiConfig,
   settings?: WhatsAppSettings,
 ): Promise<WhatsAppConnectionTestResult> {
-  const data = await fetchPhoneNumberDetails(config.phoneNumberId, config.accessToken);
+  const data = await fetchPhoneNumberDetails(
+    config.phoneNumberId,
+    config.accessToken,
+    config.apiVersion,
+  );
 
   let wabaId = config.wabaId?.trim();
   let wabaName: string | undefined;
@@ -424,7 +459,7 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
 
   for (const path of templatePaths) {
     try {
-      await graphGet<TemplatePage>(path, config.accessToken);
+      await graphGet<TemplatePage>(path, config.accessToken, config.apiVersion);
       nextUrl = path;
       break;
     } catch (error) {
@@ -449,8 +484,11 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
 
   while (nextUrl) {
     const page: TemplatePage = nextUrl.startsWith("http")
-      ? await graphRequest<TemplatePage>(nextUrl, config.accessToken, { useFullUrl: true })
-      : await graphGet<TemplatePage>(nextUrl, config.accessToken);
+      ? await graphRequest<TemplatePage>(nextUrl, config.accessToken, {
+          useFullUrl: true,
+          apiVersion: config.apiVersion,
+        })
+      : await graphGet<TemplatePage>(nextUrl, config.accessToken, config.apiVersion);
 
     for (const row of page.data || []) {
       const parameterFormat =
@@ -471,6 +509,10 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
         bodyParamNames: paramMeta.bodyParamNames,
         headerParamNames: paramMeta.headerParamNames,
         buttonParamIndex: paramMeta.buttonParamIndex,
+        bodyParamExamples: paramMeta.bodyParamExamples,
+        headerParamExamples: paramMeta.headerParamExamples,
+        buttonParamExamples: paramMeta.buttonParamExamples,
+        headerMediaExampleUrl: paramMeta.headerMediaExampleUrl,
       });
     }
 
@@ -502,7 +544,16 @@ async function postWhatsAppMessage(
   config: WhatsAppApiConfig,
   body: Record<string, unknown>,
 ): Promise<{ messageId: string; raw: unknown }> {
-  const res = await fetch(`${WHATSAPP_GRAPH_BASE}/${config.phoneNumberId}/messages`, {
+  const graphBase = resolveWhatsAppGraphBase(config.apiVersion);
+  const url = `${graphBase}/${config.phoneNumberId}/messages`;
+  console.info("[WhatsApp] Sending message", {
+    phoneNumberId: config.phoneNumberId,
+    apiVersion: config.apiVersion || "default",
+    to: body.to,
+    type: body.type,
+    template: (body.template as { name?: string } | undefined)?.name,
+  });
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.accessToken}`,
@@ -535,7 +586,10 @@ async function postWhatsAppMessage(
       ? `${err?.message || "Failed to send WhatsApp message"} — ${detail}`
       : err?.message || text.slice(0, 200);
     throw new MetaGraphApiError({
-      message: `Failed to send WhatsApp message (${res.status}): ${message}`,
+      message: withMetaErrorHint(
+        err?.code,
+        `Failed to send WhatsApp message (${res.status}): ${message}`,
+      ),
       code: err?.code,
       fbtrace_id: err?.fbtrace_id,
       httpStatus: res.status,
@@ -563,7 +617,7 @@ export async function sendWhatsAppTextMessage(
 
   return postWhatsAppMessage(config, {
     messaging_product: "whatsapp",
-    to: input.to.replace(/\D/g, ""),
+    to: normalizeWhatsAppPhone(input.to),
     type: "text",
     text: { preview_url: false, body },
   });
@@ -583,7 +637,7 @@ export async function sendWhatsAppTemplateMessage(
 
   return postWhatsAppMessage(config, {
     messaging_product: "whatsapp",
-    to: input.to.replace(/\D/g, ""),
+    to: normalizeWhatsAppPhone(input.to),
     type: "template",
     template,
   });

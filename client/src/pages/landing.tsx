@@ -1,10 +1,11 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PublicTrackingSearch } from "@/components/customer/PublicTrackingSearch";
 import { InteractiveGlobe } from "@/components/InteractiveGlobe";
-import { MarketingHeader } from "@/components/marketing/MarketingHeader";
+import { MarketingHeader, consumePendingSectionScroll } from "@/components/marketing/MarketingHeader";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { CourierPartnersMarquee } from "@/components/marketing/CourierPartnersMarquee";
@@ -63,9 +64,18 @@ const steps = [
 export default function LandingPage() {
   const [, navigate] = useLocation();
 
+  useEffect(() => {
+    const pending = consumePendingSectionScroll();
+    const hashId = pending || window.location.hash.replace(/^#/, "");
+    if (!hashId) return;
+    requestAnimationFrame(() => {
+      document.getElementById(hashId)?.scrollIntoView({ behavior: "smooth" });
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
-      <MarketingHeader showSectionLinks />
+      <MarketingHeader />
 
       <section className="relative min-h-screen flex items-center bg-white overflow-x-hidden">
         <div
