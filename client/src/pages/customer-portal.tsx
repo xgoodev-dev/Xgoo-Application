@@ -733,7 +733,7 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input {...field} placeholder="Your name" data-testid="input-register-name" /></FormControl><FormMessage /></FormItem>
               )} />
-              <div className="grid gap-4 grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="phone" render={({ field }) => (
                   <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} placeholder="10-digit" data-testid="input-register-phone" /></FormControl><FormMessage /></FormItem>
                 )} />
@@ -747,7 +747,7 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               <FormField control={form.control} name="address" render={({ field }) => (
                 <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} placeholder="Your address" data-testid="input-register-address" /></FormControl></FormItem>
               )} />
-              <div className="grid gap-4 grid-cols-3">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <FormField control={form.control} name="city" render={({ field }) => (
                   <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} placeholder="City" data-testid="input-register-city" /></FormControl></FormItem>
                 )} />
@@ -1739,35 +1739,72 @@ function MyBookingsTab({ token }: { token: string }) {
   } | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/customer/bookings", {
-      headers: { "x-customer-token": token },
-    })
-      .then((r) => r.json())
-      .then((data) => setBookings(data))
-      .catch(() => {})
-      .finally(() => setIsLoading(false));
-  }, [token]);
-
-  async function viewDetail(id: string) {
-    setSelectedBooking(id);
-    setIsLoadingDetail(true);
-    setBookingDetail(null);
+  const loadBookings = useCallback(async () => {
     try {
-      const res = await fetch(`/api/customer/bookings/${id}`, {
+      const res = await fetch("/api/customer/bookings", {
         headers: { "x-customer-token": token },
       });
       if (!res.ok) return;
+      const data = await res.json();
+      setBookings(data);
+    } catch {
+      // ignore
+    }
+  }, [token]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    loadBookings().finally(() => setIsLoading(false));
+  }, [loadBookings]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      loadBookings();
+    }, 30000);
+    const onFocus = () => loadBookings();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadBookings]);
+
+  const loadBookingDetail = useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/customer/bookings/${id}`, {
+        headers: { "x-customer-token": token },
+      });
+      if (!res.ok) return null;
       const data = await res.json();
       const request = data.request as BookingRequestInfo;
       const shipment = data.shipment as ShipmentTrackingInfo | null;
       const tracking =
         data.tracking ??
         buildCustomerTracking(mapRequestForTracking(request), mapShipmentForTracking(shipment));
-      setBookingDetail({ request, shipment, tracking });
+      return { request, shipment, tracking };
+    },
+    [token],
+  );
+
+  async function viewDetail(id: string) {
+    setSelectedBooking(id);
+    setIsLoadingDetail(true);
+    setBookingDetail(null);
+    try {
+      const detail = await loadBookingDetail(id);
+      if (detail) setBookingDetail(detail);
     } catch {}
     setIsLoadingDetail(false);
   }
+
+  useEffect(() => {
+    if (!selectedBooking) return;
+    const interval = window.setInterval(async () => {
+      const detail = await loadBookingDetail(selectedBooking);
+      if (detail) setBookingDetail(detail);
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [selectedBooking, loadBookingDetail]);
 
   if (selectedBooking) {
     if (isLoadingDetail || !bookingDetail) {
@@ -2249,7 +2286,7 @@ function AccountTab({ token, user, onUserUpdate, onLogout }: {
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} data-testid="input-profile-name" /></FormControl><FormMessage /></FormItem>
               )} />
-              <div className="grid gap-4 grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="phone" render={({ field }) => (
                   <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} data-testid="input-profile-phone" /></FormControl><FormMessage /></FormItem>
                 )} />
@@ -2260,7 +2297,7 @@ function AccountTab({ token, user, onUserUpdate, onLogout }: {
               <FormField control={form.control} name="address" render={({ field }) => (
                 <FormItem><FormLabel>Default Address</FormLabel><FormControl><Input {...field} data-testid="input-profile-address" /></FormControl></FormItem>
               )} />
-              <div className="grid gap-4 grid-cols-3">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <FormField control={form.control} name="city" render={({ field }) => (
                   <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-profile-city" /></FormControl></FormItem>
                 )} />
@@ -2481,19 +2518,19 @@ export default function CustomerPortalPage() {
               <p className="text-sm text-muted-foreground mt-1 sm:hidden">Courier Booking</p>
             </div>
             <div className="mx-auto max-w-3xl px-4 pb-3">
-              <TabsList className="grid w-full grid-cols-3" data-testid="tabs-navigation">
-                <TabsTrigger value="book" data-testid="tab-book">
+              <TabsList className="grid w-full grid-cols-3 h-auto" data-testid="tabs-navigation">
+                <TabsTrigger value="book" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-book">
                   <Plus className="h-4 w-4 mr-1 hidden sm:block" /> Book
                 </TabsTrigger>
-                <TabsTrigger value="bookings" data-testid="tab-bookings">
+                <TabsTrigger value="bookings" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-bookings">
                   <ClipboardList className="h-4 w-4 mr-1 hidden sm:block" /> My Bookings
                 </TabsTrigger>
                 {guestMode && !auth.isAuthenticated ? (
-                  <TabsTrigger value="track" data-testid="tab-track">
+                  <TabsTrigger value="track" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-track">
                     <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
                   </TabsTrigger>
                 ) : (
-                  <TabsTrigger value="account" data-testid="tab-account">
+                  <TabsTrigger value="account" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-account">
                     <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
                   </TabsTrigger>
                 )}

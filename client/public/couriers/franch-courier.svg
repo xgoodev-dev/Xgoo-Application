@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" role="img" aria-label="Franch Courier">
+  <rect x="0" y="10" width="28" height="28" rx="4" fill="#FF4907"/>
+  <text x="14" y="30" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">FC</text>
+  <text x="38" y="22" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1F2937">Franch</text>
+  <text x="38" y="40" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1F2937">Courier</text>
+</svg>

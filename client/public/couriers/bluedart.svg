@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" role="img" aria-label="Blue Dart">
+  <text x="0" y="22" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#005DAA">Blue</text>
+  <text x="0" y="42" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#005DAA">Dart</text>
+  <rect x="72" y="10" width="8" height="28" fill="#005DAA"/>
+  <rect x="84" y="10" width="8" height="28" fill="#00A0E3"/>
+</svg>

@@ -7,7 +7,7 @@ export function MarketingFooter() {
   return (
     <footer className="py-10 border-t" style={{ background: "#0d0401" }}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+        <div className="flex flex-col items-center justify-between gap-6 sm:flex-row sm:gap-4">
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -16,7 +16,7 @@ export function MarketingFooter() {
             <img src={xgooLogo} alt="XGoo" className="h-7 w-7 rounded-lg" />
             <span className="font-bold text-white text-lg">XGoo</span>
           </button>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-white/40">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center text-sm text-white/40">
             <button type="button" onClick={() => navigate("/book")} className="hover:text-white transition-colors">
               Book
             </button>

@@ -25,14 +25,8 @@ class GlobeErrorBoundary extends Component<
 
 function GlobeFallback() {
   return (
-    <div
-      className="w-full flex items-center justify-center"
-      style={{ height: 520 }}
-    >
-      <div
-        className="rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center"
-        style={{ width: 400, height: 400 }}
-      >
+    <div className="w-full flex items-center justify-center min-h-[280px] sm:min-h-[400px]">
+      <div className="rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center w-[min(100%,400px)] aspect-square">
         <p className="text-sm text-gray-400">Globe unavailable</p>
       </div>
     </div>
@@ -167,7 +161,9 @@ function GlobeLoader({ size }: { size: number }) {
 // ── Public component ──────────────────────────────────────────────────────────
 export function InteractiveGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState(520);
+  const [size, setSize] = useState(() =>
+    typeof window !== "undefined" ? Math.min(window.innerWidth - 32, 580) : 360,
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -183,7 +179,11 @@ export function InteractiveGlobe() {
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full" style={{ height: size }}>
+    <div
+      ref={containerRef}
+      className="w-full max-w-full overflow-hidden mx-auto"
+      style={{ height: size }}
+    >
       <GlobeErrorBoundary>
         <Suspense fallback={<GlobeLoader size={size} />}>
           <GlobeScene size={size} />

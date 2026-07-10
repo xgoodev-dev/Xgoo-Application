@@ -97,30 +97,40 @@ export function PublicTrackingSearch({
   const isHero = variant === "hero";
 
   return (
-    <div className={isHero ? "w-full max-w-xl" : "w-full"} id="track-parcel">
+    <div className={isHero ? "w-full min-w-0 max-w-full" : "w-full min-w-0"} id="track-parcel">
       <div
         className={
           isHero
-            ? "flex flex-col sm:flex-row gap-2 rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
-            : "flex gap-2"
+            ? "flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50/80 p-2 w-full min-w-0"
+            : "flex gap-2 min-w-0"
         }
       >
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative flex-1 min-w-0 w-full">
+          <Search
+            className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isHero ? "text-gray-400" : "text-muted-foreground"}`}
+          />
           <Input
             value={trackingNumber}
             onChange={(e) => setTrackingNumber(e.target.value)}
             placeholder="Enter request #, booking #, or AWB"
-            className={isHero ? "pl-9 border-0 shadow-none focus-visible:ring-0 h-11" : "pl-9"}
+            className={
+              isHero
+                ? "pl-9 border border-gray-200 shadow-none focus-visible:ring-1 focus-visible:ring-gray-300 h-11 min-w-0 w-full bg-white text-gray-900 placeholder:text-gray-400"
+                : "pl-9 min-w-0 w-full"
+            }
             onKeyDown={(e) => e.key === "Enter" && handleTrack()}
             data-testid="input-landing-tracking"
           />
         </div>
         <Button
+          variant={isHero ? "outline" : "default"}
           onClick={handleTrack}
           disabled={isSearching || !trackingNumber.trim()}
-          className={isHero ? "h-11 px-6 text-white border-0 shrink-0" : "shrink-0"}
-          style={isHero ? { background: "#FF4907" } : undefined}
+          className={
+            isHero
+              ? "h-11 px-6 w-full sm:w-auto sm:shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium disabled:opacity-50"
+              : "shrink-0"
+          }
           data-testid="button-landing-track"
         >
           {isSearching ? (

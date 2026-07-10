@@ -182,7 +182,7 @@ export default function AboutPage() {
           <Badge variant="secondary" className="mb-4 text-xs font-semibold uppercase tracking-widest">
             About XGoo
           </Badge>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 tracking-tight max-w-4xl leading-[1.1]">
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 tracking-tight max-w-4xl leading-[1.1]">
             Building the future of{" "}
             <span style={{ color: "#FF4907" }}>movement</span>
           </h1>

@@ -6,6 +6,7 @@ import { PublicTrackingSearch } from "@/components/customer/PublicTrackingSearch
 import { InteractiveGlobe } from "@/components/InteractiveGlobe";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
+import { CourierPartnersMarquee } from "@/components/marketing/CourierPartnersMarquee";
 import {
   Package,
   Shield,
@@ -58,8 +59,6 @@ const steps = [
   { step: "3", title: "Track Delivery", description: "Follow your parcel until it reaches its destination." },
 ];
 
-const partners = ["DTDC", "FedEx", "Blue Dart", "Delhivery", "Ecom Express"];
-
 export default function LandingPage() {
   const [, navigate] = useLocation();
 
@@ -67,9 +66,9 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <MarketingHeader showSectionLinks />
 
-      <section className="relative min-h-screen flex items-center bg-white">
+      <section className="relative min-h-screen flex items-center bg-white overflow-x-hidden">
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none overflow-hidden"
           style={{
             backgroundImage: "radial-gradient(circle, #e5e7eb 1px, transparent 1px)",
             backgroundSize: "32px 32px",
@@ -77,18 +76,18 @@ export default function LandingPage() {
           }}
         />
         <div
-          className="absolute right-0 top-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
+          className="absolute right-0 top-1/2 -translate-y-1/2 w-[min(600px,100vw)] h-[min(600px,100vw)] rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(255,73,7,0.06) 0%, transparent 70%)" }}
         />
 
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-32 pb-16 w-full">
-          <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div>
+        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-32 pb-16 w-full min-w-0">
+          <div className="grid lg:grid-cols-2 gap-8 items-center min-w-0">
+            <div className="min-w-0 w-full">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#FF4907]/30 bg-[#FF4907]/5 px-4 py-1.5 text-sm text-[#9B320B] mb-6">
                 <span className="flex h-2 w-2 rounded-full bg-[#FF4907]" />
                 Courier booking made simple
               </div>
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold text-gray-900 leading-[1.12] tracking-tight">
+              <h1 className="text-3xl sm:text-5xl lg:text-[3.4rem] font-extrabold text-gray-900 leading-[1.12] tracking-tight break-words">
                 Book your parcel{" "}
                 <span style={{ color: "#FF4907" }}>online</span>
                 {" "}in minutes
@@ -98,18 +97,24 @@ export default function LandingPage() {
                 deliveries — all from one place. Fast, reliable, and built for India.
               </p>
 
-              <div className="mt-8 space-y-4 max-w-xl">
+              <div className="mt-8 space-y-5 w-full min-w-0 max-w-xl">
                 <Button
                   size="lg"
                   onClick={() => navigate("/book")}
-                  className="gap-2 px-6 text-white border-0 w-full sm:w-auto"
+                  className="gap-2 px-4 sm:px-6 text-white border-0 w-full max-w-full h-12 sm:h-14 text-base font-semibold shadow-lg shadow-[#FF4907]/25 hover:shadow-xl hover:shadow-[#FF4907]/30"
                   style={{ background: "#FF4907" }}
                 >
                   <Package className="h-5 w-5" />
                   Book a Parcel
                   <ArrowUpRight className="h-4 w-4" />
                 </Button>
-                <PublicTrackingSearch variant="hero" />
+
+                <div className="pt-1">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
+                    Or track your shipment
+                  </p>
+                  <PublicTrackingSearch variant="hero" />
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-5 mt-8">
@@ -122,8 +127,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="flex justify-center items-center lg:justify-end">
-              <div className="w-full max-w-[580px]">
+            <div className="flex justify-center items-center lg:justify-end min-w-0 w-full overflow-hidden">
+              <div className="w-full max-w-[580px] min-w-0">
                 <InteractiveGlobe />
               </div>
             </div>
@@ -161,20 +166,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="bg-white py-10 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-6">
-            Supported courier networks
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-10">
-            {partners.map((p) => (
-              <span key={p} className="text-lg font-bold text-gray-300 hover:text-gray-600 transition-colors cursor-default tracking-tight">
-                {p}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+      <CourierPartnersMarquee />
 
       <section id="features" className="py-20 sm:py-28 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

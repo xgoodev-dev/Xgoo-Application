@@ -173,6 +173,7 @@ const shipmentCreateSchema = z.object({
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   baseAmount: z.string().optional(),
   totalAmount: z.string().min(1),
+  bookingRequestId: z.string().uuid().optional(),
 });
 
 const statusUpdateSchema = z.object({
@@ -1609,6 +1610,17 @@ export async function registerRoutes(
         });
       }
 
+      if (validated.bookingRequestId) {
+        const bookingRequest = await storage.getBookingRequest(validated.bookingRequestId);
+        if (bookingRequest && bookingRequest.officeId === officeId) {
+          await storage.updateBookingRequestStatus(
+            validated.bookingRequestId,
+            "converted",
+            shipment.id,
+          );
+        }
+      }
+
       res.json(shipment);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2586,10 +2598,7 @@ export async function registerRoutes(
       const requests = await storage.getBookingRequestsByCustomerUser(req.customerUser.id);
       const enriched = await Promise.all(
         requests.map(async (request) => {
-          let shipment = null;
-          if (request.convertedShipmentId) {
-            shipment = await storage.getShipment(request.convertedShipmentId);
-          }
+          const shipment = await storage.getShipmentForBookingRequest(request);
           return {
             ...request,
             tracking: buildCustomerTrackingSummary(request, shipment),
@@ -2612,11 +2621,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Booking not found" });
       }
 
-      let shipment = null;
-      if (request.convertedShipmentId) {
-        shipment = await storage.getShipment(request.convertedShipmentId);
-      }
-
+      const shipment = await storage.getShipmentForBookingRequest(request);
       const tracking = trackingFromBookingRequest(request, shipment);
       res.json({ request, shipment, tracking });
     } catch (error) {

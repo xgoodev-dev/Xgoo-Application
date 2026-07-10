@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" role="img" aria-label="Atlantic">
+  <path d="M0 36 L24 8 L48 36 Z" fill="#0077B6"/>
+  <text x="58" y="22" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#0077B6">Atlantic</text>
+  <text x="58" y="40" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="600" fill="#4B5563">Courier</text>
+</svg>

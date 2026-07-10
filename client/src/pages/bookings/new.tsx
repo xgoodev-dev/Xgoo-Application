@@ -202,9 +202,14 @@ export default function NewBookingPage() {
     },
   });
 
+  const [sourceBookingRequestId, setSourceBookingRequestId] = useState<string | null>(null);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (!params.toString()) return;
+
+    const bookingRequestId = params.get("bookingRequestId");
+    if (bookingRequestId) setSourceBookingRequestId(bookingRequestId);
 
     const textFields = [
       "senderName",
@@ -975,6 +980,7 @@ export default function NewBookingPage() {
           contentDescription: row.contentDescription || "",
           declaredValue: row.declaredValue || "",
         })),
+        ...(sourceBookingRequestId ? { bookingRequestId: sourceBookingRequestId } : {}),
       };
       return apiRequest("POST", "/api/shipments", payload);
     },
@@ -986,6 +992,7 @@ export default function NewBookingPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/booking-requests"] });
       setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
     },
     onError: (error: Error) => {

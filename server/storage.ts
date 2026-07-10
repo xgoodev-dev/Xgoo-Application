@@ -142,6 +142,7 @@ export interface IStorage {
   getBookingRequest(id: string): Promise<BookingRequest | undefined>;
   createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest>;
   updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined>;
+  getShipmentForBookingRequest(request: BookingRequest): Promise<Shipment | undefined>;
 
   // Customer User operations
   getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
@@ -637,6 +638,37 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bookingRequests.id, id))
       .returning();
     return updated;
+  }
+
+  async getShipmentForBookingRequest(request: BookingRequest): Promise<Shipment | undefined> {
+    if (request.convertedShipmentId) {
+      return this.getShipment(request.convertedShipmentId);
+    }
+
+    if (!request.senderPhone || !request.receiverPhone || !request.createdAt) {
+      return undefined;
+    }
+
+    const [matched] = await db
+      .select()
+      .from(shipments)
+      .where(
+        and(
+          eq(shipments.officeId, request.officeId),
+          eq(shipments.senderPhone, request.senderPhone),
+          eq(shipments.receiverPhone, request.receiverPhone),
+          gte(shipments.bookedAt, request.createdAt),
+        ),
+      )
+      .orderBy(desc(shipments.bookedAt))
+      .limit(1);
+
+    if (matched) {
+      await this.updateBookingRequestStatus(request.id, "converted", matched.id);
+      return matched;
+    }
+
+    return undefined;
   }
 
   // Customer User operations

@@ -225,8 +225,8 @@ export function buildCustomerTracking(
   if (!shipment) {
     const currentKeyByRequestStatus: Record<string, string> = {
       pending: "reviewed",
-      reviewed: "approved",
-      approved: "shipment_created",
+      reviewed: "reviewed",
+      approved: "approved",
       converted: "shipment_created",
     };
     const currentKey = currentKeyByRequestStatus[request.status] ?? "reviewed";
