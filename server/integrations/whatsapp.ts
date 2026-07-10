@@ -92,17 +92,18 @@ async function graphRequest<T>(
   }
 
   if (!res.ok) {
-    const err = parsed.error as
-      | {
-          message?: string;
-          error_user_msg?: string;
-          type?: string;
-          code?: number;
-          error_subcode?: number;
-          fbtrace_id?: string;
-        }
-      | undefined;
+    const err = parsed.error as {
+      message?: string;
+      error_user_msg?: string;
+      error_data?: { details?: string };
+      type?: string;
+      code?: number;
+      error_subcode?: number;
+      fbtrace_id?: string;
+    } | undefined;
+    const detail = err?.error_data?.details?.trim();
     const message =
+      (detail ? `${err?.message || "Meta API error"} — ${detail}` : null) ||
       err?.error_user_msg ||
       err?.message ||
       `Meta API request failed (HTTP ${res.status})`;
@@ -404,6 +405,7 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
     language?: unknown;
     status: string;
     category?: string;
+    parameter_format?: string;
     components?: unknown;
   };
 
@@ -413,8 +415,8 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
   };
 
   const templatePaths = [
+    `/${config.wabaId}/message_templates?limit=100&fields=id,name,language,status,category,parameter_format,components`,
     `/${config.wabaId}/message_templates?limit=100`,
-    `/${config.wabaId}/message_templates?limit=100&fields=id,name,language,status,category,components`,
   ];
 
   let nextUrl: string | null = null;
@@ -451,16 +453,24 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
       : await graphGet<TemplatePage>(nextUrl, config.accessToken);
 
     for (const row of page.data || []) {
-      const paramCounts = parseTemplateParamCounts(row.components);
+      const parameterFormat =
+        String(row.parameter_format || "").toLowerCase() === "named" ? "named" : "positional";
+      const paramMeta = parseTemplateParamCounts(row.components, parameterFormat);
       templates.push({
         id: row.id,
         name: row.name,
         language: parseTemplateLanguage(row.language) || "en",
         status: row.status,
         category: row.category,
-        bodyParamCount: paramCounts.bodyParamCount,
-        headerParamCount: paramCounts.headerParamCount,
-        buttonParamCount: paramCounts.buttonParamCount,
+        parameterFormat: paramMeta.parameterFormat,
+        headerFormat: paramMeta.headerFormat,
+        headerMediaRequired: paramMeta.headerMediaRequired,
+        bodyParamCount: paramMeta.bodyParamCount,
+        headerParamCount: paramMeta.headerParamCount,
+        buttonParamCount: paramMeta.buttonParamCount,
+        bodyParamNames: paramMeta.bodyParamNames,
+        headerParamNames: paramMeta.headerParamNames,
+        buttonParamIndex: paramMeta.buttonParamIndex,
       });
     }
 
@@ -514,9 +524,18 @@ async function postWhatsAppMessage(
   }
 
   if (!res.ok) {
-    const err = parsed.error as { message?: string; code?: number; fbtrace_id?: string } | undefined;
+    const err = parsed.error as {
+      message?: string;
+      error_data?: { details?: string };
+      code?: number;
+      fbtrace_id?: string;
+    } | undefined;
+    const detail = err?.error_data?.details?.trim();
+    const message = detail
+      ? `${err?.message || "Failed to send WhatsApp message"} — ${detail}`
+      : err?.message || text.slice(0, 200);
     throw new MetaGraphApiError({
-      message: `Failed to send WhatsApp message (${res.status}): ${err?.message || text.slice(0, 200)}`,
+      message: `Failed to send WhatsApp message (${res.status}): ${message}`,
       code: err?.code,
       fbtrace_id: err?.fbtrace_id,
       httpStatus: res.status,

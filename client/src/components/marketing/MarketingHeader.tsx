@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { ArrowUpRight, Menu } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import { XGOO_BRAND } from "./site-info";
 import { LaunchingSoonRunner } from "./LaunchingSoonRunner";
 
 type MarketingHeaderProps = {
@@ -75,7 +76,14 @@ export function MarketingHeader({ showSectionLinks = false }: MarketingHeaderPro
             className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity min-w-0"
           >
             <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg shrink-0" />
-            <span className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight truncate">XGoo</span>
+            <div className="min-w-0 text-left">
+              <span className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight truncate block">
+                {XGOO_BRAND.productName}
+              </span>
+              <span className="text-[10px] sm:text-xs text-gray-400 truncate block">
+                from {XGOO_BRAND.parentCompany}
+              </span>
+            </div>
           </button>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-500">

@@ -40,9 +40,11 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
   WHATSAPP_MESSAGE_TYPES,
+  describeTemplateParameterRequirements,
   getTemplateDefinition,
   isMaskedAccessToken,
   templateParamsFilled,
+  templateNeedsHeaderMedia,
   whatsAppSettingsSchema,
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
@@ -73,6 +75,7 @@ export function WhatsAppBusinessSync() {
   const [testBodyParams, setTestBodyParams] = useState<string[]>([]);
   const [testHeaderParams, setTestHeaderParams] = useState<string[]>([]);
   const [testButtonParams, setTestButtonParams] = useState<string[]>([]);
+  const [testHeaderMediaUrl, setTestHeaderMediaUrl] = useState("");
 
   const { data: settings, isLoading } = useQuery<WhatsAppSettings>({
     queryKey: SETTINGS_QUERY_KEY,
@@ -160,8 +163,14 @@ export function WhatsAppBusinessSync() {
       setConnectionResult(result);
       if (result.wabaId) {
         form.setValue("wabaId", result.wabaId, { shouldDirty: true });
-        await queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       }
+      if (result.displayPhoneNumber && !form.getValues("businessWhatsAppNumber")?.trim()) {
+        const digits = result.displayPhoneNumber.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          form.setValue("businessWhatsAppNumber", digits, { shouldDirty: true });
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       toast({
         title: "Connection successful",
         description: result.displayPhoneNumber
@@ -186,6 +195,10 @@ export function WhatsAppBusinessSync() {
         bodyParams: testMessageType === "template" ? testBodyParams : undefined,
         headerParams: testMessageType === "template" ? testHeaderParams : undefined,
         buttonParams: testMessageType === "template" ? testButtonParams : undefined,
+        headerMediaUrl:
+          testMessageType === "template" && templateNeedsHeaderMedia(selectedTestTemplateMeta)
+            ? testHeaderMediaUrl || watched.defaultHeaderMediaUrl || undefined
+            : undefined,
       });
       return res.json();
     },
@@ -239,8 +252,11 @@ export function WhatsAppBusinessSync() {
     if (testMessageType !== "template") return;
     const meta = getTemplateDefinition(allTemplates, effectiveTestTemplate, effectiveTestLanguage);
     setTestBodyParams(Array(meta?.bodyParamCount ?? 0).fill(""));
-    setTestHeaderParams(Array(meta?.headerParamCount ?? 0).fill(""));
+    setTestHeaderParams(
+      meta?.headerMediaRequired ? [] : Array(meta?.headerParamCount ?? 0).fill(""),
+    );
     setTestButtonParams(Array(meta?.buttonParamCount ?? 0).fill(""));
+    setTestHeaderMediaUrl("");
   }, [effectiveTestTemplate, effectiveTestLanguage, allTemplates, testMessageType]);
 
   const paramCountsForValidation = useMemo(
@@ -248,14 +264,22 @@ export function WhatsAppBusinessSync() {
       bodyParamCount:
         selectedTestTemplateMeta?.bodyParamCount ??
         (testBodyParams.length > 0 ? testBodyParams.length : 0),
-      headerParamCount:
-        selectedTestTemplateMeta?.headerParamCount ??
-        (testHeaderParams.length > 0 ? testHeaderParams.length : 0),
+      headerParamCount: templateNeedsHeaderMedia(selectedTestTemplateMeta)
+        ? 0
+        : selectedTestTemplateMeta?.headerParamCount ??
+          (testHeaderParams.length > 0 ? testHeaderParams.length : 0),
       buttonParamCount:
         selectedTestTemplateMeta?.buttonParamCount ??
         (testButtonParams.length > 0 ? testButtonParams.length : 0),
+      headerMediaRequired: templateNeedsHeaderMedia(selectedTestTemplateMeta),
+      headerFormat: selectedTestTemplateMeta?.headerFormat,
     }),
-    [selectedTestTemplateMeta, testBodyParams.length, testHeaderParams.length, testButtonParams.length],
+    [
+      selectedTestTemplateMeta,
+      testBodyParams.length,
+      testHeaderParams.length,
+      testButtonParams.length,
+    ],
   );
 
   const templateParamsOk =
@@ -264,6 +288,7 @@ export function WhatsAppBusinessSync() {
       bodyParams: testBodyParams,
       headerParams: testHeaderParams,
       buttonParams: testButtonParams,
+      headerMediaUrl: testHeaderMediaUrl,
     });
 
   const isConfigured = Boolean(watched.phoneNumberId?.trim() && watched.accessToken?.trim());
@@ -427,11 +452,59 @@ export function WhatsAppBusinessSync() {
                         <Input {...field} placeholder="Custom verify token for webhooks" />
                       </FormControl>
                       <FormDescription>
-                        Used when configuring Meta webhooks for delivery receipts and replies.
+                        Set the same token in Meta → Webhooks. Callback URL:{" "}
+                        <code className="text-xs break-all">
+                          {typeof window !== "undefined"
+                            ? `${window.location.origin}/api/whatsapp/webhook`
+                            : "/api/whatsapp/webhook"}
+                        </code>
                       </FormDescription>
                     </FormItem>
                   )}
                 />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="defaultHeaderMediaUrl"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>Default header image URL (automation)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="https://www.xgoo.in/logo.png"
+                            data-testid="input-whatsapp-header-media-default"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Public HTTPS link used for all automated template sends with image
+                          headers (e.g. welcome message). Set once — no manual entry per booking.
+                        </FormDescription>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="businessWhatsAppNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Business WhatsApp number</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="919876543210"
+                            data-testid="input-whatsapp-business-number"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          With country code, no +. Used for &quot;Return to WhatsApp&quot; links
+                          after booking.
+                        </FormDescription>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -649,28 +722,60 @@ export function WhatsAppBusinessSync() {
                             <p className="text-sm font-medium">Template parameters</p>
                             <p className="text-xs text-muted-foreground">
                               {selectedTestTemplateMeta
-                                ? `Synced template expects ${selectedTestTemplateMeta.headerParamCount} header, ${selectedTestTemplateMeta.bodyParamCount} body, ${selectedTestTemplateMeta.buttonParamCount} button parameter(s).`
-                                : "Add parameter values matching your template placeholders ({{1}}, {{2}}, …). Re-sync templates to auto-detect counts."}
+                                ? describeTemplateParameterRequirements(selectedTestTemplateMeta)
+                                : "Add parameter values matching your template placeholders ({{1}}, {{name}}, …). Re-sync templates to auto-detect requirements."}
                             </p>
                           </div>
-                          <TemplateParameterFields
-                            label="Header"
-                            params={testHeaderParams}
-                            minCount={selectedTestTemplateMeta?.headerParamCount ?? 0}
-                            onChange={setTestHeaderParams}
-                          />
+                          {templateNeedsHeaderMedia(selectedTestTemplateMeta) && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Header image URL *
+                              </p>
+                              <Input
+                                placeholder="https://www.xgoo.in/logo.png"
+                                value={testHeaderMediaUrl}
+                                onChange={(e) => setTestHeaderMediaUrl(e.target.value)}
+                                data-testid="input-test-whatsapp-header-media"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Your template has an image header. Paste a public HTTPS link to the
+                                header image (e.g. your XGoo logo). Quick-reply buttons do not need
+                                parameters.
+                              </p>
+                            </div>
+                          )}
+                          {!templateNeedsHeaderMedia(selectedTestTemplateMeta) && (
+                            <TemplateParameterFields
+                              label="Header"
+                              params={testHeaderParams}
+                              minCount={selectedTestTemplateMeta?.headerParamCount ?? 0}
+                              paramNames={
+                                selectedTestTemplateMeta?.parameterFormat === "named"
+                                  ? selectedTestTemplateMeta.headerParamNames
+                                  : undefined
+                              }
+                              onChange={setTestHeaderParams}
+                            />
+                          )}
                           <TemplateParameterFields
                             label="Body"
                             params={testBodyParams}
                             minCount={selectedTestTemplateMeta?.bodyParamCount ?? 0}
+                            paramNames={
+                              selectedTestTemplateMeta?.parameterFormat === "named"
+                                ? selectedTestTemplateMeta.bodyParamNames
+                                : undefined
+                            }
                             onChange={setTestBodyParams}
                           />
-                          <TemplateParameterFields
-                            label="Button (URL)"
-                            params={testButtonParams}
-                            minCount={selectedTestTemplateMeta?.buttonParamCount ?? 0}
-                            onChange={setTestButtonParams}
-                          />
+                          {(selectedTestTemplateMeta?.buttonParamCount ?? 0) > 0 && (
+                            <TemplateParameterFields
+                              label="Button (URL)"
+                              params={testButtonParams}
+                              minCount={selectedTestTemplateMeta?.buttonParamCount ?? 0}
+                              onChange={setTestButtonParams}
+                            />
+                          )}
                         </div>
                       )}
                     </TabsContent>
@@ -717,11 +822,13 @@ function TemplateParameterFields({
   label,
   params,
   minCount,
+  paramNames,
   onChange,
 }: {
   label: string;
   params: string[];
   minCount: number;
+  paramNames?: string[];
   onChange: (next: string[]) => void;
 }) {
   const setParam = (index: number, value: string) => {
@@ -755,7 +862,11 @@ function TemplateParameterFields({
       {params.map((value, i) => (
         <div key={`${label}-${i}`} className="flex gap-2">
           <Input
-            placeholder={`Value for {{${i + 1}}}`}
+            placeholder={
+              paramNames?.[i]
+                ? `Value for {{${paramNames[i]}}}`
+                : `Value for {{${i + 1}}}`
+            }
             value={value}
             onChange={(e) => setParam(i, e.target.value)}
           />

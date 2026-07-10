@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import {
   ArrowRight,
   Compass,
@@ -190,6 +191,9 @@ export default function AboutPage() {
             XGoo is not simply building a logistics company. We are building a movement platform — where every parcel,
             product, business, and idea can move forward with less friction and more purpose.
           </p>
+          <div className="mt-5">
+            <ProductAttribution variant="inline" className="!text-base sm:!text-lg" />
+          </div>
         </div>
       </section>
 

@@ -22,6 +22,8 @@ import {
   Mic,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
+import { XGOO_BRAND } from "@/components/marketing/site-info";
 import {
   ClipboardList,
   Search,
@@ -566,7 +568,7 @@ function CustomerBookingFooter() {
   return (
     <footer className="border-t bg-muted/30 mt-auto">
       <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} XGoo Courier</p>
+        <ProductAttribution />
         <a href="/auth-page" className="text-primary hover:underline font-medium" data-testid="link-staff-login">
           Staff Login
         </a>
@@ -597,8 +599,11 @@ function CustomerBookingHeader({ showBack = false }: { showBack?: boolean }) {
             )}
             <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md shrink-0" />
             <div className="min-w-0">
-              <span className="text-lg font-semibold">XGoo</span>
-              <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| Book a Parcel</span>
+              <span className="text-lg font-semibold">{XGOO_BRAND.productName}</span>
+              <span className="text-muted-foreground text-xs block sm:inline sm:ml-2 sm:text-sm">
+                from {XGOO_BRAND.parentCompany}
+                <span className="hidden sm:inline"> · Book a Parcel</span>
+              </span>
             </div>
           </div>
         </div>
@@ -813,7 +818,14 @@ function BookingTab({
   const isGuest = !!(guestMode && !token);
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<{ requestNumber: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    requestNumber: string;
+    whatsappReturnUrl?: string;
+  } | null>(null);
+  const [cameFromWhatsApp] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("from") === "whatsapp";
+  });
   const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [saveSenderAddress, setSaveSenderAddress] = useState(false);
   const [saveReceiverAddress, setSaveReceiverAddress] = useState(false);
@@ -1234,7 +1246,10 @@ function BookingTab({
           saveGuestBookingRef(slug, result.id, result.requestNumber);
           onGuestBookingSaved?.();
         }
-        setSubmitted({ requestNumber: result.requestNumber });
+        setSubmitted({
+          requestNumber: result.requestNumber,
+          whatsappReturnUrl: result.whatsappReturnUrl,
+        });
         setPackagePhotos([]);
         toast({ title: "Booking Submitted!", description: `Save request #${result.requestNumber} to track status.` });
         return;
@@ -1284,7 +1299,10 @@ function BookingTab({
           });
         }
       }
-      setSubmitted({ requestNumber: result.requestNumber });
+      setSubmitted({
+        requestNumber: result.requestNumber,
+        whatsappReturnUrl: result.whatsappReturnUrl,
+      });
       setPackagePhotos([]);
       toast({ title: "Booking Submitted!", description: `Request #${result.requestNumber}` });
     } catch (err: any) {
@@ -1310,6 +1328,28 @@ function BookingTab({
               <p className="text-sm text-muted-foreground mb-1">Request Number</p>
               <p className="text-2xl font-mono font-bold text-primary" data-testid="text-booking-request-number">{submitted.requestNumber}</p>
             </div>
+            {submitted.whatsappReturnUrl && (
+              <div className="mb-6 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  {cameFromWhatsApp
+                    ? "Return to WhatsApp to get your booking details in chat."
+                    : "Open WhatsApp to receive updates about this booking."}
+                </p>
+                <Button asChild className="w-full bg-green-600 hover:bg-green-700">
+                  <a
+                    href={submitted.whatsappReturnUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="button-return-whatsapp"
+                  >
+                    Open WhatsApp
+                  </a>
+                </Button>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mb-4">
+              A confirmation message will be sent to your phone if WhatsApp automation is enabled.
+            </p>
             <Button variant="outline" onClick={() => { setSubmitted(null); form.reset({ ...form.getValues(), receiverName: "", receiverPhone: "", receiverAddress: "", receiverCity: "", receiverState: "", receiverPincode: "", weight: "", contentDescription: "", declaredValue: "", notes: "" }); setPickupLocation(null); }} data-testid="button-book-another">
               Book Another Shipment
             </Button>
@@ -2487,8 +2527,11 @@ export default function CustomerPortalPage() {
                 <div className="flex items-center gap-3">
                   <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md" />
                   <div>
-                    <span className="text-lg font-semibold">XGoo</span>
-                    <span className="text-muted-foreground text-sm ml-2 hidden sm:inline">| Courier Booking</span>
+                    <span className="text-lg font-semibold">{XGOO_BRAND.productName}</span>
+                    <span className="text-muted-foreground text-xs block sm:inline sm:ml-2 sm:text-sm">
+                      from {XGOO_BRAND.parentCompany}
+                      <span className="hidden sm:inline"> · Courier Booking</span>
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">

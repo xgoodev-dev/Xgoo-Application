@@ -23,11 +23,14 @@ import { isDelhiveryPartner } from "@shared/delhivery";
 import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
 import {
   buildWhatsAppTemplateComponents,
+  describeTemplateParameterRequirements,
   getTemplateDefinition,
   mergeWhatsAppSettings,
   resolveAccessTokenForSave,
   sanitizeWhatsAppSettingsForClient,
   templateParamsFilled,
+  templateNeedsHeaderMedia,
+  bookingWhatsAppExtras,
   whatsAppSettingsSchema,
 } from "@shared/whatsapp";
 import { buildCustomerTracking, buildCustomerTrackingSummary } from "@shared/customer-tracking";
@@ -40,7 +43,14 @@ import {
   sendWhatsAppTextMessage,
   testWhatsAppConnection,
 } from "./integrations/whatsapp";
-import { triggerBookingRequestWhatsApp } from "./integrations/whatsapp-notifications";
+import {
+  triggerBookingRequestWhatsApp,
+  triggerBookingSuccessWhatsApp,
+} from "./integrations/whatsapp-notifications";
+import {
+  handleWhatsAppWebhookGet,
+  handleWhatsAppWebhookPost,
+} from "./integrations/whatsapp-webhook";
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -574,6 +584,14 @@ export async function registerRoutes(
   });
 
   // WhatsApp Business API settings
+  app.get("/api/whatsapp/webhook", (req, res) => {
+    void handleWhatsAppWebhookGet(req, res);
+  });
+
+  app.post("/api/whatsapp/webhook", (req, res) => {
+    void handleWhatsAppWebhookPost(req, res);
+  });
+
   app.get("/api/whatsapp/settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -852,6 +870,7 @@ export async function registerRoutes(
           bodyParams: z.array(z.string()).optional(),
           headerParams: z.array(z.string()).optional(),
           buttonParams: z.array(z.string()).optional(),
+          headerMediaUrl: z.string().optional(),
         })
         .superRefine((data, ctx) => {
           if (data.messageType === "template" && !data.templateName?.trim()) {
@@ -879,25 +898,38 @@ export async function registerRoutes(
         return res.status(400).json({ message: "WhatsApp is not fully configured." });
       }
 
+      const templateMeta =
+        body.messageType === "template"
+          ? getTemplateDefinition(
+              settings.templates,
+              body.templateName!.trim(),
+              body.languageCode,
+            )
+          : undefined;
+
       if (body.messageType === "template") {
-        const templateMeta = getTemplateDefinition(
-          settings.templates,
-          body.templateName!.trim(),
-          body.languageCode,
-        );
         const expectedCounts = {
           bodyParamCount: templateMeta?.bodyParamCount ?? body.bodyParams?.length ?? 0,
-          headerParamCount: templateMeta?.headerParamCount ?? body.headerParams?.length ?? 0,
+          headerParamCount: templateNeedsHeaderMedia(templateMeta)
+            ? 0
+            : templateMeta?.headerParamCount ?? body.headerParams?.length ?? 0,
           buttonParamCount: templateMeta?.buttonParamCount ?? body.buttonParams?.length ?? 0,
+          headerMediaRequired: templateNeedsHeaderMedia(templateMeta),
+          headerFormat: templateMeta?.headerFormat,
         };
         const paramValues = {
           bodyParams: body.bodyParams || [],
           headerParams: body.headerParams || [],
           buttonParams: body.buttonParams || [],
+          headerMediaUrl: body.headerMediaUrl?.trim() || settings.defaultHeaderMediaUrl?.trim(),
         };
         if (!templateParamsFilled(expectedCounts, paramValues)) {
           const parts: string[] = [];
-          if (expectedCounts.headerParamCount > 0) {
+          if (expectedCounts.headerMediaRequired) {
+            parts.push(
+              `1 ${(templateMeta?.headerFormat || "image").toLowerCase()} header URL (public HTTPS link)`,
+            );
+          } else if (expectedCounts.headerParamCount > 0) {
             parts.push(`${expectedCounts.headerParamCount} header`);
           }
           if (expectedCounts.bodyParamCount > 0) {
@@ -906,8 +938,11 @@ export async function registerRoutes(
           if (expectedCounts.buttonParamCount > 0) {
             parts.push(`${expectedCounts.buttonParamCount} button`);
           }
+          const hint = templateMeta
+            ? ` (${describeTemplateParameterRequirements(templateMeta)})`
+            : "";
           return res.status(400).json({
-            message: `Template requires ${parts.join(", ")} parameter(s). Fill all parameter fields before sending.`,
+            message: `Template requires ${parts.join(", ")} parameter(s). Fill all parameter fields before sending.${hint}`,
           });
         }
       }
@@ -915,11 +950,18 @@ export async function registerRoutes(
       const components =
         body.messageType === "template"
           ? buildWhatsAppTemplateComponents({
+              template: templateMeta,
               bodyParams: body.bodyParams,
               headerParams: body.headerParams,
               buttonParams: body.buttonParams,
+              headerMediaUrl:
+                body.headerMediaUrl?.trim() ||
+                settings.defaultHeaderMediaUrl?.trim() ||
+                undefined,
             })
           : undefined;
+
+      const languageCode = templateMeta?.language || body.languageCode;
 
       const result =
         body.messageType === "text"
@@ -930,7 +972,7 @@ export async function registerRoutes(
           : await sendWhatsAppTemplateMessage(config, {
               to: body.to,
               templateName: body.templateName!.trim(),
-              languageCode: body.languageCode,
+              languageCode,
               components,
             });
       res.json(result);
@@ -1621,6 +1663,14 @@ export async function registerRoutes(
         }
       }
 
+      const office = await storage.getOfficeByUserId(userId);
+      if (office) {
+        triggerBookingSuccessWhatsApp(
+          (office as { whatsappSettings?: unknown }).whatsappSettings,
+          shipment,
+        );
+      }
+
       res.json(shipment);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2226,7 +2276,11 @@ export async function registerRoutes(
         success: true,
         id: request.id,
         requestNumber: request.requestNumber,
-        message: "Your booking request has been submitted. The office will contact you shortly."
+        message: "Your booking request has been submitted. The office will contact you shortly.",
+        ...bookingWhatsAppExtras(
+          (office as { whatsappSettings?: unknown }).whatsappSettings,
+          request.requestNumber,
+        ),
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2672,6 +2726,10 @@ export async function registerRoutes(
         success: true,
         requestNumber: request.requestNumber,
         message: "Your booking request has been submitted.",
+        ...bookingWhatsAppExtras(
+          (office as { whatsappSettings?: unknown }).whatsappSettings,
+          request.requestNumber,
+        ),
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

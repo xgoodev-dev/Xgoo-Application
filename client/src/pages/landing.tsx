@@ -6,6 +6,7 @@ import { PublicTrackingSearch } from "@/components/customer/PublicTrackingSearch
 import { InteractiveGlobe } from "@/components/InteractiveGlobe";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { CourierPartnersMarquee } from "@/components/marketing/CourierPartnersMarquee";
 import {
   Package,
@@ -96,6 +97,9 @@ export default function LandingPage() {
                 XGoo lets you book courier pickups, track shipments, and manage
                 deliveries — all from one place. Fast, reliable, and built for India.
               </p>
+              <div className="mt-4">
+                <ProductAttribution variant="badge" />
+              </div>
 
               <div className="mt-8 space-y-5 w-full min-w-0 max-w-xl">
                 <Button

@@ -17,6 +17,7 @@ import {
   Calculator,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import { XGOO_BRAND } from "@/components/marketing/site-info";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -99,8 +100,10 @@ export function AppSidebar() {
               <Link href="/" data-testid="link-home">
                 <img src={xgooLogo} alt="XGoo" className="size-8 shrink-0 object-contain" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">XGoo</span>
-                  <span className="truncate text-xs text-muted-foreground">Courier Management</span>
+                  <span className="truncate font-semibold">{XGOO_BRAND.productName}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {XGOO_BRAND.parentCompany}
+                  </span>
                 </div>
               </Link>
             </SidebarMenuButton>

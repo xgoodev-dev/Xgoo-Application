@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
 import { XGOO_CONTACT } from "@/components/marketing/site-info";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { useToast } from "@/hooks/use-toast";
 import { Clock, Loader2, Mail, MapPin, Phone, Send } from "lucide-react";
 
@@ -92,6 +93,9 @@ export default function ContactPage() {
             Questions about booking, tracking, partnerships, or our platform? Reach out and our team will respond as
             soon as possible.
           </p>
+          <div className="mt-4">
+            <ProductAttribution variant="badge" />
+          </div>
         </div>
       </section>
 

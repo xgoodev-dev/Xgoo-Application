@@ -1,5 +1,7 @@
 import { useLocation } from "wouter";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import { ProductAttribution } from "./ProductAttribution";
+import { XGOO_BRAND } from "./site-info";
 
 export function MarketingFooter() {
   const [, navigate] = useLocation();
@@ -14,7 +16,10 @@ export function MarketingFooter() {
             className="flex items-center gap-2 hover:opacity-90 transition-opacity"
           >
             <img src={xgooLogo} alt="XGoo" className="h-7 w-7 rounded-lg" />
-            <span className="font-bold text-white text-lg">XGoo</span>
+            <div className="text-left">
+              <span className="font-bold text-white text-lg block">{XGOO_BRAND.productName}</span>
+              <span className="text-xs text-white/40 block">from {XGOO_BRAND.parentCompany}</span>
+            </div>
           </button>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:items-center sm:justify-center text-sm text-white/40">
             <button type="button" onClick={() => navigate("/book")} className="hover:text-white transition-colors">
@@ -30,7 +35,7 @@ export function MarketingFooter() {
               Staff Login
             </a>
           </div>
-          <p className="text-sm text-white/30">&copy; {new Date().getFullYear()} XGoo. All rights reserved.</p>
+          <ProductAttribution variant="footer-dark" />
         </div>
       </div>
     </footer>

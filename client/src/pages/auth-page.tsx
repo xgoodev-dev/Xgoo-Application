@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XgooGradientPanelPatterns } from "@/components/auth/XgooAuthPattern";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
+import { XGOO_BRAND } from "@/components/marketing/site-info";
 
 type AuthMode = "login" | "register";
 
@@ -188,7 +190,12 @@ export default function AuthPage() {
         <header className="flex items-center justify-between px-8 py-7 sm:px-12">
           <Link href="/" className="flex items-center gap-2.5">
             <img src={xgooLogo} alt="XGoo" className="h-9 w-9 object-contain" />
-            <span className="text-2xl font-bold tracking-tight text-[#FF4907]">XGoo</span>
+            <div>
+              <span className="text-2xl font-bold tracking-tight text-[#FF4907] block leading-none">
+                {XGOO_BRAND.productName}
+              </span>
+              <span className="text-[10px] text-stone-400">from {XGOO_BRAND.parentCompany}</span>
+            </div>
           </Link>
           <Link
             href="/book"
@@ -296,7 +303,7 @@ export default function AuthPage() {
             </Link>
           </p>
           <p className="mt-2 text-xs text-stone-400">
-            © {new Date().getFullYear()} XGoo Courier Services
+            <ProductAttribution variant="subtle" className="!text-stone-400" />
           </p>
         </footer>
       </div>

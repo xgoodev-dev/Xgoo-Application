@@ -262,7 +262,7 @@ Service: ${quotation.serviceType === "air" ? "Air" : "Surface"}
 Amount: ${formatCurrency(quotation.totalAmount)}
 Valid Until: ${quotation.validUntil ? format(new Date(quotation.validUntil), "dd MMM yyyy") : "N/A"}
 
-Thank you for choosing XGoo Courier Services!`;
+Thank you for choosing XGoo — a product from Murthy Enterprises!`;
 
     const encodedMessage = encodeURIComponent(message);
     const phone = quotation.customerPhone?.replace(/\D/g, "") || "";
@@ -273,7 +273,7 @@ Thank you for choosing XGoo Courier Services!`;
   };
 
   const handleEmailShare = (quotation: QuotationWithPartner) => {
-    const subject = `Quotation ${quotation.quotationNumber} - XGoo Courier Services`;
+    const subject = `Quotation ${quotation.quotationNumber} - XGoo | Murthy Enterprises`;
     const body = `Dear ${quotation.customerName},
 
 Please find below the quotation details:
@@ -294,7 +294,7 @@ ${quotation.notes ? `Notes: ${quotation.notes}` : ""}
 Thank you for choosing XGoo Courier Services!
 
 Best regards,
-XGoo Team`;
+XGoo Team | Murthy Enterprises`;
 
     const mailtoUrl = `mailto:${quotation.customerEmail || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailtoUrl;

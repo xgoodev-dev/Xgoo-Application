@@ -47,7 +47,8 @@ export function ParcelLabel({ shipment, office, onBack }: ParcelLabelProps) {
                 XG
               </div>
               <div>
-                <div className="font-bold text-sm">XGoo Courier</div>
+                <div className="font-bold text-sm">XGoo</div>
+                <div className="text-[10px] text-muted-foreground">Murthy Enterprises</div>
                 <div className="text-xs">{office.name}</div>
               </div>
             </div>
