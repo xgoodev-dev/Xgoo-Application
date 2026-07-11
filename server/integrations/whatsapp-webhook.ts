@@ -3,7 +3,11 @@ import { sql, eq, and, desc } from "drizzle-orm";
 import { db } from "../db";
 import { offices, bookingRequests } from "@shared/schema";
 import { mergeWhatsAppSettings } from "@shared/whatsapp";
-import { replyWithBookingLookup } from "./whatsapp-notifications";
+import {
+  recordWhatsAppDeliveryStatus,
+  recordWhatsAppWebhookDebug,
+} from "./whatsapp-delivery";
+import { handleInboundWhatsAppMessage } from "./whatsapp-notifications";
 
 type WebhookMessage = {
   from?: string;
@@ -12,8 +16,11 @@ type WebhookMessage = {
 };
 
 type WebhookChange = {
+  field?: string;
   value?: {
     metadata?: { phone_number_id?: string; display_phone_number?: string };
+    messaging_product?: string;
+    contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
     messages?: WebhookMessage[];
     statuses?: Array<{
       id?: string;
@@ -47,6 +54,16 @@ async function findOfficeByPhoneNumberId(phoneNumberId: string) {
   return rows[0];
 }
 
+async function listConfiguredPhoneNumberIds(): Promise<string[]> {
+  const rows = await db.select().from(offices);
+  return rows
+    .map((office) =>
+      mergeWhatsAppSettings((office as { whatsappSettings?: unknown }).whatsappSettings)
+        .phoneNumberId?.trim(),
+    )
+    .filter((id): id is string => Boolean(id));
+}
+
 async function findRecentBookingsByPhone(officeId: string, phone: string, limit = 3) {
   const rows = await db
     .select()
@@ -76,9 +93,19 @@ export async function handleWhatsAppWebhookGet(req: Request, res: Response): Pro
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token && (await officeVerifyTokenMatches(token))) {
+    recordWhatsAppWebhookDebug({
+      level: "info",
+      event: "webhook_verified",
+      detail: "Meta subscription challenge accepted",
+    });
     res.status(200).send(challenge);
     return;
   }
+  recordWhatsAppWebhookDebug({
+    level: "warn",
+    event: "webhook_verify_failed",
+    detail: "Verify token mismatch or invalid subscribe request",
+  });
   res.sendStatus(403);
 }
 
@@ -86,44 +113,125 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
   res.sendStatus(200);
 
   try {
-    const body = req.body as { entry?: Array<{ changes?: WebhookChange[] }> };
+    const body = req.body as { object?: string; entry?: Array<{ changes?: WebhookChange[] }> };
+    if (!body?.entry?.length) {
+      recordWhatsAppWebhookDebug({
+        level: "warn",
+        event: "empty_payload",
+        detail: "POST received but entry[] is empty — check Meta webhook field subscriptions (messages)",
+      });
+      return;
+    }
+
+    recordWhatsAppWebhookDebug({
+      level: "info",
+      event: "post_received",
+      detail: `object=${body.object || "unknown"} entries=${body.entry.length}`,
+    });
+
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
         const value = change.value;
         const phoneNumberId = value?.metadata?.phone_number_id;
-        if (!phoneNumberId) continue;
+        const field = change.field || "unknown";
+
+        if (!phoneNumberId) {
+          recordWhatsAppWebhookDebug({
+            level: "warn",
+            event: "missing_phone_number_id",
+            detail: `Webhook field "${field}" had no metadata.phone_number_id`,
+          });
+          continue;
+        }
 
         const office = await findOfficeByPhoneNumberId(phoneNumberId);
-        if (!office) continue;
+        if (!office) {
+          const configured = await listConfiguredPhoneNumberIds();
+          recordWhatsAppWebhookDebug({
+            level: "warn",
+            event: "office_not_found",
+            phoneNumberId,
+            detail: `No XGoo office for Phone Number ID ${phoneNumberId}. Saved in XGoo: ${configured.join(", ") || "(none)"}. Update Phone Number ID in Settings → WhatsApp.`,
+          });
+          continue;
+        }
 
         const settings = mergeWhatsAppSettings(
           (office as { whatsappSettings?: unknown }).whatsappSettings,
         );
-        if (!settings.enabled) continue;
+        if (!settings.enabled) {
+          recordWhatsAppWebhookDebug({
+            level: "warn",
+            event: "whatsapp_disabled",
+            phoneNumberId,
+            detail: "WhatsApp is disabled in XGoo settings for this office",
+          });
+          continue;
+        }
 
         for (const statusUpdate of value.statuses || []) {
-          const level =
-            statusUpdate.status === "failed" ? "error" : "info";
+          const level = statusUpdate.status === "failed" ? "error" : "info";
           const errDetail = statusUpdate.errors?.[0];
-          console[level === "error" ? "error" : "info"]("[WhatsApp webhook] Message status", {
+          if (statusUpdate.id && statusUpdate.status) {
+            recordWhatsAppDeliveryStatus({
+              messageId: statusUpdate.id,
+              status: statusUpdate.status,
+              recipientId: statusUpdate.recipient_id,
+              phoneNumberId,
+              errorCode: errDetail?.code,
+              errorTitle: errDetail?.title,
+              errorMessage: errDetail?.message,
+            });
+          }
+          recordWhatsAppWebhookDebug({
+            level: level === "error" ? "error" : "info",
+            event: "message_status",
             phoneNumberId,
-            messageId: statusUpdate.id,
-            status: statusUpdate.status,
-            recipient: statusUpdate.recipient_id,
-            errorCode: errDetail?.code,
-            errorTitle: errDetail?.title,
-            errorMessage: errDetail?.message,
+            from: statusUpdate.recipient_id,
+            detail: `${statusUpdate.status}${errDetail?.message ? `: ${errDetail.message}` : ""}`,
           });
         }
 
-        for (const message of value.messages || []) {
-          if (message.type !== "text" || !message.text?.body || !message.from) continue;
+        const inboundMessages = value.messages || [];
+        if (inboundMessages.length === 0 && field === "messages") {
+          recordWhatsAppWebhookDebug({
+            level: "info",
+            event: "messages_field_no_inbound",
+            phoneNumberId,
+            detail: "messages webhook with statuses only (no customer text)",
+          });
+        }
 
-          void replyWithBookingLookup(
+        for (const message of inboundMessages) {
+          if (message.type !== "text" || !message.text?.body || !message.from) {
+            recordWhatsAppWebhookDebug({
+              level: "info",
+              event: "skipped_non_text",
+              phoneNumberId,
+              from: message.from,
+              detail: `Ignored message type "${message.type || "unknown"}"`,
+            });
+            continue;
+          }
+
+          const preview = message.text.body.slice(0, 80);
+          recordWhatsAppWebhookDebug({
+            level: "info",
+            event: "inbound_text",
+            phoneNumberId,
+            from: message.from,
+            messagePreview: preview,
+            detail: `Processing "${preview}"`,
+          });
+
+          const contactName = value.contacts?.find((c) => c.wa_id === message.from)?.profile?.name;
+
+          void handleInboundWhatsAppMessage(
             settings,
             office.id,
             message.from,
             message.text.body,
+            contactName,
             {
               findByRequestNumber: async (requestNumber) => {
                 const rows = await db
@@ -140,13 +248,40 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
               },
               findRecentByPhone: (phone) => findRecentBookingsByPhone(office.id, phone),
             },
-          ).catch((error) => {
-            console.error("[WhatsApp webhook] Reply failed", error);
-          });
+          )
+            .then(() => {
+              recordWhatsAppWebhookDebug({
+                level: "info",
+                event: "inbound_handled",
+                phoneNumberId,
+                from: message.from,
+                messagePreview: preview,
+                detail: "Handler completed",
+              });
+            })
+            .catch((error) => {
+              const msg = error instanceof Error ? error.message : String(error);
+              recordWhatsAppWebhookDebug({
+                level: "error",
+                event: "inbound_failed",
+                phoneNumberId,
+                from: message.from,
+                messagePreview: preview,
+                detail: msg,
+              });
+            });
         }
       }
     }
   } catch (error) {
-    console.error("[WhatsApp webhook] Processing error", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    recordWhatsAppWebhookDebug({
+      level: "error",
+      event: "processing_error",
+      detail: msg,
+    });
   }
 }
+
+/** Re-export lookup helpers for handleInboundWhatsAppMessage booking path. */
+export { findRecentBookingsByPhone };

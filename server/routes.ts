@@ -39,9 +39,12 @@ import {
   bookingWhatsAppExtras,
   buildWhatsAppDeliveryHints,
   buildWhatsAppDeliveryChecklist,
+  buildWhatsAppDeliveryPreflight,
+  describeWhatsAppDeliveryStatus,
   buildCustomTextDeliveryHints,
   resolveTemplateSendParams,
   resolveTemplateLanguageForSend,
+  sanitizeWhatsAppMediaFields,
   whatsAppSettingsSchema,
 } from "@shared/whatsapp";
 import { buildCustomerTracking, buildCustomerTrackingSummary } from "@shared/customer-tracking";
@@ -58,6 +61,12 @@ import {
   triggerBookingRequestWhatsApp,
   triggerBookingSuccessWhatsApp,
 } from "./integrations/whatsapp-notifications";
+import {
+  clearWelcomeCooldownForPhone,
+  getRecentWhatsAppWebhookDebugEvents,
+  getWhatsAppDeliveryStatus,
+  verifyHeaderMediaReachable,
+} from "./integrations/whatsapp-delivery";
 import {
   handleWhatsAppWebhookGet,
   handleWhatsAppWebhookPost,
@@ -603,6 +612,16 @@ export async function registerRoutes(
     void handleWhatsAppWebhookPost(req, res);
   });
 
+  app.get("/api/whatsapp/webhook/debug", isAuthenticated, (_req, res) => {
+    res.json({ events: getRecentWhatsAppWebhookDebugEvents() });
+  });
+
+  app.post("/api/whatsapp/webhook/clear-welcome-cooldown", isAuthenticated, (req, res) => {
+    const phone = String((req.body as { phone?: string })?.phone || "").trim();
+    if (phone) clearWelcomeCooldownForPhone(phone);
+    res.json({ ok: true });
+  });
+
   app.get("/api/whatsapp/settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -652,7 +671,13 @@ export async function registerRoutes(
         typeof req.get === "function"
           ? `${req.protocol}://${req.get("host")}`
           : undefined;
-      let toSave = finalizeWhatsAppSettingsMediaUrls(merged, requestOrigin);
+      let toSave = finalizeWhatsAppSettingsMediaUrls(
+        mergeWhatsAppSettings({
+          ...merged,
+          ...sanitizeWhatsAppMediaFields(merged),
+        }),
+        requestOrigin,
+      );
       try {
         const resolved = await resolveWhatsAppApiConfig(merged);
         if (resolved?.wabaId) {
@@ -1039,6 +1064,58 @@ export async function registerRoutes(
         }
       }
 
+      const toPhone = normalizeWhatsAppPhone(body.to);
+      let fromDisplayNumber: string | undefined;
+      try {
+        const connection = await testWhatsAppConnection(config);
+        fromDisplayNumber = connection.displayPhoneNumber;
+      } catch {
+        // optional context for delivery hints
+      }
+
+      let headerMediaReachable: boolean | undefined;
+      let headerMediaError: string | undefined;
+      if (
+        body.messageType === "template" &&
+        effectiveHeaderMediaUrl &&
+        templateNeedsHeaderMedia(templateMeta)
+      ) {
+        const mediaCheck = await verifyHeaderMediaReachable(effectiveHeaderMediaUrl);
+        headerMediaReachable = mediaCheck.ok;
+        headerMediaError = mediaCheck.error;
+        if (!mediaCheck.ok) {
+          return res.status(400).json({
+            message:
+              mediaCheck.error ||
+              "Header image URL is not reachable by Meta. Fix the image URL before sending.",
+            deliveryPreflight: buildWhatsAppDeliveryPreflight({
+              toPhone,
+              headerMediaUrl: effectiveHeaderMediaUrl,
+              bodyParams: resolvedParams?.bodyParams || body.bodyParams,
+              bodyParamCount: templateMeta?.bodyParamCount,
+              templateMeta,
+              fromDisplayNumber,
+              headerMediaReachable: false,
+              headerMediaError: mediaCheck.error,
+            }),
+          });
+        }
+      }
+
+      const deliveryPreflight =
+        body.messageType === "template"
+          ? buildWhatsAppDeliveryPreflight({
+              toPhone,
+              headerMediaUrl: effectiveHeaderMediaUrl,
+              bodyParams: resolvedParams?.bodyParams || body.bodyParams,
+              bodyParamCount: templateMeta?.bodyParamCount,
+              templateMeta,
+              fromDisplayNumber,
+              headerMediaReachable,
+              headerMediaError,
+            })
+          : undefined;
+
       const components =
         body.messageType === "template"
           ? buildWhatsAppTemplateComponents({
@@ -1057,7 +1134,6 @@ export async function registerRoutes(
           body.templateName!.trim(),
           body.languageCode,
         );
-      const toPhone = normalizeWhatsAppPhone(body.to);
 
       const result =
         body.messageType === "text"
@@ -1076,13 +1152,8 @@ export async function registerRoutes(
         messages?: Array<{ message_status?: string }>;
       };
       const messageStatus = raw.messages?.[0]?.message_status;
-      let fromDisplayNumber: string | undefined;
-      try {
-        const connection = await testWhatsAppConnection(config);
-        fromDisplayNumber = connection.displayPhoneNumber;
-      } catch {
-        // optional context for delivery hints
-      }
+      const messageId = result.messageId;
+      const webhookStatus = messageId ? getWhatsAppDeliveryStatus(messageId) : undefined;
 
       res.json({
         ...result,
@@ -1090,6 +1161,8 @@ export async function registerRoutes(
         phoneNumberId: config.phoneNumberId,
         fromDisplayNumber,
         autoFilledParams: resolvedParams,
+        deliveryPreflight,
+        webhookDeliveryStatus: webhookStatus,
         deliveryHints:
           body.messageType === "text"
             ? buildCustomTextDeliveryHints(fromDisplayNumber)
@@ -1128,6 +1201,29 @@ export async function registerRoutes(
         },
       });
     }
+  });
+
+  app.get("/api/whatsapp/messages/:messageId/delivery-status", isAuthenticated, (req, res) => {
+    const messageId = String(req.params.messageId || "").trim();
+    if (!messageId) {
+      return res.status(400).json({ message: "Message ID required" });
+    }
+    const status = getWhatsAppDeliveryStatus(messageId);
+    if (!status) {
+      return res.json({
+        messageId,
+        status: null,
+        detail:
+          "No webhook update yet. Configure Meta webhooks to your public URL to see delivered/failed status here. Until then, use WhatsApp Manager → Insights.",
+      });
+    }
+    res.json({
+      ...status,
+      detail: describeWhatsAppDeliveryStatus(
+        status.status,
+        status.errorMessage || status.errorTitle,
+      ),
+    });
   });
 
   // Branch routes

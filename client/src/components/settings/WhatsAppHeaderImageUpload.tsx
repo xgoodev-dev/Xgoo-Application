@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { ImageIcon, Loader2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUpload } from "@/hooks/use-upload";
-import { resolvePublicObjectUrl } from "@shared/whatsapp";
+import { resolvePublicObjectUrl, normalizePublicAppBaseUrl } from "@shared/whatsapp";
 
 type WhatsAppHeaderImageUploadProps = {
   objectPath: string;
@@ -66,6 +66,15 @@ export function WhatsAppHeaderImageUpload({
                 Set Public app URL below so Meta can fetch this image over HTTPS.
               </p>
             )}
+            {publicBaseUrl &&
+              typeof window !== "undefined" &&
+              window.location.origin !== normalizePublicAppBaseUrl(publicBaseUrl) && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Upload saves files on this server ({window.location.origin}), but Public app URL
+                  is {publicBaseUrl}. Meta may not find the image — use Header image URL with a CDN
+                  link instead.
+                </p>
+              )}
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"

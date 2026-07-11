@@ -41,6 +41,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   WHATSAPP_MESSAGE_TYPES,
   describeTemplateParameterRequirements,
+  describeWhatsAppDeliveryStatus,
   enrichTemplateForSend,
   getTemplateDefinition,
   getWelcomeTemplateFieldLabels,
@@ -56,10 +57,21 @@ import {
   whatsAppSettingsSchema,
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
+  type WhatsAppDeliveryPreflightCheck,
 } from "@shared/whatsapp";
 import { WhatsAppHeaderImageUpload } from "@/components/settings/WhatsAppHeaderImageUpload";
 
 const SETTINGS_QUERY_KEY = ["/api/whatsapp/settings"];
+
+type WhatsAppWebhookDebugEvent = {
+  at: string;
+  level: "info" | "warn" | "error";
+  event: string;
+  detail?: string;
+  phoneNumberId?: string;
+  from?: string;
+  messagePreview?: string;
+};
 
 type ConnectionTestResult = {
   phoneNumberId: string;
@@ -86,13 +98,23 @@ export function WhatsAppBusinessSync() {
   const [testButtonParams, setTestButtonParams] = useState<string[]>([]);
   const [testHeaderMediaPath, setTestHeaderMediaPath] = useState("");
   const [lastDeliveryChecklist, setLastDeliveryChecklist] = useState<string[] | null>(null);
+  const [lastDeliveryPreflight, setLastDeliveryPreflight] = useState<
+    WhatsAppDeliveryPreflightCheck[] | null
+  >(null);
+  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
+  const [webhookDeliveryDetail, setWebhookDeliveryDetail] = useState<string | null>(null);
+  const [webhookDebugEvents, setWebhookDebugEvents] = useState<WhatsAppWebhookDebugEvent[]>([]);
+  const [webhookDebugLoading, setWebhookDebugLoading] = useState(false);
 
   const showTestSendResult = (result: {
+    messageId?: string;
     messageStatus?: string;
     phoneNumberId?: string;
     fromDisplayNumber?: string;
     deliveryHints?: string[];
     deliveryChecklist?: string[];
+    deliveryPreflight?: WhatsAppDeliveryPreflightCheck[];
+    webhookDeliveryStatus?: { status: string; errorMessage?: string; errorTitle?: string };
     templateLabel?: string;
   }) => {
     const status = result.messageStatus || "unknown";
@@ -104,6 +126,21 @@ export function WhatsAppBusinessSync() {
 
     if (result.deliveryChecklist?.length) {
       setLastDeliveryChecklist(result.deliveryChecklist);
+    }
+    if (result.deliveryPreflight?.length) {
+      setLastDeliveryPreflight(result.deliveryPreflight);
+    }
+    if (result.messageId) {
+      setLastMessageId(result.messageId);
+      setWebhookDeliveryDetail(null);
+    }
+    if (result.webhookDeliveryStatus?.status) {
+      setWebhookDeliveryDetail(
+        describeWhatsAppDeliveryStatus(
+          result.webhookDeliveryStatus.status,
+          result.webhookDeliveryStatus.errorMessage || result.webhookDeliveryStatus.errorTitle,
+        ),
+      );
     }
 
     toast({
@@ -132,6 +169,67 @@ export function WhatsAppBusinessSync() {
       form.reset(settings);
     }
   }, [settings, form]);
+
+  useEffect(() => {
+    if (!lastMessageId) return;
+    let attempts = 0;
+    const maxAttempts = 20;
+    const interval = setInterval(async () => {
+      attempts += 1;
+      if (attempts > maxAttempts) {
+        clearInterval(interval);
+        return;
+      }
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/whatsapp/messages/${encodeURIComponent(lastMessageId)}/delivery-status`,
+        );
+        const data = (await res.json()) as {
+          status?: string | null;
+          detail?: string;
+          errorMessage?: string;
+          errorTitle?: string;
+        };
+        if (data.status) {
+          setWebhookDeliveryDetail(
+            data.detail ||
+              describeWhatsAppDeliveryStatus(
+                data.status,
+                data.errorMessage || data.errorTitle,
+              ),
+          );
+          if (["delivered", "read", "failed"].includes(data.status.toLowerCase())) {
+            clearInterval(interval);
+          }
+        }
+      } catch {
+        // polling is best-effort
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [lastMessageId]);
+
+  const fetchWebhookDebugEvents = async () => {
+    setWebhookDebugLoading(true);
+    try {
+      const res = await apiRequest("GET", "/api/whatsapp/webhook/debug");
+      const data = (await res.json()) as { events?: WhatsAppWebhookDebugEvent[] };
+      setWebhookDebugEvents(data.events || []);
+    } catch {
+      // best-effort debug panel
+    } finally {
+      setWebhookDebugLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchWebhookDebugEvents();
+    const interval = setInterval(() => {
+      void fetchWebhookDebugEvents();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: async (data: WhatsAppSettings) => {
@@ -277,11 +375,11 @@ export function WhatsAppBusinessSync() {
     (typeof window !== "undefined" ? window.location.origin : "");
 
   const effectiveHeaderMediaUrl =
+    watched.defaultHeaderMediaUrl?.trim() ||
     resolvePublicObjectUrl(
       testHeaderMediaPath || watched.defaultHeaderMediaPath,
       publicAppBaseUrl,
     ) ||
-    watched.defaultHeaderMediaUrl?.trim() ||
     "";
 
   const isWelcomeTemplate = isWelcomeTemplateName(effectiveTestTemplate);
@@ -424,6 +522,8 @@ export function WhatsAppBusinessSync() {
         fromDisplayNumber?: string;
         deliveryHints?: string[];
         deliveryChecklist?: string[];
+        deliveryPreflight?: WhatsAppDeliveryPreflightCheck[];
+        webhookDeliveryStatus?: { status: string; errorMessage?: string; errorTitle?: string };
       };
     },
     onSuccess: (result) => {
@@ -498,6 +598,8 @@ export function WhatsAppBusinessSync() {
         fromDisplayNumber?: string;
         deliveryHints?: string[];
         deliveryChecklist?: string[];
+        deliveryPreflight?: WhatsAppDeliveryPreflightCheck[];
+        webhookDeliveryStatus?: { status: string; errorMessage?: string; errorTitle?: string };
         templateName?: string;
         languageCode?: string;
       };
@@ -701,6 +803,107 @@ export function WhatsAppBusinessSync() {
                   )}
                 />
 
+                <div className="space-y-3 rounded-lg border border-dashed p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Webhook activity (debug)</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Live log from your server when Meta calls the webhook. Send Hi from WhatsApp,
+                        then check for <code className="text-[10px]">inbound_text</code> and{" "}
+                        <code className="text-[10px]">welcome_sent</code>. Empty here usually means
+                        Meta is not hitting this server (wrong URL, not deployed, or messages field
+                        not subscribed).
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={webhookDebugLoading}
+                        onClick={() => void fetchWebhookDebugEvents()}
+                      >
+                        {webhookDebugLoading ? (
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3 w-3" />
+                        )}
+                        Refresh
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          const phone = testPhone.trim();
+                          if (!phone) {
+                            toast({
+                              title: "Enter test phone first",
+                              description:
+                                "Use the test phone field below to clear the 24h welcome cooldown for that number.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          await apiRequest("POST", "/api/whatsapp/webhook/clear-welcome-cooldown", {
+                            phone,
+                          });
+                          toast({
+                            title: "Welcome cooldown cleared",
+                            description: `You can receive auto-welcome again on ${phone}.`,
+                          });
+                          void fetchWebhookDebugEvents();
+                        }}
+                      >
+                        Clear welcome cooldown
+                      </Button>
+                    </div>
+                  </div>
+                  {webhookDebugEvents.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No webhook events yet on this server instance. After Meta verification, subscribe
+                      the <strong>messages</strong> field and message your business number from
+                      WhatsApp.
+                    </p>
+                  ) : (
+                    <ul className="max-h-64 space-y-2 overflow-y-auto text-xs">
+                      {webhookDebugEvents.map((evt, index) => (
+                        <li
+                          key={`${evt.at}-${evt.event}-${index}`}
+                          className="rounded border bg-muted/30 p-2"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={
+                                evt.level === "error"
+                                  ? "destructive"
+                                  : evt.level === "warn"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                              className="text-[10px]"
+                            >
+                              {evt.event}
+                            </Badge>
+                            <span className="text-muted-foreground">
+                              {new Date(evt.at).toLocaleString()}
+                            </span>
+                            {evt.from ? (
+                              <span className="font-mono text-[10px]">from {evt.from}</span>
+                            ) : null}
+                          </div>
+                          {evt.detail ? <p className="mt-1">{evt.detail}</p> : null}
+                          {evt.messagePreview ? (
+                            <p className="mt-1 text-muted-foreground">
+                              Message: &quot;{evt.messagePreview}&quot;
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 <div className="space-y-4 rounded-lg border p-4">
                   <div>
                     <h3 className="text-sm font-semibold">Welcome message template</h3>
@@ -715,17 +918,40 @@ export function WhatsAppBusinessSync() {
                     name="publicAppBaseUrl"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Public app URL</FormLabel>
+                        <FormLabel>Public app URL (site domain only)</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
-                            placeholder="https://app.xgoo.in"
+                            placeholder="https://www.xgoo.in"
                             data-testid="input-whatsapp-public-app-url"
                           />
                         </FormControl>
                         <FormDescription>
-                          Meta must fetch header images over HTTPS. Use your production domain
-                          (not localhost). Defaults to this browser origin when empty.
+                          Your website domain only — not the image link. Example:{" "}
+                          <code className="text-xs">https://www.xgoo.in</code>. Used when uploads
+                          are stored on your server. Image links go in the field below.
+                        </FormDescription>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="defaultHeaderMediaUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Header image URL (recommended)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="https://www.xgoo.in/assets/your-banner.png"
+                            data-testid="input-whatsapp-header-media-url"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Public HTTPS image Meta can fetch. Paste your logo/banner URL here — this
+                          is the most reliable option. Upload below only works when the app runs on
+                          the same domain as Public app URL.
                         </FormDescription>
                       </FormItem>
                     )}
@@ -740,15 +966,39 @@ export function WhatsAppBusinessSync() {
                           <WhatsAppHeaderImageUpload
                             objectPath={field.value || ""}
                             publicBaseUrl={publicAppBaseUrl}
-                            onPathChange={field.onChange}
-                            label="Welcome header image"
-                            description="Upload the XGoo banner shown at the top of welcome_message. Replaces pasting a raw image URL."
+                            onPathChange={(path) => {
+                              field.onChange(path);
+                              const resolved = resolvePublicObjectUrl(path, publicAppBaseUrl);
+                              if (resolved?.startsWith("https://")) {
+                                form.setValue("defaultHeaderMediaUrl", resolved, {
+                                  shouldDirty: true,
+                                });
+                              }
+                            }}
+                            label="Or upload header image"
+                            description="Upload works when XGoo is hosted on your Public app URL domain. For local dev, use Header image URL above instead."
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
+                    <p className="font-medium">Auto welcome on Hi / Hello</p>
+                    <p className="mt-1">
+                      Enable <strong>Welcome Message → Auto-send</strong> below and configure Meta
+                      webhook to{" "}
+                      <code className="break-all">
+                        {typeof window !== "undefined"
+                          ? `${window.location.origin}/api/whatsapp/webhook`
+                          : "https://YOUR-DOMAIN/api/whatsapp/webhook"}
+                      </code>{" "}
+                      (use your production HTTPS URL). When a customer messages from your website
+                      wa.me link or types Hi/Hello, XGoo sends <code>welcome_message</code>{" "}
+                      automatically (once per 24h per number).
+                    </p>
+                  </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <FormField
@@ -1211,6 +1461,52 @@ export function WhatsAppBusinessSync() {
                     . hello_world only exists on Meta&apos;s default API Setup; your account uses
                     welcome_message (en).
                   </p>
+                  {lastDeliveryPreflight && lastDeliveryPreflight.length > 0 && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/30">
+                      <p className="font-medium text-blue-900 dark:text-blue-100">
+                        Delivery preflight (last test)
+                      </p>
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {lastDeliveryPreflight.map((check) => (
+                          <li key={check.id} className="flex gap-2">
+                            {check.passed ? (
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                            )}
+                            <div>
+                              <p className="font-medium text-blue-900 dark:text-blue-100">
+                                {check.label}
+                              </p>
+                              <p className="text-blue-900/80 dark:text-blue-100/80">
+                                {check.detail}
+                              </p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {lastMessageId && (
+                    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">Webhook delivery status</p>
+                      <p className="mt-1 font-mono break-all">Message ID: {lastMessageId}</p>
+                      {webhookDeliveryDetail ? (
+                        <p className="mt-1 text-foreground">{webhookDeliveryDetail}</p>
+                      ) : (
+                        <p className="mt-1">
+                          Waiting for Meta webhook (sent → delivered / failed). Configure webhook
+                          URL{" "}
+                          <code className="text-[10px]">
+                            {typeof window !== "undefined"
+                              ? `${window.location.origin}/api/whatsapp/webhook`
+                              : "/api/whatsapp/webhook"}
+                          </code>{" "}
+                          on a public HTTPS domain, or check WhatsApp Manager → Insights.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {lastDeliveryChecklist && lastDeliveryChecklist.length > 0 && (
                     <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-900 dark:bg-orange-950/30">
                       <p className="font-medium text-orange-900 dark:text-orange-100">
@@ -1419,6 +1715,26 @@ function AutomationRuleRow({
               </FormItem>
             )}
           />
+          {messageKey === "welcome" && (
+            <FormField
+              control={form.control}
+              name="automation.welcome.replyOnInboundGreeting"
+              render={({ field }) => (
+                <FormItem className="sm:col-span-2 flex flex-row items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <FormLabel className="text-xs">Reply when customer sends Hi / Hello</FormLabel>
+                    <FormDescription className="text-xs">
+                      Requires Meta webhook on your public HTTPS domain. Sends welcome_message when
+                      customers open WhatsApp from your site or greet your business line.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value !== false} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          )}
         </div>
       )}
     </div>

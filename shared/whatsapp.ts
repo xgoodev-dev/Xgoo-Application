@@ -74,6 +74,8 @@ export const whatsAppAutomationRuleSchema = z.object({
   enabled: z.boolean().default(false),
   templateName: z.string().default(""),
   languageCode: z.string().default("en"),
+  /** When enabled on the welcome rule, reply to Hi/Hello via webhook (requires Meta webhook). */
+  replyOnInboundGreeting: z.boolean().default(true),
 });
 
 export const whatsAppTemplateSchema = z.object({
@@ -152,7 +154,12 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = whatsAppSettingsSchem
 
 const defaultAutomation = (): WhatsAppSettings["automation"] =>
   Object.fromEntries(
-    messageTypeKeys.map((key) => [key, { enabled: false, templateName: "", languageCode: "en" }]),
+    messageTypeKeys.map((key) => [
+      key,
+      whatsAppAutomationRuleSchema.parse(
+        key === "welcome" ? { enabled: false, templateName: "", languageCode: "en" } : {},
+      ),
+    ]),
   ) as WhatsAppSettings["automation"];
 
 const defaultWelcomeTemplateConfig = (): WhatsAppSettings["welcomeTemplateConfig"] =>
@@ -469,9 +476,50 @@ export function resolvePublicObjectUrl(
   const path = objectPath?.trim();
   if (!path) return undefined;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  const base = baseUrl?.trim().replace(/\/$/, "");
+  const base = normalizePublicAppBaseUrl(baseUrl);
   if (!base) return path;
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** Site origin only — not a full image URL. */
+export function normalizePublicAppBaseUrl(input?: string): string | undefined {
+  const trimmed = input?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const u = new URL(trimmed);
+      return u.origin;
+    } catch {
+      return trimmed.replace(/\/$/, "");
+    }
+  }
+  return trimmed.replace(/\/$/, "");
+}
+
+/** If user pasted an image URL into Public app URL, move it to header media URL. */
+export function sanitizeWhatsAppMediaFields(
+  settings: Pick<
+    WhatsAppSettings,
+    "publicAppBaseUrl" | "defaultHeaderMediaUrl" | "defaultHeaderMediaPath"
+  >,
+): Pick<WhatsAppSettings, "publicAppBaseUrl" | "defaultHeaderMediaUrl" | "defaultHeaderMediaPath"> {
+  let publicAppBaseUrl = settings.publicAppBaseUrl?.trim() || "";
+  let defaultHeaderMediaUrl = settings.defaultHeaderMediaUrl?.trim() || "";
+  const defaultHeaderMediaPath = settings.defaultHeaderMediaPath?.trim() || "";
+
+  if (
+    publicAppBaseUrl &&
+    /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(publicAppBaseUrl)
+  ) {
+    if (!defaultHeaderMediaUrl) {
+      defaultHeaderMediaUrl = publicAppBaseUrl;
+    }
+    publicAppBaseUrl = normalizePublicAppBaseUrl(publicAppBaseUrl) || "";
+  } else {
+    publicAppBaseUrl = normalizePublicAppBaseUrl(publicAppBaseUrl) || publicAppBaseUrl;
+  }
+
+  return { publicAppBaseUrl, defaultHeaderMediaUrl, defaultHeaderMediaPath };
 }
 
 export function resolveAppBaseUrl(
@@ -499,9 +547,12 @@ export function resolveMessagingHeaderMediaUrl(
   const explicit = explicitUrl?.trim();
   if (explicit?.startsWith("http")) return explicit;
 
+  const directUrl = settings.defaultHeaderMediaUrl?.trim();
+  if (directUrl?.startsWith("https://")) return directUrl;
+
   const appBase = resolveAppBaseUrl(settings, baseUrl);
   const fromUpload = resolvePublicObjectUrl(settings.defaultHeaderMediaPath, appBase);
-  if (fromUpload?.startsWith("http")) return fromUpload;
+  if (fromUpload?.startsWith("https://")) return fromUpload;
 
   const enriched = enrichTemplateForSend(template, templateName, settings);
   const url = settings.defaultHeaderMediaUrl?.trim();
@@ -579,13 +630,26 @@ export function finalizeWhatsAppSettingsMediaUrls(
   settings: WhatsAppSettings,
   baseUrl?: string,
 ): WhatsAppSettings {
-  const appBase = resolveAppBaseUrl(settings, baseUrl);
-  let defaultHeaderMediaUrl = settings.defaultHeaderMediaUrl?.trim() || "";
-  const fromPath = resolvePublicObjectUrl(settings.defaultHeaderMediaPath, appBase);
-  if (fromPath?.startsWith("http")) {
-    defaultHeaderMediaUrl = fromPath;
+  const sanitized = sanitizeWhatsAppMediaFields(settings);
+  const merged = { ...settings, ...sanitized };
+  const appBase = resolveAppBaseUrl(merged, baseUrl);
+  let defaultHeaderMediaUrl = merged.defaultHeaderMediaUrl?.trim() || "";
+  if (!defaultHeaderMediaUrl.startsWith("https://")) {
+    const fromPath = resolvePublicObjectUrl(merged.defaultHeaderMediaPath, appBase);
+    if (fromPath?.startsWith("https://")) {
+      defaultHeaderMediaUrl = fromPath;
+    }
   }
-  return { ...settings, defaultHeaderMediaUrl };
+  return { ...merged, defaultHeaderMediaUrl };
+}
+
+/** True when inbound text is Hi, Hello, etc. — triggers auto welcome reply. */
+export function isInboundGreetingMessage(text: string): boolean {
+  const normalized = text.trim().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return /^(hi|hello|hey|hola|namaste|start|get started|good morning|good afternoon|good evening)(\s|$)/i.test(
+    normalized,
+  );
 }
 
 export function getTemplateDefinition(
@@ -1064,7 +1128,121 @@ export function buildWhatsAppDeliveryChecklist(input: {
   return steps;
 }
 
-/** Hints when staff try to send custom (non-template) text. */
+export type WhatsAppDeliveryPreflightCheck = {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+};
+
+/** Sync checks before calling Meta (localhost header, missing body, sandbox, marketing). */
+export function buildWhatsAppDeliveryPreflight(input: {
+  toPhone?: string;
+  headerMediaUrl?: string;
+  bodyParams?: string[];
+  bodyParamCount?: number;
+  templateMeta?: Pick<WhatsAppTemplate, "category" | "name">;
+  fromDisplayNumber?: string;
+  headerMediaReachable?: boolean;
+  headerMediaError?: string;
+}): WhatsAppDeliveryPreflightCheck[] {
+  const checks: WhatsAppDeliveryPreflightCheck[] = [];
+  const from = input.fromDisplayNumber || "";
+  const isSandbox = from.includes("555") || from.startsWith("+1 555");
+  const isMarketing = (input.templateMeta?.category || "").toUpperCase() === "MARKETING";
+  const to = input.toPhone?.replace(/\D/g, "") || "";
+
+  if (input.bodyParamCount && input.bodyParamCount > 0) {
+    const filled = (input.bodyParams || [])
+      .slice(0, input.bodyParamCount)
+      .every((v) => v?.trim());
+    checks.push({
+      id: "body_params",
+      label: "Customer name (body {{1}})",
+      passed: filled,
+      detail: filled
+        ? "Body parameter is set."
+        : "Enter a customer name — empty body params can cause silent delivery failures.",
+    });
+  }
+
+  if (input.headerMediaUrl?.trim()) {
+    const url = input.headerMediaUrl.trim();
+    const localhost =
+      url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("http://");
+    checks.push({
+      id: "header_https",
+      label: "Header image is public HTTPS",
+      passed: !localhost && url.startsWith("https://"),
+      detail: localhost
+        ? "Meta cannot fetch localhost or HTTP URLs. Set Public app URL to https://www.xgoo.in and save."
+        : "Header URL uses HTTPS.",
+    });
+    if (input.headerMediaReachable !== undefined) {
+      checks.push({
+        id: "header_reachable",
+        label: "Meta can download header image",
+        passed: input.headerMediaReachable,
+        detail: input.headerMediaReachable
+          ? "Image URL responded OK when checked from the server."
+          : input.headerMediaError ||
+            "Image URL is not reachable — Meta will fail delivery (error #131053).",
+      });
+    }
+  }
+
+  if (to.length >= 10) {
+    checks.push({
+      id: "recipient_format",
+      label: "Recipient phone format",
+      passed: true,
+      detail: `Sending to ${to} (country code + number, no +).`,
+    });
+  }
+
+  if (isSandbox) {
+    checks.push({
+      id: "sandbox_opt_in",
+      label: "Sandbox opt-in (required)",
+      passed: false,
+      detail: `From WhatsApp on ${to || "recipient phone"}, message ${from || "+1 555-952-9213"} first (e.g. "Hi"). Add ${to} under "To" in Meta API Setup for your Phone Number ID.`,
+    });
+  }
+
+  if (isMarketing) {
+    checks.push({
+      id: "marketing_template",
+      label: "MARKETING template delivery",
+      passed: false,
+      detail: `"${input.templateMeta?.name || "welcome_message"}" is MARKETING — WhatsApp may block delivery until the recipient messages your business line first. Use a UTILITY template for booking confirmations.`,
+    });
+  }
+
+  checks.push({
+    id: "meta_accepted_vs_delivered",
+    label: "Understand Meta status",
+    passed: true,
+    detail:
+      '"accepted" only means queued. Real delivery shows as sent → delivered via Meta webhook or WhatsApp Manager insights.',
+  });
+
+  return checks;
+}
+
+export function describeWhatsAppDeliveryStatus(status: string, errorMessage?: string): string {
+  const s = status.toLowerCase();
+  if (s === "delivered") return "Delivered to the recipient's phone.";
+  if (s === "read") return "Read by the recipient.";
+  if (s === "sent") return "Sent from Meta — waiting for delivery to device.";
+  if (s === "failed") {
+    return errorMessage
+      ? `Delivery failed: ${errorMessage}`
+      : "Delivery failed — check Meta webhook or WhatsApp Manager insights.";
+  }
+  if (s === "accepted") return "Queued by Meta — not yet confirmed on the recipient's phone.";
+  return `Status: ${status}`;
+}
+
 export function buildCustomTextDeliveryHints(fromDisplayNumber?: string): string[] {
   const hints = [
     "Custom text only delivers inside WhatsApp's 24-hour customer service window — after the recipient messages your business number first. For testing and outbound notifications, use an approved template instead.",
