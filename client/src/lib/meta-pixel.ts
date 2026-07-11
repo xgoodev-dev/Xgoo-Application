@@ -90,7 +90,7 @@ export function initMetaPixel(pixelId: string): void {
     n.version = "2.0";
     n.queue = [];
     f.fbq = n;
-    const t = b.createElement(e);
+    const t = b.createElement(e) as HTMLScriptElement;
     t.async = true;
     t.src = v;
     const s = b.getElementsByTagName(e)[0];

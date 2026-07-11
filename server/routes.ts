@@ -22,6 +22,9 @@ import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
 import {
+  applyWelcomeTemplateDefaults,
+  finalizeWhatsAppSettingsMediaUrls,
+  resolveAppBaseUrl,
   buildWhatsAppTemplateComponents,
   describeTemplateParameterRequirements,
   enrichTemplateForSend,
@@ -35,6 +38,7 @@ import {
   templateNeedsHeaderMedia,
   bookingWhatsAppExtras,
   buildWhatsAppDeliveryHints,
+  buildWhatsAppDeliveryChecklist,
   buildCustomTextDeliveryHints,
   resolveTemplateSendParams,
   resolveTemplateLanguageForSend,
@@ -638,9 +642,17 @@ export async function registerRoutes(
           ...existing.automation,
           ...(incoming.automation || {}),
         },
+        welcomeTemplateConfig: {
+          ...existing.welcomeTemplateConfig,
+          ...(incoming.welcomeTemplateConfig || {}),
+        },
       });
 
-      let toSave = merged;
+      const requestOrigin =
+        typeof req.get === "function"
+          ? `${req.protocol}://${req.get("host")}`
+          : undefined;
+      let toSave = finalizeWhatsAppSettingsMediaUrls(merged, requestOrigin);
       try {
         const resolved = await resolveWhatsAppApiConfig(merged);
         if (resolved?.wabaId) {
@@ -879,6 +891,9 @@ export async function registerRoutes(
           buttonParams: z.array(z.string()).optional(),
           headerMediaUrl: z.string().optional(),
           defaultHeaderMediaUrl: z.string().optional(),
+          defaultHeaderMediaPath: z.string().optional(),
+          publicAppBaseUrl: z.string().optional(),
+          welcomeTemplateConfig: whatsAppSettingsSchema.shape.welcomeTemplateConfig.optional(),
           phoneNumberId: z.string().optional(),
           wabaId: z.string().optional(),
           accessToken: z.string().optional(),
@@ -905,15 +920,28 @@ export async function registerRoutes(
       const saved = mergeWhatsAppSettings(
         (office as { whatsappSettings?: unknown }).whatsappSettings,
       );
-      const settings = mergeWhatsAppSettings({
-        ...saved,
-        phoneNumberId: body.phoneNumberId?.trim() || saved.phoneNumberId,
-        wabaId: body.wabaId?.trim() || saved.wabaId,
-        accessToken: resolveAccessTokenForSave(body.accessToken, saved.accessToken),
-        apiVersion: body.apiVersion?.trim() || saved.apiVersion,
-        defaultHeaderMediaUrl:
-          body.defaultHeaderMediaUrl?.trim() || saved.defaultHeaderMediaUrl,
-      });
+      const requestOrigin =
+        typeof req.get === "function"
+          ? `${req.protocol}://${req.get("host")}`
+          : undefined;
+      const settings = finalizeWhatsAppSettingsMediaUrls(
+        mergeWhatsAppSettings({
+          ...saved,
+          phoneNumberId: body.phoneNumberId?.trim() || saved.phoneNumberId,
+          wabaId: body.wabaId?.trim() || saved.wabaId,
+          accessToken: resolveAccessTokenForSave(body.accessToken, saved.accessToken),
+          apiVersion: body.apiVersion?.trim() || saved.apiVersion,
+          defaultHeaderMediaUrl:
+            body.defaultHeaderMediaUrl?.trim() || saved.defaultHeaderMediaUrl,
+          defaultHeaderMediaPath:
+            body.defaultHeaderMediaPath?.trim() || saved.defaultHeaderMediaPath,
+          publicAppBaseUrl: body.publicAppBaseUrl?.trim() || saved.publicAppBaseUrl,
+          welcomeTemplateConfig: body.welcomeTemplateConfig
+            ? { ...saved.welcomeTemplateConfig, ...body.welcomeTemplateConfig }
+            : saved.welcomeTemplateConfig,
+        }),
+        requestOrigin,
+      );
       const config = configFromSettings(settings);
       if (!config) {
         return res.status(400).json({ message: "WhatsApp is not fully configured." });
@@ -937,14 +965,23 @@ export async function registerRoutes(
         templateMeta,
         body.templateName?.trim() || "",
         body.headerMediaUrl,
+        resolveAppBaseUrl(settings, requestOrigin),
       );
+
+      const welcomeDefaults =
+        body.messageType === "template" && body.templateName?.trim()
+          ? applyWelcomeTemplateDefaults(settings, body.templateName.trim(), {
+              bodyParams: body.bodyParams,
+              buttonParams: body.buttonParams,
+            })
+          : undefined;
 
       const resolvedParams =
         body.messageType === "template" && templateMeta
           ? resolveTemplateSendParams(templateMeta, {
-              bodyParams: body.bodyParams,
+              bodyParams: welcomeDefaults?.bodyParams ?? body.bodyParams,
               headerParams: body.headerParams,
-              buttonParams: body.buttonParams,
+              buttonParams: welcomeDefaults?.buttonParams ?? body.buttonParams,
               headerMediaUrl: body.headerMediaUrl || headerMediaUrl,
               defaultHeaderMediaUrl: settings.defaultHeaderMediaUrl,
             })
@@ -957,6 +994,8 @@ export async function registerRoutes(
           settings,
           templateMeta,
           body.templateName?.trim() || "",
+          undefined,
+          resolveAppBaseUrl(settings, requestOrigin),
         );
 
       if (body.messageType === "template") {
@@ -1058,7 +1097,17 @@ export async function registerRoutes(
                 templateMeta,
                 fromDisplayNumber,
                 messageStatus,
+                toPhone,
               }),
+        deliveryChecklist:
+          body.messageType === "template"
+            ? buildWhatsAppDeliveryChecklist({
+                templateMeta,
+                fromDisplayNumber,
+                toPhone,
+                messageStatus,
+              })
+            : undefined,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

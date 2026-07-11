@@ -96,6 +96,27 @@ export const whatsAppTemplateSchema = z.object({
   headerParamExamples: z.array(z.string()).default([]),
   buttonParamExamples: z.array(z.string()).default([]),
   headerMediaExampleUrl: z.string().default(""),
+  /** Button definitions synced from Meta (Book, Call, Track, etc.). */
+  buttons: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        type: z.string(),
+        text: z.string().default(""),
+        urlPattern: z.string().optional(),
+        urlParamCount: z.number().int().min(0).default(0),
+      }),
+    )
+    .default([]),
+});
+
+export const whatsAppWelcomeTemplateConfigSchema = z.object({
+  /** Static URL for "Book a Parcel" if configured in Meta template. */
+  bookParcelUrl: z.string().default(""),
+  /** Phone number for "Talk to XGoo Team" (with country code, no +). */
+  supportPhone: z.string().default(""),
+  /** Dynamic suffix for "Track Shipment" URL button ({{1}}), e.g. AWB or booking ref. */
+  trackShipmentSuffix: z.string().default(""),
 });
 
 export const whatsAppSettingsSchema = z.object({
@@ -109,8 +130,14 @@ export const whatsAppSettingsSchema = z.object({
   automation: z
     .record(whatsAppAutomationRuleSchema)
     .default({}),
-  /** Public HTTPS URL for template image headers (e.g. XGoo logo). Used by all automations. */
+  /** Uploaded header image path (e.g. /objects/uuid.png) — resolved to HTTPS URL on save. */
+  defaultHeaderMediaPath: z.string().default(""),
+  /** Public HTTPS URL for template image headers — auto-set from upload or manual entry. */
   defaultHeaderMediaUrl: z.string().default(""),
+  /** Base URL Meta uses to fetch uploaded images (e.g. https://app.xgoo.in). Falls back to request host. */
+  publicAppBaseUrl: z.string().default(""),
+  /** Defaults for welcome_message template buttons and body {{1}}. */
+  welcomeTemplateConfig: whatsAppWelcomeTemplateConfigSchema.default({}),
   /** Business WhatsApp number with country code (e.g. 919876543210) for wa.me return links. */
   businessWhatsAppNumber: z.string().default(""),
   lastSyncedAt: z.string().nullable().optional(),
@@ -119,6 +146,7 @@ export const whatsAppSettingsSchema = z.object({
 export type WhatsAppSettings = z.infer<typeof whatsAppSettingsSchema>;
 export type WhatsAppTemplate = z.infer<typeof whatsAppTemplateSchema>;
 export type WhatsAppAutomationRule = z.infer<typeof whatsAppAutomationRuleSchema>;
+export type WhatsAppWelcomeTemplateConfig = z.infer<typeof whatsAppWelcomeTemplateConfigSchema>;
 
 export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = whatsAppSettingsSchema.parse({});
 
@@ -127,8 +155,15 @@ const defaultAutomation = (): WhatsAppSettings["automation"] =>
     messageTypeKeys.map((key) => [key, { enabled: false, templateName: "", languageCode: "en" }]),
   ) as WhatsAppSettings["automation"];
 
+const defaultWelcomeTemplateConfig = (): WhatsAppSettings["welcomeTemplateConfig"] =>
+  whatsAppWelcomeTemplateConfigSchema.parse({});
+
 export function mergeWhatsAppSettings(raw: unknown): WhatsAppSettings {
-  const base = { ...DEFAULT_WHATSAPP_SETTINGS, automation: defaultAutomation() };
+  const base = {
+    ...DEFAULT_WHATSAPP_SETTINGS,
+    automation: defaultAutomation(),
+    welcomeTemplateConfig: defaultWelcomeTemplateConfig(),
+  };
   if (!raw || typeof raw !== "object") return base;
 
   const parsed = whatsAppSettingsSchema.safeParse({
@@ -138,6 +173,13 @@ export function mergeWhatsAppSettings(raw: unknown): WhatsAppSettings {
       ...defaultAutomation(),
       ...(typeof (raw as { automation?: unknown }).automation === "object"
         ? (raw as { automation: WhatsAppSettings["automation"] }).automation
+        : {}),
+    },
+    welcomeTemplateConfig: {
+      ...defaultWelcomeTemplateConfig(),
+      ...(typeof (raw as { welcomeTemplateConfig?: unknown }).welcomeTemplateConfig === "object"
+        ? (raw as { welcomeTemplateConfig: WhatsAppSettings["welcomeTemplateConfig"] })
+            .welcomeTemplateConfig
         : {}),
     },
   });
@@ -231,6 +273,7 @@ export function parseTemplateParamCounts(
   headerParamExamples: string[];
   buttonParamExamples: string[];
   headerMediaExampleUrl: string;
+  buttons: WhatsAppTemplate["buttons"];
 } {
   let bodyParamCount = 0;
   let headerParamCount = 0;
@@ -244,6 +287,7 @@ export function parseTemplateParamCounts(
   let headerParamExamples: string[] = [];
   let buttonParamExamples: string[] = [];
   let headerMediaExampleUrl = "";
+  const buttons: WhatsAppTemplate["buttons"] = [];
 
   if (!Array.isArray(components)) {
     return {
@@ -260,6 +304,7 @@ export function parseTemplateParamCounts(
       headerParamExamples,
       buttonParamExamples,
       headerMediaExampleUrl,
+      buttons,
     };
   }
 
@@ -318,13 +363,15 @@ export function parseTemplateParamCounts(
       }
     } else if (type === "BUTTONS" && Array.isArray(comp.buttons)) {
       comp.buttons.forEach((btn, index) => {
-        if ((btn.type || "").toUpperCase() === "URL" && btn.url) {
-          const urlVarCount =
+        const btnType = (btn.type || "").toUpperCase();
+        let urlParamCount = 0;
+        if (btnType === "URL" && btn.url) {
+          urlParamCount =
             parameterFormat === "named"
               ? extractNamedVariableNames(btn.url).length
               : extractPositionalVariableCount(btn.url);
-          if (urlVarCount > 0) {
-            buttonParamCount = Math.max(buttonParamCount, urlVarCount);
+          if (urlParamCount > 0) {
+            buttonParamCount = Math.max(buttonParamCount, urlParamCount);
             buttonParamIndex = index;
             const example = btn.example?.[0];
             if (example?.trim()) {
@@ -332,6 +379,13 @@ export function parseTemplateParamCounts(
             }
           }
         }
+        buttons.push({
+          index,
+          type: btnType,
+          text: (btn.text || "").trim(),
+          urlPattern: btn.url?.trim(),
+          urlParamCount,
+        });
       });
     }
   }
@@ -350,6 +404,7 @@ export function parseTemplateParamCounts(
     headerParamExamples,
     buttonParamExamples,
     headerMediaExampleUrl,
+    buttons,
   };
 }
 
@@ -407,24 +462,130 @@ export function enrichTemplateForSend(
   return normalized;
 }
 
+export function resolvePublicObjectUrl(
+  objectPath: string | undefined,
+  baseUrl?: string,
+): string | undefined {
+  const path = objectPath?.trim();
+  if (!path) return undefined;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const base = baseUrl?.trim().replace(/\/$/, "");
+  if (!base) return path;
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export function resolveAppBaseUrl(
+  settings?: Pick<WhatsAppSettings, "publicAppBaseUrl">,
+  fallbackOrigin?: string,
+): string | undefined {
+  return (
+    settings?.publicAppBaseUrl?.trim() ||
+    (typeof process !== "undefined" ? process.env.PUBLIC_APP_URL?.trim() : undefined) ||
+    fallbackOrigin?.trim() ||
+    undefined
+  );
+}
+
 export function resolveMessagingHeaderMediaUrl(
-  settings: Pick<WhatsAppSettings, "defaultHeaderMediaUrl">,
+  settings: Pick<
+    WhatsAppSettings,
+    "defaultHeaderMediaUrl" | "defaultHeaderMediaPath" | "publicAppBaseUrl"
+  >,
   template: WhatsAppTemplate | undefined,
   templateName: string,
   explicitUrl?: string,
+  baseUrl?: string,
 ): string | undefined {
   const explicit = explicitUrl?.trim();
-  if (explicit) return explicit;
+  if (explicit?.startsWith("http")) return explicit;
+
+  const appBase = resolveAppBaseUrl(settings, baseUrl);
+  const fromUpload = resolvePublicObjectUrl(settings.defaultHeaderMediaPath, appBase);
+  if (fromUpload?.startsWith("http")) return fromUpload;
+
   const enriched = enrichTemplateForSend(template, templateName, settings);
   const url = settings.defaultHeaderMediaUrl?.trim();
-  if (!url) return undefined;
+  if (url?.startsWith("http")) return url;
   if (
-    templateNeedsHeaderMedia(enriched) ||
-    KNOWN_IMAGE_HEADER_TEMPLATES.has(templateName.trim().toLowerCase())
+    url &&
+    (templateNeedsHeaderMedia(enriched) ||
+      KNOWN_IMAGE_HEADER_TEMPLATES.has(templateName.trim().toLowerCase()))
   ) {
     return url;
   }
   return undefined;
+}
+
+export function isWelcomeTemplateName(templateName: string): boolean {
+  const name = templateName.trim().toLowerCase();
+  return name === "welcome_message" || name.includes("welcome");
+}
+
+/** Human labels for welcome_message template fields shown in settings / test send. */
+export function getWelcomeTemplateFieldLabels(template?: WhatsAppTemplate): {
+  bodyLabels: string[];
+  buttonLabels: string[];
+} {
+  const bodyLabels = ["Customer name ({{1}})"];
+  const buttonLabels: string[] = [];
+  if (template?.buttons?.length) {
+    template.buttons.forEach((btn) => {
+      if (btn.type === "URL" && btn.urlParamCount > 0) {
+        buttonLabels.push(
+          btn.text
+            ? `${btn.text} URL suffix ({{1}})`
+            : "Track Shipment URL suffix ({{1}})",
+        );
+      }
+    });
+  }
+  if (!buttonLabels.length) {
+    buttonLabels.push("Track Shipment URL suffix ({{1}})");
+  }
+  return { bodyLabels, buttonLabels };
+}
+
+/** Apply saved welcome_message defaults to template send parameters. */
+export function applyWelcomeTemplateDefaults(
+  settings: WhatsAppSettings,
+  templateName: string,
+  input: {
+    bodyParams?: string[];
+    buttonParams?: string[];
+    customerName?: string;
+    trackingRef?: string;
+  },
+): { bodyParams: string[]; buttonParams: string[] } {
+  if (!isWelcomeTemplateName(templateName)) {
+    return {
+      bodyParams: input.bodyParams || [],
+      buttonParams: input.buttonParams || [],
+    };
+  }
+  const cfg = settings.welcomeTemplateConfig;
+  const bodyParams = [...(input.bodyParams || [])];
+  if (!bodyParams[0]?.trim()) {
+    bodyParams[0] = input.customerName?.trim() || "XGoo Customer";
+  }
+  const buttonParams = [...(input.buttonParams || [])];
+  if (!buttonParams[0]?.trim()) {
+    buttonParams[0] =
+      input.trackingRef?.trim() || cfg.trackShipmentSuffix?.trim() || "xgoo";
+  }
+  return { bodyParams, buttonParams };
+}
+
+export function finalizeWhatsAppSettingsMediaUrls(
+  settings: WhatsAppSettings,
+  baseUrl?: string,
+): WhatsAppSettings {
+  const appBase = resolveAppBaseUrl(settings, baseUrl);
+  let defaultHeaderMediaUrl = settings.defaultHeaderMediaUrl?.trim() || "";
+  const fromPath = resolvePublicObjectUrl(settings.defaultHeaderMediaPath, appBase);
+  if (fromPath?.startsWith("http")) {
+    defaultHeaderMediaUrl = fromPath;
+  }
+  return { ...settings, defaultHeaderMediaUrl };
 }
 
 export function getTemplateDefinition(
@@ -625,13 +786,18 @@ export function describeTemplateParameterRequirements(template?: WhatsAppTemplat
   if (!template) {
     return "Re-sync templates from Meta to detect required parameters.";
   }
+  const welcome = isWelcomeTemplateName(template.name);
   const parts: string[] = [];
   if (template.headerMediaRequired || ["IMAGE", "VIDEO", "DOCUMENT"].includes(template.headerFormat)) {
-    parts.push(`1 ${template.headerFormat.toLowerCase()} header URL (public HTTPS link)`);
+    parts.push(
+      welcome
+        ? "1 image header (upload below or set Public app URL)"
+        : `1 ${template.headerFormat.toLowerCase()} header URL (public HTTPS link)`,
+    );
   } else if (
     KNOWN_IMAGE_HEADER_TEMPLATES.has(template.name.trim().toLowerCase())
   ) {
-    parts.push("1 image header URL (set Default header image URL in settings)");
+    parts.push("1 image header (upload in Welcome template settings)");
   } else if (template.headerParamCount > 0) {
     const names =
       template.parameterFormat === "named" && template.headerParamNames.length
@@ -640,14 +806,27 @@ export function describeTemplateParameterRequirements(template?: WhatsAppTemplat
     parts.push(`${template.headerParamCount} header${names}`);
   }
   if (template.bodyParamCount > 0) {
-    const names =
-      template.parameterFormat === "named" && template.bodyParamNames.length
-        ? ` (${template.bodyParamNames.join(", ")})`
-        : "";
-    parts.push(`${template.bodyParamCount} body${names}`);
+    if (welcome) {
+      parts.push("customer name for {{1}}");
+    } else {
+      const names =
+        template.parameterFormat === "named" && template.bodyParamNames.length
+          ? ` (${template.bodyParamNames.join(", ")})`
+          : "";
+      parts.push(`${template.bodyParamCount} body${names}`);
+    }
   }
   if (template.buttonParamCount > 0) {
-    parts.push(`${template.buttonParamCount} button URL`);
+    if (welcome) {
+      const trackBtn = template.buttons?.find((b) => b.urlParamCount > 0);
+      parts.push(
+        trackBtn?.text
+          ? `dynamic URL for "${trackBtn.text}" button`
+          : "Track Shipment URL suffix",
+      );
+    } else {
+      parts.push(`${template.buttonParamCount} button URL`);
+    }
   }
   if (!parts.length) return "No parameters required for this template.";
   return `Requires ${parts.join(", ")}. Language: ${template.language}. Format: ${template.parameterFormat}. Example values sync from Meta on template sync.`;
@@ -674,7 +853,10 @@ export function buildWhatsAppReturnUrl(
 }
 
 export function resolveHeaderMediaUrlForAutomation(
-  settings: Pick<WhatsAppSettings, "defaultHeaderMediaUrl">,
+  settings: Pick<
+    WhatsAppSettings,
+    "defaultHeaderMediaUrl" | "defaultHeaderMediaPath" | "publicAppBaseUrl"
+  >,
   template: WhatsAppTemplate | undefined,
   templateName = "",
 ): string | undefined {
@@ -816,32 +998,70 @@ export function bookingWhatsAppExtras(
 
 /** User-facing hints when Meta accepts a message but delivery may still fail. */
 export function buildWhatsAppDeliveryHints(input: {
-  templateMeta?: Pick<WhatsAppTemplate, "category">;
+  templateMeta?: Pick<WhatsAppTemplate, "category" | "name">;
   fromDisplayNumber?: string;
   messageStatus?: string;
+  toPhone?: string;
 }): string[] {
   const hints: string[] = [];
   const from = input.fromDisplayNumber || "";
+  const status = (input.messageStatus || "").toLowerCase();
+  const isMarketing = (input.templateMeta?.category || "").toUpperCase() === "MARKETING";
+  const isSandbox = from.includes("555") || from.startsWith("+1 555");
 
-  if (from.includes("555") || from.startsWith("+1 555")) {
+  if (status === "accepted" || !status) {
     hints.push(
-      "You are on Meta's test number (+1 555…). In Meta Developers → WhatsApp → API Setup, copy the exact Phone Number ID from that page (not a different sandbox line), add the recipient under \"To\", then send again.",
+      "Meta returned \"accepted\" — this only means the message was queued, NOT that it was delivered to WhatsApp.",
     );
   }
 
-  if ((input.templateMeta?.category || "").toUpperCase() === "MARKETING") {
+  if (isSandbox) {
     hints.push(
-      "This template is MARKETING. WhatsApp often will not deliver to numbers that have not opted in or messaged your business first.",
+      `Sandbox number ${from || "+1 555…"}: in Meta Developers → WhatsApp → API Setup, add ${input.toPhone || "the recipient"} under \"To\" for this exact Phone Number ID, then retry.`,
+    );
+    hints.push(
+      `From your phone (${input.toPhone || "recipient"}), open WhatsApp and send any message to ${from || "your +1 555 business line"} first — required before MARKETING templates can arrive.`,
     );
   }
 
-  if (input.messageStatus === "accepted") {
+  if (isMarketing) {
     hints.push(
-      "Meta queued the message (accepted). If nothing arrives in 1–2 minutes, verify the recipient number, test allow-list, and template category.",
+      `Template "${input.templateMeta?.name || "welcome_message"}" is MARKETING. WhatsApp often blocks delivery unless the recipient opted in or messaged your business number first. For booking confirmations, create a UTILITY template in Meta.`,
+    );
+  }
+
+  if (status === "accepted") {
+    hints.push(
+      "Wait 1–2 minutes. If still nothing, check Meta Events Manager → WhatsApp → Message insights for failed delivery.",
     );
   }
 
   return hints;
+}
+
+/** Numbered checklist shown in the staff UI after a test send. */
+export function buildWhatsAppDeliveryChecklist(input: {
+  templateMeta?: Pick<WhatsAppTemplate, "category" | "name">;
+  fromDisplayNumber?: string;
+  toPhone?: string;
+  messageStatus?: string;
+}): string[] {
+  const from = input.fromDisplayNumber || "your WhatsApp business number";
+  const to = input.toPhone || "the recipient";
+  const steps: string[] = [
+    `Confirm Meta status is only "accepted" (queued) — not "delivered".`,
+    `On your phone (${to}), open WhatsApp and message ${from} first (e.g. "Hi").`,
+    `In Meta API Setup, verify ${to} is listed under "To" for the same Phone Number ID you saved in XGoo.`,
+  ];
+
+  if ((input.templateMeta?.category || "").toUpperCase() === "MARKETING") {
+    steps.push(
+      `MARKETING template "${input.templateMeta?.name || "welcome_message"}" may not deliver without opt-in. Create a UTILITY template for transactional messages.`,
+    );
+  }
+
+  steps.push("Click Send test again after step 2.");
+  return steps;
 }
 
 /** Hints when staff try to send custom (non-template) text. */

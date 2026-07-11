@@ -43,8 +43,11 @@ import {
   describeTemplateParameterRequirements,
   enrichTemplateForSend,
   getTemplateDefinition,
+  getWelcomeTemplateFieldLabels,
   isMaskedAccessToken,
+  isWelcomeTemplateName,
   KNOWN_IMAGE_HEADER_TEMPLATES,
+  resolvePublicObjectUrl,
   resolveTemplateParamValues,
   pickQuickTestTemplate,
   resolveTemplateLanguageForSend,
@@ -54,6 +57,7 @@ import {
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
 } from "@shared/whatsapp";
+import { WhatsAppHeaderImageUpload } from "@/components/settings/WhatsAppHeaderImageUpload";
 
 const SETTINGS_QUERY_KEY = ["/api/whatsapp/settings"];
 
@@ -80,7 +84,39 @@ export function WhatsAppBusinessSync() {
   const [testBodyParams, setTestBodyParams] = useState<string[]>([]);
   const [testHeaderParams, setTestHeaderParams] = useState<string[]>([]);
   const [testButtonParams, setTestButtonParams] = useState<string[]>([]);
-  const [testHeaderMediaUrl, setTestHeaderMediaUrl] = useState("");
+  const [testHeaderMediaPath, setTestHeaderMediaPath] = useState("");
+  const [lastDeliveryChecklist, setLastDeliveryChecklist] = useState<string[] | null>(null);
+
+  const showTestSendResult = (result: {
+    messageStatus?: string;
+    phoneNumberId?: string;
+    fromDisplayNumber?: string;
+    deliveryHints?: string[];
+    deliveryChecklist?: string[];
+    templateLabel?: string;
+  }) => {
+    const status = result.messageStatus || "unknown";
+    const queuedOnly = status.toLowerCase() === "accepted" || status.toLowerCase() === "unknown";
+    const fromLine = result.fromDisplayNumber
+      ? ` From ${result.fromDisplayNumber} (ID ${result.phoneNumberId || "?"}).`
+      : "";
+    const hints = result.deliveryHints?.length ? ` ${result.deliveryHints.join(" ")}` : "";
+
+    if (result.deliveryChecklist?.length) {
+      setLastDeliveryChecklist(result.deliveryChecklist);
+    }
+
+    toast({
+      title: queuedOnly
+        ? "Accepted by Meta — delivery not confirmed yet"
+        : "Test message sent",
+      description: queuedOnly
+        ? `${result.templateLabel ? `${result.templateLabel}. ` : ""}Meta queued your message (status: ${status}).${fromLine} Check the delivery checklist below if it doesn't arrive on WhatsApp within 1–2 minutes.`
+        : `${result.templateLabel ? `${result.templateLabel}. ` : ""}Meta status: ${status}.${fromLine}${hints}`,
+      duration: queuedOnly ? 12000 : 20000,
+      variant: "default",
+    });
+  };
 
   const { data: settings, isLoading } = useQuery<WhatsAppSettings>({
     queryKey: SETTINGS_QUERY_KEY,
@@ -236,8 +272,24 @@ export function WhatsAppBusinessSync() {
     templateNeedsHeaderMedia(selectedTestTemplateMeta) ||
     KNOWN_IMAGE_HEADER_TEMPLATES.has(effectiveTestTemplate.trim().toLowerCase());
 
+  const publicAppBaseUrl =
+    watched.publicAppBaseUrl?.trim() ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
   const effectiveHeaderMediaUrl =
-    testHeaderMediaUrl.trim() || watched.defaultHeaderMediaUrl?.trim() || "";
+    resolvePublicObjectUrl(
+      testHeaderMediaPath || watched.defaultHeaderMediaPath,
+      publicAppBaseUrl,
+    ) ||
+    watched.defaultHeaderMediaUrl?.trim() ||
+    "";
+
+  const isWelcomeTemplate = isWelcomeTemplateName(effectiveTestTemplate);
+  const welcomeFieldLabels = getWelcomeTemplateFieldLabels(selectedTestTemplateMeta);
+  const welcomeTemplateMeta = useMemo(
+    () => approvedTemplates.find((t) => t.name === "welcome_message"),
+    [approvedTemplates],
+  );
 
   useEffect(() => {
     if (testMessageType !== "template") return;
@@ -251,7 +303,9 @@ export function WhatsAppBusinessSync() {
         meta?.bodyParamCount ?? 0,
         undefined,
         meta?.bodyParamExamples,
-        ["XGoo Customer", "BR-TEST-001"],
+        isWelcomeTemplateName(effectiveTestTemplate)
+          ? ["XGoo Customer"]
+          : ["XGoo Customer", "BR-TEST-001"],
       ),
     );
     setTestHeaderParams(
@@ -269,20 +323,21 @@ export function WhatsAppBusinessSync() {
         meta?.buttonParamCount ?? 0,
         undefined,
         meta?.buttonParamExamples,
-        ["xgoo"],
+        isWelcomeTemplateName(effectiveTestTemplate)
+          ? [watched.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "xgoo"]
+          : ["xgoo"],
       ),
     );
-    setTestHeaderMediaUrl(
-      watched.defaultHeaderMediaUrl?.trim() ||
-        meta?.headerMediaExampleUrl?.trim() ||
-        "",
-    );
+    setTestHeaderMediaPath("");
   }, [
     effectiveTestTemplate,
     effectiveTestLanguage,
     allTemplates,
     testMessageType,
+    watched.defaultHeaderMediaPath,
     watched.defaultHeaderMediaUrl,
+    watched.publicAppBaseUrl,
+    watched.welcomeTemplateConfig?.trackShipmentSuffix,
   ]);
 
   const paramCountsForValidation = useMemo(
@@ -353,7 +408,10 @@ export function WhatsAppBusinessSync() {
           testMessageType === "template" && showHeaderMediaField
             ? effectiveHeaderMediaUrl || undefined
             : undefined,
-        defaultHeaderMediaUrl: values.defaultHeaderMediaUrl?.trim() || undefined,
+        defaultHeaderMediaUrl: effectiveHeaderMediaUrl || undefined,
+        defaultHeaderMediaPath: values.defaultHeaderMediaPath?.trim() || undefined,
+        publicAppBaseUrl: publicAppBaseUrl || undefined,
+        welcomeTemplateConfig: values.welcomeTemplateConfig,
         phoneNumberId: values.phoneNumberId,
         wabaId: values.wabaId,
         accessToken: values.accessToken,
@@ -365,22 +423,11 @@ export function WhatsAppBusinessSync() {
         phoneNumberId?: string;
         fromDisplayNumber?: string;
         deliveryHints?: string[];
+        deliveryChecklist?: string[];
       };
     },
     onSuccess: (result) => {
-      const fromLine = result.fromDisplayNumber
-        ? ` Sent from ${result.fromDisplayNumber} (ID ${result.phoneNumberId || "?"}).`
-        : result.phoneNumberId
-          ? ` Phone Number ID: ${result.phoneNumberId}.`
-          : "";
-      const hints = result.deliveryHints?.length
-        ? ` ${result.deliveryHints.join(" ")}`
-        : "";
-      toast({
-        title: "Test message sent",
-        description: `Meta status: ${result.messageStatus || "sent"}. Check WhatsApp on ${testPhone}.${fromLine}${hints}`,
-        duration: hints || fromLine ? 15000 : 8000,
-      });
+      showTestSendResult(result);
     },
     onError: (err: Error) => {
       toast({ title: "Send failed", description: err.message, variant: "destructive" });
@@ -403,8 +450,7 @@ export function WhatsAppBusinessSync() {
         values,
       );
       const headerMediaUrl =
-        testHeaderMediaUrl.trim() ||
-        values.defaultHeaderMediaUrl?.trim() ||
+        effectiveHeaderMediaUrl ||
         meta?.headerMediaExampleUrl?.trim() ||
         "";
       const bodyParams = resolveTemplateParamValues(
@@ -413,13 +459,19 @@ export function WhatsAppBusinessSync() {
         meta?.bodyParamExamples,
         ["XGoo Customer", "BR-TEST-001"],
       );
+      const buttonParams = resolveTemplateParamValues(
+        meta?.buttonParamCount ?? 0,
+        testButtonParams.some((p) => p.trim()) ? testButtonParams : undefined,
+        meta?.buttonParamExamples,
+        [values.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "xgoo"],
+      );
       if (
         (meta?.headerMediaRequired ||
           KNOWN_IMAGE_HEADER_TEMPLATES.has(quick.name.toLowerCase())) &&
         !headerMediaUrl
       ) {
         throw new Error(
-          "Set Default header image URL above (public HTTPS logo link), then try Quick test again.",
+          "Upload a header image in Welcome template settings (and set Public app URL), then try Quick test again.",
         );
       }
       const res = await apiRequest("POST", "/api/whatsapp/messages/test", {
@@ -428,8 +480,12 @@ export function WhatsAppBusinessSync() {
         templateName: quick.name,
         languageCode: quick.language,
         bodyParams,
+        buttonParams: meta?.buttonParamCount ? buttonParams : undefined,
         headerMediaUrl: headerMediaUrl || undefined,
-        defaultHeaderMediaUrl: values.defaultHeaderMediaUrl?.trim() || undefined,
+        defaultHeaderMediaUrl: effectiveHeaderMediaUrl || undefined,
+        defaultHeaderMediaPath: values.defaultHeaderMediaPath?.trim() || undefined,
+        publicAppBaseUrl: publicAppBaseUrl || undefined,
+        welcomeTemplateConfig: values.welcomeTemplateConfig,
         phoneNumberId: values.phoneNumberId,
         wabaId: values.wabaId,
         accessToken: values.accessToken,
@@ -441,24 +497,16 @@ export function WhatsAppBusinessSync() {
         phoneNumberId?: string;
         fromDisplayNumber?: string;
         deliveryHints?: string[];
+        deliveryChecklist?: string[];
         templateName?: string;
         languageCode?: string;
       };
     },
-    onSuccess: (result, _vars, _ctx) => {
+    onSuccess: (result) => {
       const quick = quickTestTemplate;
-      const fromLine = result.fromDisplayNumber
-        ? ` Sent from ${result.fromDisplayNumber} (ID ${result.phoneNumberId || "?"}).`
-        : result.phoneNumberId
-          ? ` Phone Number ID: ${result.phoneNumberId}.`
-          : "";
-      const hints = result.deliveryHints?.length
-        ? ` ${result.deliveryHints.join(" ")}`
-        : "";
-      toast({
-        title: "Quick test sent",
-        description: `Template: ${quick?.name || "template"} (${quick?.language || "en"}). Meta status: ${result.messageStatus || "sent"}. Check WhatsApp on ${testPhone}.${fromLine}${hints}`,
-        duration: 15000,
+      showTestSendResult({
+        ...result,
+        templateLabel: `Template: ${quick?.name || "template"} (${quick?.language || "en"})`,
       });
     },
     onError: (err: Error) => {
@@ -653,27 +701,133 @@ export function WhatsAppBusinessSync() {
                   )}
                 />
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-4 rounded-lg border p-4">
+                  <div>
+                    <h3 className="text-sm font-semibold">Welcome message template</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Configure your Meta <code className="text-xs">welcome_message</code> template:
+                      header image, customer name variable {"{{1}}"}, and button links.
+                    </p>
+                  </div>
+
                   <FormField
                     control={form.control}
-                    name="defaultHeaderMediaUrl"
+                    name="publicAppBaseUrl"
                     render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>Default header image URL (automation)</FormLabel>
+                      <FormItem>
+                        <FormLabel>Public app URL</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
-                            placeholder="https://www.xgoo.in/logo.png"
-                            data-testid="input-whatsapp-header-media-default"
+                            placeholder="https://app.xgoo.in"
+                            data-testid="input-whatsapp-public-app-url"
                           />
                         </FormControl>
                         <FormDescription>
-                          Public HTTPS link used for all automated template sends with image
-                          headers (e.g. welcome message). Set once — no manual entry per booking.
+                          Meta must fetch header images over HTTPS. Use your production domain
+                          (not localhost). Defaults to this browser origin when empty.
                         </FormDescription>
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name="defaultHeaderMediaPath"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <WhatsAppHeaderImageUpload
+                            objectPath={field.value || ""}
+                            publicBaseUrl={publicAppBaseUrl}
+                            onPathChange={field.onChange}
+                            label="Welcome header image"
+                            description="Upload the XGoo banner shown at the top of welcome_message. Replaces pasting a raw image URL."
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="welcomeTemplateConfig.bookParcelUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Book a Parcel button URL</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="https://www.xgoo.in/book"
+                              data-testid="input-welcome-book-url"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Static link for the &quot;Book a Parcel&quot; button (set the same URL
+                            in Meta when creating the template).
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="welcomeTemplateConfig.supportPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Talk to XGoo Team — phone</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="919876543210"
+                              data-testid="input-welcome-support-phone"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Phone number for the call button (country code, no +). Match Meta
+                            template settings.
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="welcomeTemplateConfig.trackShipmentSuffix"
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>Track Shipment — default URL suffix</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="track/AWB123 or booking ref for {{1}}"
+                              data-testid="input-welcome-track-suffix"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Dynamic part appended to your track URL (template button {"{{1}}"}).
+                            Used as default when sending welcome messages; override per test send
+                            below.
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {welcomeTemplateMeta?.buttons && welcomeTemplateMeta.buttons.length > 0 && (
+                    <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                      <p className="font-medium text-foreground">Synced buttons from Meta:</p>
+                      {welcomeTemplateMeta.buttons.map((btn) => (
+                        <p key={btn.index}>
+                          {btn.text || btn.type} — {btn.type}
+                          {btn.urlPattern ? ` (${btn.urlPattern})` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="businessWhatsAppNumber"
@@ -796,6 +950,25 @@ export function WhatsAppBusinessSync() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                    <p className="font-medium">If Meta says &quot;accepted&quot; but nothing arrives on WhatsApp:</p>
+                    <ol className="mt-2 list-decimal list-inside space-y-1 text-xs">
+                      <li>
+                        From phone <strong>{testPhone || "919…"}</strong>, open WhatsApp and message{" "}
+                        <strong>{connectionResult?.displayPhoneNumber || "+1 555 business line"}</strong>{" "}
+                        first (e.g. &quot;Hi&quot;).
+                      </li>
+                      <li>
+                        In Meta API Setup, add the recipient under &quot;To&quot; for the same Phone
+                        Number ID saved here.
+                      </li>
+                      <li>
+                        <strong>welcome_message</strong> is MARKETING — WhatsApp may block it without
+                        opt-in. Use a UTILITY template for booking confirmations.
+                      </li>
+                    </ol>
+                  </div>
+
                   <Input
                     placeholder="Recipient (country code + mobile, e.g. 916071125252)"
                     value={testPhone}
@@ -928,19 +1101,32 @@ export function WhatsAppBusinessSync() {
                           </div>
                           {showHeaderMediaField && (
                             <div className="space-y-2">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Header image URL *
-                              </p>
-                              <Input
-                                placeholder="https://www.xgoo.in/logo.png"
-                                value={testHeaderMediaUrl}
-                                onChange={(e) => setTestHeaderMediaUrl(e.target.value)}
-                                data-testid="input-test-whatsapp-header-media"
+                              <WhatsAppHeaderImageUpload
+                                objectPath={
+                                  testHeaderMediaPath ||
+                                  watched.defaultHeaderMediaPath ||
+                                  ""
+                                }
+                                publicBaseUrl={publicAppBaseUrl}
+                                onPathChange={(path) => {
+                                  setTestHeaderMediaPath(path);
+                                  form.setValue("defaultHeaderMediaPath", path, {
+                                    shouldDirty: true,
+                                  });
+                                }}
+                                label="Header image for this send"
+                                description={
+                                  isWelcomeTemplate
+                                    ? "Uses your saved welcome header image. Upload here to change it for automation and this test."
+                                    : "Required for templates with image headers."
+                                }
+                                testId="input-test-whatsapp-header-media"
                               />
-                              <p className="text-xs text-muted-foreground">
-                                Uses your saved default URL when this field is empty. Required for
-                                templates with image headers (e.g. xgoo_welcome_message).
-                              </p>
+                              {effectiveHeaderMediaUrl && !effectiveHeaderMediaUrl.startsWith("http") && (
+                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                  Set Public app URL above so Meta receives an HTTPS image link.
+                                </p>
+                              )}
                             </div>
                           )}
                           {!showHeaderMediaField && (
@@ -961,9 +1147,11 @@ export function WhatsAppBusinessSync() {
                             params={testBodyParams}
                             minCount={selectedTestTemplateMeta?.bodyParamCount ?? 0}
                             paramNames={
-                              selectedTestTemplateMeta?.parameterFormat === "named"
-                                ? selectedTestTemplateMeta.bodyParamNames
-                                : undefined
+                              isWelcomeTemplate
+                                ? welcomeFieldLabels.bodyLabels
+                                : selectedTestTemplateMeta?.parameterFormat === "named"
+                                  ? selectedTestTemplateMeta.bodyParamNames
+                                  : undefined
                             }
                             onChange={setTestBodyParams}
                           />
@@ -972,6 +1160,9 @@ export function WhatsAppBusinessSync() {
                               label="Button (URL)"
                               params={testButtonParams}
                               minCount={selectedTestTemplateMeta?.buttonParamCount ?? 0}
+                              paramNames={
+                                isWelcomeTemplate ? welcomeFieldLabels.buttonLabels : undefined
+                              }
                               onChange={setTestButtonParams}
                             />
                           )}
@@ -1020,6 +1211,18 @@ export function WhatsAppBusinessSync() {
                     . hello_world only exists on Meta&apos;s default API Setup; your account uses
                     welcome_message (en).
                   </p>
+                  {lastDeliveryChecklist && lastDeliveryChecklist.length > 0 && (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-900 dark:bg-orange-950/30">
+                      <p className="font-medium text-orange-900 dark:text-orange-100">
+                        Delivery checklist (last test)
+                      </p>
+                      <ol className="mt-2 list-decimal list-inside space-y-1 text-xs text-orange-900/90 dark:text-orange-100/90">
+                        {lastDeliveryChecklist.map((step, i) => (
+                          <li key={i}>{step}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1089,7 +1292,9 @@ function TemplateParameterFields({
           <Input
             placeholder={
               paramNames?.[i]
-                ? `Value for {{${paramNames[i]}}}`
+                ? paramNames[i].includes("{{")
+                  ? paramNames[i]
+                  : `Value for {{${paramNames[i]}}}`
                 : `Value for {{${i + 1}}}`
             }
             value={value}

@@ -513,6 +513,7 @@ export async function fetchWhatsAppTemplates(config: WhatsAppApiConfig): Promise
         headerParamExamples: paramMeta.headerParamExamples,
         buttonParamExamples: paramMeta.buttonParamExamples,
         headerMediaExampleUrl: paramMeta.headerMediaExampleUrl,
+        buttons: paramMeta.buttons,
       });
     }
 
@@ -551,7 +552,13 @@ async function postWhatsAppMessage(
     apiVersion: config.apiVersion || "default",
     to: body.to,
     type: body.type,
-    template: (body.template as { name?: string } | undefined)?.name,
+    template: (body.template as { name?: string; language?: { code?: string } } | undefined)?.name,
+    language: (body.template as { language?: { code?: string } } | undefined)?.language?.code,
+    componentCount: Array.isArray(
+      (body.template as { components?: unknown[] } | undefined)?.components,
+    )
+      ? (body.template as { components: unknown[] }).components.length
+      : 0,
   });
   const res = await fetch(url, {
     method: "POST",

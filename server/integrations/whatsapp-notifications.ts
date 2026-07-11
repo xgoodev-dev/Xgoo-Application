@@ -6,6 +6,7 @@ import {
   mapBodyParamsForTemplate,
   mergeWhatsAppSettings,
   normalizeWhatsAppPhone,
+  applyWelcomeTemplateDefaults,
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
 } from "@shared/whatsapp";
@@ -63,9 +64,15 @@ async function sendAutomatedWhatsApp(
       meta && meta.headerParamCount > 0 && !meta.headerMediaRequired
         ? [values.requestNumber]
         : undefined;
-    const components = buildAutomationTemplateComponents(settings, meta, templateName, {
+    const welcomeDefaults = applyWelcomeTemplateDefaults(settings, templateName, {
       bodyParams,
+      customerName: values.name,
+      trackingRef: values.requestNumber,
+    });
+    const components = buildAutomationTemplateComponents(settings, meta, templateName, {
+      bodyParams: welcomeDefaults.bodyParams,
       headerParams,
+      buttonParams: welcomeDefaults.buttonParams,
     });
     await sendWhatsAppTemplateMessage(config, {
       to,

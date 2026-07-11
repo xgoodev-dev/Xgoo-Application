@@ -13,8 +13,14 @@ type WebhookMessage = {
 
 type WebhookChange = {
   value?: {
-    metadata?: { phone_number_id?: string };
+    metadata?: { phone_number_id?: string; display_phone_number?: string };
     messages?: WebhookMessage[];
+    statuses?: Array<{
+      id?: string;
+      status?: string;
+      recipient_id?: string;
+      errors?: Array<{ code?: number; title?: string; message?: string }>;
+    }>;
   };
 };
 
@@ -94,6 +100,21 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
           (office as { whatsappSettings?: unknown }).whatsappSettings,
         );
         if (!settings.enabled) continue;
+
+        for (const statusUpdate of value.statuses || []) {
+          const level =
+            statusUpdate.status === "failed" ? "error" : "info";
+          const errDetail = statusUpdate.errors?.[0];
+          console[level === "error" ? "error" : "info"]("[WhatsApp webhook] Message status", {
+            phoneNumberId,
+            messageId: statusUpdate.id,
+            status: statusUpdate.status,
+            recipient: statusUpdate.recipient_id,
+            errorCode: errDetail?.code,
+            errorTitle: errDetail?.title,
+            errorMessage: errDetail?.message,
+          });
+        }
 
         for (const message of value.messages || []) {
           if (message.type !== "text" || !message.text?.body || !message.from) continue;
