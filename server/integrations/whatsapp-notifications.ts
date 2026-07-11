@@ -13,13 +13,14 @@ import {
   mergeWhatsAppSettings,
   normalizeWhatsAppPhone,
   applyWelcomeTemplateDefaults,
+  buildInboundGreetingTextMessage,
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
 } from "@shared/whatsapp";
 import {
+  configForMessaging,
   configFromSettings,
   formatMetaGraphError,
-  resolveWhatsAppApiConfig,
   sendWhatsAppTemplateMessage,
   sendWhatsAppTextMessage,
 } from "./whatsapp";
@@ -48,7 +49,7 @@ async function sendAutomatedWhatsApp(
   if (!rule?.enabled) return;
   if (!configFromSettings(settings)) return;
 
-  const config = await resolveWhatsAppApiConfig(settings);
+  const config = configForMessaging(settings);
   if (!config) return;
 
   const to = normalizeWhatsAppPhone(toPhone);
@@ -217,17 +218,18 @@ export async function sendInboundWelcomeMessage(
     return false;
   }
 
-  const config = await resolveWhatsAppApiConfig(settings);
+  const config = configForMessaging(settings);
   if (!config) {
     recordWhatsAppWebhookDebug({
       level: "warn",
       event: "welcome_skipped",
       from: to,
-      detail: "Could not resolve Meta API config (check token and WABA)",
+      detail: "Could not resolve Meta API config (check token and Phone Number ID)",
     });
     return false;
   }
 
+  const sendStarted = Date.now();
   const templateName = rule.templateName.trim();
   const meta = enrichTemplateForSend(
     getTemplateDefinition(settings.templates, templateName, rule.languageCode),
@@ -235,6 +237,39 @@ export async function sendInboundWelcomeMessage(
     settings,
   );
   const displayName = customerName?.trim() || "XGoo Customer";
+
+  const useFastText =
+    rule.preferFastTextOnGreeting !== false &&
+    meta?.category?.toUpperCase() === "MARKETING";
+
+  if (useFastText) {
+    try {
+      await sendWhatsAppTextMessage(config, {
+        to,
+        text: buildInboundGreetingTextMessage(settings, displayName),
+      });
+      markWelcomeSentToPhone(to);
+      const sendMs = Date.now() - sendStarted;
+      recordWhatsAppWebhookDebug({
+        level: "info",
+        event: "welcome_sent",
+        from: to,
+        detail: `Sent instant text reply in ${sendMs}ms (MARKETING template skipped for speed). Turn off "Instant text reply" to send welcome_message template.`,
+      });
+      console.info("[WhatsApp welcome] Inbound greeting fast text sent", { to, sendMs });
+      return true;
+    } catch (error) {
+      const metaErr = formatMetaGraphError(error);
+      recordWhatsAppWebhookDebug({
+        level: "error",
+        event: "welcome_send_failed",
+        from: to,
+        detail: `${metaErr.message}${metaErr.code ? ` (#${metaErr.code})` : ""}`,
+      });
+      throw error;
+    }
+  }
+
   const welcomeDefaults = applyWelcomeTemplateDefaults(settings, templateName, {
     bodyParams: [displayName],
     customerName: displayName,
@@ -253,13 +288,14 @@ export async function sendInboundWelcomeMessage(
       components,
     });
     markWelcomeSentToPhone(to);
+    const sendMs = Date.now() - sendStarted;
     recordWhatsAppWebhookDebug({
       level: "info",
       event: "welcome_sent",
       from: to,
-      detail: `Sent template "${templateName}" to ${to}`,
+      detail: `Sent template "${templateName}" to ${to} in ${sendMs}ms (Meta API). WhatsApp delivery may take longer for MARKETING templates.`,
     });
-    console.info("[WhatsApp welcome] Inbound greeting reply sent", { to, templateName });
+    console.info("[WhatsApp welcome] Inbound greeting reply sent", { to, templateName, sendMs });
     return true;
   } catch (error) {
     const metaErr = formatMetaGraphError(error);
@@ -309,7 +345,7 @@ export async function handleInboundWhatsAppMessage(
   if (sent) return;
 
   if (!configFromSettings(settings)) return;
-  const config = await resolveWhatsAppApiConfig(settings);
+  const config = configForMessaging(settings);
   if (!config) return;
   await sendWhatsAppTextMessage(config, {
     to: normalizeWhatsAppPhone(fromPhone),
@@ -328,7 +364,7 @@ export async function replyWithBookingLookup(
   },
 ): Promise<void> {
   if (!configFromSettings(settings)) return;
-  const config = await resolveWhatsAppApiConfig(settings);
+  const config = configForMessaging(settings);
   if (!config) return;
 
   const to = normalizeWhatsAppPhone(fromPhone);

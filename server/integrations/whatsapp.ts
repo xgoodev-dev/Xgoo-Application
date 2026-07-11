@@ -78,6 +78,14 @@ export function configFromSettings(settings: WhatsAppSettings): WhatsAppApiConfi
   };
 }
 
+/**
+ * Fast send config — uses saved Phone Number ID + token only (no Meta round-trip).
+ * Sending messages only needs phoneNumberId; WABA discovery is for sync/validation.
+ */
+export function configForMessaging(settings: WhatsAppSettings): WhatsAppApiConfig | null {
+  return configFromSettings(settings);
+}
+
 function redactToken(url: string): string {
   return url.replace(/access_token=[^&]+/gi, "access_token=***");
 }

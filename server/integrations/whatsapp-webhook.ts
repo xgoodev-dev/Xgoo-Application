@@ -45,13 +45,28 @@ function phonesMatch(a: string, b: string): boolean {
   return false;
 }
 
+const OFFICE_CACHE_MS = 60_000;
+const officeByPhoneNumberIdCache = new Map<
+  string,
+  { office: (typeof offices.$inferSelect); at: number }
+>();
+
 async function findOfficeByPhoneNumberId(phoneNumberId: string) {
+  const cached = officeByPhoneNumberIdCache.get(phoneNumberId);
+  if (cached && Date.now() - cached.at < OFFICE_CACHE_MS) {
+    return cached.office;
+  }
+
   const rows = await db
     .select()
     .from(offices)
     .where(sql`${offices.whatsappSettings}->>'phoneNumberId' = ${phoneNumberId}`)
     .limit(1);
-  return rows[0];
+  const office = rows[0];
+  if (office) {
+    officeByPhoneNumberIdCache.set(phoneNumberId, { office, at: Date.now() });
+  }
+  return office;
 }
 
 async function listConfiguredPhoneNumberIds(): Promise<string[]> {
