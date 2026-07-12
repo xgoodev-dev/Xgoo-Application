@@ -995,9 +995,8 @@ export function WhatsAppBusinessSync() {
                           : "https://YOUR-DOMAIN/api/whatsapp/webhook"}
                       </code>{" "}
                       (use your production HTTPS URL). When a customer messages from your website
-                      wa.me link or types Hi/Hello, XGoo replies automatically (once per 24h per
-                      number). Keep <strong>Instant text reply</strong> on for fast delivery; Meta
-                      often queues MARKETING templates.
+                      wa.me link or types Hi/Hello, XGoo sends your selected welcome template
+                      automatically (once per 24h per number).
                     </p>
                   </div>
 
@@ -1719,35 +1718,15 @@ function AutomationRuleRow({
           {messageKey === "welcome" && (
             <FormField
               control={form.control}
-              name="automation.welcome.preferFastTextOnGreeting"
-              render={({ field }) => (
-                <FormItem className="sm:col-span-2 flex flex-row items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <FormLabel className="text-xs">Instant text reply on Hi (recommended)</FormLabel>
-                    <FormDescription className="text-xs">
-                      Sends a plain WhatsApp message in seconds when customers say Hi. Marketing
-                      templates like welcome_message are often delayed 30s–2min by Meta. Turn off to
-                      always send the full template with image and buttons.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value !== false} onCheckedChange={field.onChange} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-          )}
-          {messageKey === "welcome" && (
-            <FormField
-              control={form.control}
               name="automation.welcome.replyOnInboundGreeting"
               render={({ field }) => (
                 <FormItem className="sm:col-span-2 flex flex-row items-center justify-between rounded-lg border p-3">
                   <div>
                     <FormLabel className="text-xs">Reply when customer sends Hi / Hello</FormLabel>
                     <FormDescription className="text-xs">
-                      Requires Meta webhook on your public HTTPS domain. Sends welcome_message when
-                      customers open WhatsApp from your site or greet your business line.
+                      Requires Meta webhook on your public HTTPS domain. Sends your selected welcome
+                      template when customers open WhatsApp from your site or greet your business
+                      line. Check Webhook activity for the exact template name queued.
                     </FormDescription>
                   </div>
                   <FormControl>

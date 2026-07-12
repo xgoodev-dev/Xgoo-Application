@@ -184,38 +184,7 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
           continue;
         }
 
-        for (const statusUpdate of value.statuses || []) {
-          const level = statusUpdate.status === "failed" ? "error" : "info";
-          const errDetail = statusUpdate.errors?.[0];
-          if (statusUpdate.id && statusUpdate.status) {
-            recordWhatsAppDeliveryStatus({
-              messageId: statusUpdate.id,
-              status: statusUpdate.status,
-              recipientId: statusUpdate.recipient_id,
-              phoneNumberId,
-              errorCode: errDetail?.code,
-              errorTitle: errDetail?.title,
-              errorMessage: errDetail?.message,
-            });
-          }
-          recordWhatsAppWebhookDebug({
-            level: level === "error" ? "error" : "info",
-            event: "message_status",
-            phoneNumberId,
-            from: statusUpdate.recipient_id,
-            detail: `${statusUpdate.status}${errDetail?.message ? `: ${errDetail.message}` : ""}`,
-          });
-        }
-
         const inboundMessages = value.messages || [];
-        if (inboundMessages.length === 0 && field === "messages") {
-          recordWhatsAppWebhookDebug({
-            level: "info",
-            event: "messages_field_no_inbound",
-            phoneNumberId,
-            detail: "messages webhook with statuses only (no customer text)",
-          });
-        }
 
         for (const message of inboundMessages) {
           if (message.type !== "text" || !message.text?.body || !message.from) {
@@ -285,6 +254,38 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
                 detail: msg,
               });
             });
+        }
+
+        if (inboundMessages.length === 0 && field === "messages") {
+          recordWhatsAppWebhookDebug({
+            level: "info",
+            event: "messages_field_no_inbound",
+            phoneNumberId,
+            detail: "messages webhook with statuses only (no customer text)",
+          });
+        }
+
+        for (const statusUpdate of value.statuses || []) {
+          const level = statusUpdate.status === "failed" ? "error" : "info";
+          const errDetail = statusUpdate.errors?.[0];
+          if (statusUpdate.id && statusUpdate.status) {
+            recordWhatsAppDeliveryStatus({
+              messageId: statusUpdate.id,
+              status: statusUpdate.status,
+              recipientId: statusUpdate.recipient_id,
+              phoneNumberId,
+              errorCode: errDetail?.code,
+              errorTitle: errDetail?.title,
+              errorMessage: errDetail?.message,
+            });
+          }
+          recordWhatsAppWebhookDebug({
+            level: level === "error" ? "error" : "info",
+            event: "message_status",
+            phoneNumberId,
+            from: statusUpdate.recipient_id,
+            detail: `${statusUpdate.status}${errDetail?.message ? `: ${errDetail.message}` : ""}`,
+          });
         }
       }
     }

@@ -13,7 +13,6 @@ import {
   mergeWhatsAppSettings,
   normalizeWhatsAppPhone,
   applyWelcomeTemplateDefaults,
-  buildInboundGreetingTextMessage,
   type WhatsAppMessageTypeKey,
   type WhatsAppSettings,
 } from "@shared/whatsapp";
@@ -238,38 +237,6 @@ export async function sendInboundWelcomeMessage(
   );
   const displayName = customerName?.trim() || "XGoo Customer";
 
-  const useFastText =
-    rule.preferFastTextOnGreeting !== false &&
-    meta?.category?.toUpperCase() === "MARKETING";
-
-  if (useFastText) {
-    try {
-      await sendWhatsAppTextMessage(config, {
-        to,
-        text: buildInboundGreetingTextMessage(settings, displayName),
-      });
-      markWelcomeSentToPhone(to);
-      const sendMs = Date.now() - sendStarted;
-      recordWhatsAppWebhookDebug({
-        level: "info",
-        event: "welcome_sent",
-        from: to,
-        detail: `Sent instant text reply in ${sendMs}ms (MARKETING template skipped for speed). Turn off "Instant text reply" to send welcome_message template.`,
-      });
-      console.info("[WhatsApp welcome] Inbound greeting fast text sent", { to, sendMs });
-      return true;
-    } catch (error) {
-      const metaErr = formatMetaGraphError(error);
-      recordWhatsAppWebhookDebug({
-        level: "error",
-        event: "welcome_send_failed",
-        from: to,
-        detail: `${metaErr.message}${metaErr.code ? ` (#${metaErr.code})` : ""}`,
-      });
-      throw error;
-    }
-  }
-
   const welcomeDefaults = applyWelcomeTemplateDefaults(settings, templateName, {
     bodyParams: [displayName],
     customerName: displayName,
@@ -281,10 +248,11 @@ export async function sendInboundWelcomeMessage(
   });
 
   try {
+    const languageCode = meta?.language || rule.languageCode || "en";
     await sendWhatsAppTemplateMessage(config, {
       to,
       templateName,
-      languageCode: meta?.language || rule.languageCode || "en",
+      languageCode,
       components,
     });
     markWelcomeSentToPhone(to);
@@ -293,9 +261,14 @@ export async function sendInboundWelcomeMessage(
       level: "info",
       event: "welcome_sent",
       from: to,
-      detail: `Sent template "${templateName}" to ${to} in ${sendMs}ms (Meta API). WhatsApp delivery may take longer for MARKETING templates.`,
+      detail: `Queued template "${templateName}" (${languageCode}) in ${sendMs}ms. WhatsApp delivery time depends on Meta (MARKETING templates can take 1–2 min).`,
     });
-    console.info("[WhatsApp welcome] Inbound greeting reply sent", { to, templateName, sendMs });
+    console.info("[WhatsApp welcome] Inbound greeting template sent", {
+      to,
+      templateName,
+      languageCode,
+      sendMs,
+    });
     return true;
   } catch (error) {
     const metaErr = formatMetaGraphError(error);
@@ -324,8 +297,8 @@ export async function handleInboundWhatsAppMessage(
   const requestNumberMatch = trimmed.match(/\b(BR[\w-]+)\b/i);
 
   if (isInboundGreetingMessage(trimmed)) {
-    const sent = await sendInboundWelcomeMessage(settings, fromPhone, customerName);
-    if (sent) return;
+    await sendInboundWelcomeMessage(settings, fromPhone, customerName);
+    return;
   }
 
   if (requestNumberMatch && lookup) {
@@ -343,6 +316,8 @@ export async function handleInboundWhatsAppMessage(
 
   const sent = await sendInboundWelcomeMessage(settings, fromPhone, customerName);
   if (sent) return;
+
+  if (settings.automation.welcome?.enabled) return;
 
   if (!configFromSettings(settings)) return;
   const config = configForMessaging(settings);

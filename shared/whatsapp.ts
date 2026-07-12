@@ -76,8 +76,6 @@ export const whatsAppAutomationRuleSchema = z.object({
   languageCode: z.string().default("en"),
   /** When enabled on the welcome rule, reply to Hi/Hello via webhook (requires Meta webhook). */
   replyOnInboundGreeting: z.boolean().default(true),
-  /** Welcome rule only: plain session text on Hi (fast) vs marketing template (may be delayed by Meta). */
-  preferFastTextOnGreeting: z.boolean().default(true),
 });
 
 export const whatsAppTemplateSchema = z.object({
@@ -652,30 +650,6 @@ export function isInboundGreetingMessage(text: string): boolean {
   return /^(hi|hello|hey|hola|namaste|start|get started|good morning|good afternoon|good evening)(\s|$)/i.test(
     normalized,
   );
-}
-
-/** Plain-text welcome for inbound Hi/Hello — delivers in seconds inside Meta's 24h session window. */
-export function buildInboundGreetingTextMessage(
-  settings: WhatsAppSettings,
-  customerName: string,
-): string {
-  const cfg = settings.welcomeTemplateConfig;
-  const name = customerName.trim() || "there";
-  const lines = [`Hi ${name}! Welcome to XGoo Courier.`, ""];
-
-  if (cfg?.bookParcelUrl?.trim()) {
-    lines.push(`Book a parcel: ${cfg.bookParcelUrl.trim()}`);
-  }
-  if (cfg?.supportPhone?.trim()) {
-    const phone = cfg.supportPhone.trim().replace(/^\+/, "");
-    lines.push(`Talk to our team: tel:+${phone}`);
-  }
-  if (cfg?.trackShipmentSuffix?.trim()) {
-    lines.push(`Track a shipment: reply with your AWB or booking number.`);
-  }
-
-  lines.push("", "How can we help you today?");
-  return lines.join("\n");
 }
 
 export function getTemplateDefinition(
