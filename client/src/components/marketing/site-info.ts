@@ -1,6 +1,8 @@
 export const XGOO_CONTACT = {
   email: "connect@xgoo.in",
-  phone: "+91 98765 43210",
+  phone: "+1 555-952-9213",
+  /** Digits only with country code — used for wa.me chat widget */
+  whatsapp: "15559529213",
   website: "www.xgoo.in",
   address: "Kondapur, Hyderabad, Telangana 500084, India",
   hours: "Mon – Sat, 9:00 AM – 7:00 PM IST",
@@ -17,3 +19,9 @@ export const XGOO_BRAND = {
   copyright: (year = new Date().getFullYear()) =>
     `© ${year} Murthy Enterprises. XGoo is a product of Murthy Enterprises.`,
 } as const;
+
+export {
+  XGOO_BRAND_FOUNDATION,
+  XGOO_BRAND_VOICE,
+} from "./brand-foundation";
+

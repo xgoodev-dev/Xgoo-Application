@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
+import { PageSeo } from "@/components/seo/PageSeo";
 import { XGOO_CONTACT } from "@/components/marketing/site-info";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
+import { SEO_PAGES, buildBreadcrumbJsonLd, buildLocalBusinessJsonLd } from "@/lib/seo";
 import { useToast } from "@/hooks/use-toast";
 import { Clock, Loader2, Mail, MapPin, Phone, Send } from "lucide-react";
 
@@ -81,6 +83,16 @@ export default function ContactPage() {
 
   return (
     <MarketingLayout>
+      <PageSeo
+        {...SEO_PAGES.contact}
+        jsonLd={[
+          buildLocalBusinessJsonLd(),
+          buildBreadcrumbJsonLd([
+            { name: "Home", path: "/" },
+            { name: "Contact", path: "/contact" },
+          ]),
+        ]}
+      />
       <section className="relative overflow-hidden border-b bg-gray-50">
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
           <span className="text-xs font-semibold uppercase tracking-widest block mb-3" style={{ color: "#FF4907" }}>

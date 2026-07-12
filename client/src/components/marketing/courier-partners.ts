@@ -4,11 +4,11 @@ export type CourierPartnerBrand = {
 };
 
 export const COURIER_PARTNER_BRANDS: CourierPartnerBrand[] = [
-  { name: "FedEx", logo: "/couriers/fedex.svg" },
-  { name: "Blue Dart", logo: "/couriers/bluedart.svg" },
-  { name: "Delhivery", logo: "/couriers/delhivery.svg" },
-  { name: "ST Courier", logo: "/couriers/st-courier.svg" },
-  { name: "Franch Courier", logo: "/couriers/franch-courier.svg" },
-  { name: "UPS", logo: "/couriers/ups.svg" },
-  { name: "Atlantic", logo: "/couriers/atlantic.svg" },
+  { name: "FedEx", logo: "/couriers/fedex.png" },
+  { name: "Blue Dart", logo: "/couriers/bluedart.png" },
+  { name: "Delhivery", logo: "/couriers/delhivery.png" },
+  { name: "ST Courier", logo: "/couriers/st-courier.png" },
+  { name: "Franch Express", logo: "/couriers/franch-express.png" },
+  { name: "UPS", logo: "/couriers/ups.png" },
+  { name: "Atlantic International Express", logo: "/couriers/atlantic.png" },
 ];

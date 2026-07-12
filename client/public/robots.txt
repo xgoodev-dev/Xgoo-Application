@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Allow: /about
+Allow: /contact
+Allow: /book
+Allow: /terms
+Allow: /privacy
+Allow: /return-policy
+Allow: /shipping-policy
+Allow: /cancellation-policy
+
+Disallow: /dashboard
+Disallow: /bookings
+Disallow: /shipments
+Disallow: /documents
+Disallow: /quotations
+Disallow: /booking-requests
+Disallow: /customers
+Disallow: /partners
+Disallow: /pricing
+Disallow: /reports
+Disallow: /settings
+Disallow: /auth-page
+Disallow: /api/
+
+Sitemap: https://www.xgoo.in/sitemap.xml

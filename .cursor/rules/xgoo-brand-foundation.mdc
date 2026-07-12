@@ -1,0 +1,57 @@
+---
+description: XGoo Brand Foundation — voice, purpose, vision, mission, and principles for all product and marketing copy
+alwaysApply: true
+---
+
+# XGoo Brand Foundation
+
+Source of truth: `docs/brand/XGoo-Brand-Foundation.pdf` and `client/src/components/marketing/brand-foundation.ts`.
+
+When writing or editing **user-facing copy** (landing, about, contact, emails, WhatsApp, empty states, CTAs), align with this foundation. Do not invent competing slogans.
+
+## Core idea — Movement
+
+Movement is the foundation of XGoo. Progress begins when something moves — a parcel, product, business, idea, or opportunity. Movement is more than transportation; it is growth, connection, commerce, innovation, and human progress. We remove friction and make movement smarter, simpler, faster, and more meaningful. Logistics today; global commerce and future ecosystems tomorrow.
+
+## Brand belief (canonical)
+
+> We believe movement creates progress, and innovation makes progress possible.
+
+## Purpose (canonical)
+
+> To empower progress through movement and innovation.
+
+We help people and businesses grow by removing barriers that slow progress — beyond making deliveries alone.
+
+## Vision (canonical)
+
+> To become the world's most trusted movement platform.
+
+Movement that is seamless, intelligent, and trusted. The platform people and businesses rely on to move goods, opportunities, or commerce.
+
+## Mission (canonical)
+
+> We simplify movement through innovative technology, trusted partnerships, and exceptional experiences.
+
+Build technology that removes complexity, partner to expand capability, design experiences customers enjoy. Make movement simpler, faster, safer, more dependable.
+
+## Principles (use these names; do not rename)
+
+1. Customer Before Convenience  
+2. Movement First  
+3. Innovate with Purpose  
+4. Trust is Earned  
+5. Keep It Simple  
+6. Think Long Term  
+7. Grow Together  
+8. Own the Outcome  
+9. Never Stop Improving  
+10. Move with Purpose  
+
+## Implementation rules
+
+- Import from `@/components/marketing/brand-foundation` for quotes and principle lists instead of hardcoding variants.
+- Prefer **Movement** language over generic “shipping/logistics only” framing when talking about brand; product features can still say book, track, pickup.
+- Keep visual brand accent orange `#FF4907` with white / zinc / near-black (existing CASE-aligned marketing style).
+- Parent company: Murthy Enterprises; product name: XGoo (see `site-info.ts`).
+- Do not add “XGoo — a product from Murthy Enterprises” badges in the landing hero; attribution belongs in footer / about as appropriate.

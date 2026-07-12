@@ -50,7 +50,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   };
 
   const linkClass = (active: boolean) =>
-    `text-left hover:text-gray-900 transition-colors ${active ? "text-gray-900" : ""}`;
+    `text-left transition-colors hover:text-zinc-900 ${active ? "text-zinc-900" : ""}`;
 
   const navLinks = (
     <>
@@ -60,16 +60,16 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
       <button
         type="button"
         onClick={() => goToSection("how-it-works")}
-        className="text-left hover:text-gray-900 transition-colors"
+        className="text-left hover:text-zinc-900 transition-colors"
       >
         How It Works
       </button>
       <button
         type="button"
         onClick={() => goToSection("features")}
-        className="text-left hover:text-gray-900 transition-colors"
+        className="text-left hover:text-zinc-900 transition-colors"
       >
-        Features
+        Services
       </button>
       <button type="button" onClick={() => goTo("/about")} className={linkClass(isActive("/about"))}>
         About Us
@@ -87,36 +87,40 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
       <LaunchingSoonRunner />
-      <nav className="bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
+      <nav className="border-b border-zinc-100 bg-white/95 shadow-sm backdrop-blur-md">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/")}
-            className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity min-w-0"
+            className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90 sm:gap-3"
           >
-            <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-lg shrink-0" />
+            <img
+              src={xgooLogo}
+              alt="XGoo"
+              className="h-12 w-12 shrink-0 rounded-xl sm:h-14 sm:w-14"
+            />
             <div className="min-w-0 text-left">
-              <span className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight truncate block">
+              <span className="block truncate text-xl font-extrabold tracking-tight text-zinc-900 sm:text-2xl">
                 {XGOO_BRAND.productName}
               </span>
-              <span className="text-[10px] sm:text-xs text-gray-400 truncate block">
+              <span className="block truncate text-[11px] text-zinc-400 sm:text-sm">
                 from {XGOO_BRAND.parentCompany}
               </span>
             </div>
           </button>
 
-          <div className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-medium text-gray-500">
+          <div className="hidden items-center gap-6 text-sm font-medium text-zinc-500 lg:flex xl:gap-8">
             {navLinks}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               size="sm"
               onClick={() => navigate("/book")}
-              className="bg-[#FF4907] hover:bg-[#e03d00] text-white gap-1 border-0"
+              className="gap-1 border-0 bg-[#FF4907] px-4 font-semibold text-white hover:bg-[#e03d00]"
             >
               <span className="sm:hidden">Book</span>
-              <span className="hidden sm:inline">Book a Parcel</span>
+              <span className="hidden sm:inline">Get Started</span>
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Button>
 
@@ -135,14 +139,14 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
                 <SheetHeader>
                   <SheetTitle>Menu</SheetTitle>
                 </SheetHeader>
-                <div className="mt-6 flex flex-col gap-4 text-base font-medium text-gray-600">
+                <div className="mt-6 flex flex-col gap-4 text-base font-medium text-zinc-600">
                   {navLinks}
                   <button
                     type="button"
                     onClick={() => goTo("/book")}
-                    className="text-left hover:text-gray-900 transition-colors"
+                    className="text-left font-semibold text-[#FF4907] transition-colors hover:text-[#e03d00]"
                   >
-                    Book a Parcel
+                    Get Started
                   </button>
                 </div>
               </SheetContent>

@@ -11,6 +11,8 @@ import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961
 import { XgooGradientPanelPatterns } from "@/components/auth/XgooAuthPattern";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { PageSeo } from "@/components/seo/PageSeo";
+import { SEO_PAGES } from "@/lib/seo";
 
 type AuthMode = "login" | "register";
 
@@ -185,6 +187,7 @@ export default function AuthPage() {
 
   return (
     <div className="flex min-h-screen bg-white text-stone-900 [color-scheme:light]" data-auth-page>
+      <PageSeo {...SEO_PAGES.auth} />
       {/* Left — Jeton-style form (~45%) */}
       <div className="flex w-full lg:w-[45%] xl:w-[42%] flex-col min-h-screen">
         <header className="flex items-center justify-between px-8 py-7 sm:px-12">
@@ -294,11 +297,15 @@ export default function AuthPage() {
 
         <footer className="px-8 py-8 sm:px-12">
           <p className="text-xs text-stone-400 leading-relaxed max-w-md">
-            <span className="hover:text-stone-600 cursor-pointer">Privacy Policy</span>
+            <Link href="/privacy" className="hover:text-stone-600">
+              Privacy Policy
+            </Link>
             {" · "}
-            <span className="hover:text-stone-600 cursor-pointer">Terms & Conditions</span>
+            <Link href="/terms" className="hover:text-stone-600">
+              Terms & Conditions
+            </Link>
             {" · "}
-            <Link href="/book" className="hover:text-stone-600">
+            <Link href="/contact" className="hover:text-stone-600">
               Support
             </Link>
           </p>

@@ -24,6 +24,8 @@ import {
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { PageSeo } from "@/components/seo/PageSeo";
+import { SEO_PAGES } from "@/lib/seo";
 import { trackMetaLead } from "@/lib/meta-pixel";
 import {
   ClipboardList,
@@ -568,11 +570,22 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng, autoDete
 function CustomerBookingFooter() {
   return (
     <footer className="border-t bg-muted/30 mt-auto">
-      <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
+      <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
         <ProductAttribution />
-        <a href="/auth-page" className="text-primary hover:underline font-medium" data-testid="link-staff-login">
-          Staff Login
-        </a>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
+          <a href="/terms" className="hover:text-foreground hover:underline">
+            Terms
+          </a>
+          <a href="/privacy" className="hover:text-foreground hover:underline">
+            Privacy
+          </a>
+          <a href="/return-policy" className="hover:text-foreground hover:underline">
+            Returns
+          </a>
+          <a href="/auth-page" className="text-primary hover:underline font-medium" data-testid="link-staff-login">
+            Staff Login
+          </a>
+        </div>
       </div>
     </footer>
   );
@@ -2514,6 +2527,7 @@ export default function CustomerPortalPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <PageSeo {...SEO_PAGES.book} />
       {!auth.isAuthenticated && !guestMode ? (
         <>
           <CustomerBookingHeader showBack />

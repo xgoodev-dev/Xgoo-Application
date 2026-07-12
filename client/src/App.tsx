@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import LandingPage from "@/pages/landing";
 import AboutPage from "@/pages/about";
 import ContactPage from "@/pages/contact";
+import LegalPage from "@/pages/legal";
 import DashboardPage from "@/pages/dashboard";
 import NewBookingPage from "@/pages/bookings/new";
 import ShipmentsPage from "@/pages/shipments";
@@ -33,6 +34,7 @@ import CustomerPortalPage from "@/pages/customer-portal";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
 import { MetaPixel } from "@/components/analytics/MetaPixel";
+import { WhatsAppFloatingButton } from "@/components/marketing/WhatsAppFloatingButton";
 
 function QuotationsRedirect() {
   const [, setLocation] = useLocation();
@@ -133,6 +135,11 @@ function Router() {
       <Route path="/" component={HomeRoute} />
       <Route path="/about" component={AboutPage} />
       <Route path="/contact" component={ContactPage} />
+      <Route path="/terms" component={LegalPage} />
+      <Route path="/privacy" component={LegalPage} />
+      <Route path="/return-policy" component={LegalPage} />
+      <Route path="/shipping-policy" component={LegalPage} />
+      <Route path="/cancellation-policy" component={LegalPage} />
       <Route path="/auth-page" component={AuthPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
@@ -156,6 +163,7 @@ function App() {
         <TooltipProvider>
           <MetaPixel />
           <Router />
+          <WhatsAppFloatingButton />
           <Toaster />
         </TooltipProvider>
       </ThemeProvider>
