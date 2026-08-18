@@ -14,8 +14,6 @@ import { XGOO_BRAND } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { SEO_PAGES } from "@/lib/seo";
 
-type AuthMode = "login" | "register";
-
 const PARTNERS = ["DTDC", "FedEx", "Blue Dart", "Delhivery", "Ecom Express"];
 
 function AuthField({
@@ -114,23 +112,10 @@ function VisualPanel() {
 export default function AuthPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [mode, setMode] = useState<AuthMode>("login");
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
-  async function handleSignUp(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      toast({ title: "Error signing up", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Check your email", description: "Confirmation link has been sent." });
-    }
-    setLoading(false);
-  }
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -183,14 +168,12 @@ export default function AuthPage() {
     }
   }
 
-  const isLogin = mode === "login";
-
   return (
     <div className="flex min-h-screen bg-white text-stone-900 [color-scheme:light]" data-auth-page>
       <PageSeo {...SEO_PAGES.auth} />
       {/* Left — Jeton-style form (~45%) */}
       <div className="flex w-full lg:w-[45%] xl:w-[42%] flex-col min-h-screen">
-        <header className="flex items-center justify-between px-8 py-7 sm:px-12">
+        <header className="flex items-center justify-between bg-white px-8 py-7 sm:px-12">
           <Link href="/" className="flex items-center gap-2.5">
             <img src={xgooLogo} alt="XGoo" className="h-9 w-9 object-contain" />
             <div>
@@ -211,10 +194,10 @@ export default function AuthPage() {
         <main className="flex flex-1 flex-col justify-center px-8 sm:px-12 lg:px-16 xl:px-20">
           <div className="mx-auto w-full max-w-[400px]">
             <h1 className="text-[2rem] sm:text-[2.125rem] font-bold tracking-tight text-stone-900 mb-8">
-              {isLogin ? "Sign In" : "Sign Up"}
+              Staff Sign In
             </h1>
 
-            <form onSubmit={isLogin ? handleSignIn : handleSignUp} className="space-y-4">
+            <form onSubmit={handleSignIn} className="space-y-4">
               <AuthField
                 id="email"
                 label="Email"
@@ -234,31 +217,22 @@ export default function AuthPage() {
                 showToggle
                 visible={showPassword}
                 onToggleVisible={() => setShowPassword((v) => !v)}
-                autoComplete={isLogin ? "current-password" : "new-password"}
+                autoComplete="current-password"
               />
 
-              {isLogin && (
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    className="text-sm font-medium text-[#FF4907] hover:underline"
-                    disabled={loading}
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              )}
-
-              <p className="text-center text-sm text-stone-600 pt-4 pb-1">
-                {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+              <div className="flex justify-end pt-1">
                 <button
                   type="button"
-                  onClick={() => setMode(isLogin ? "register" : "login")}
-                  className="font-semibold text-[#FF4907] hover:underline"
+                  onClick={handleForgotPassword}
+                  className="text-sm font-medium text-[#FF4907] hover:underline"
+                  disabled={loading}
                 >
-                  {isLogin ? "Sign up" : "Sign in"}
+                  Forgot password?
                 </button>
+              </div>
+
+              <p className="text-center text-sm text-stone-600 pt-4 pb-1">
+                Staff access is invitation-only. Contact the XGoo Super Admin to join your branch.
               </p>
 
               <Button
@@ -269,7 +243,7 @@ export default function AuthPage() {
                   "bg-[#FF4907] hover:bg-[#e03d00] text-white shadow-none",
                 )}
               >
-                {loading ? (isLogin ? "Signing in…" : "Creating account…") : isLogin ? "Log In" : "Create Account"}
+                {loading ? "Signing in…" : "Log In"}
               </Button>
             </form>
 

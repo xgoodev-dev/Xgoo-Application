@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { isAuthenticated } from "./auth";
+import { isAuthenticated, supabaseAdmin } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -15,9 +15,11 @@ import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
 import { searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
-import { parseTariffSheetRows, parsedRowsToInsert } from "./pricing";
+import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
+import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
 import { shipmentPackageSchema } from "@shared/document-template";
+import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settings";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
@@ -61,6 +63,7 @@ import {
   triggerBookingRequestWhatsApp,
   triggerBookingSuccessWhatsApp,
 } from "./integrations/whatsapp-notifications";
+import { triggerCustomerNotification } from "./customer-notifications";
 import {
   clearWelcomeCooldownForPhone,
   getRecentWhatsAppWebhookDebugEvents,
@@ -71,6 +74,10 @@ import {
   handleWhatsAppWebhookGet,
   handleWhatsAppWebhookPost,
 } from "./integrations/whatsapp-webhook";
+
+const SUPER_ADMIN_EMAIL = (
+  process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
+).toLowerCase();
 
 // Validation schemas
 const officeCreateSchema = z.object({
@@ -85,6 +92,7 @@ const officeCreateSchema = z.object({
   publicSlug: z.string().optional(),
   documentSettings: z.record(z.unknown()).optional(),
   whatsappSettings: z.record(z.unknown()).optional(),
+  pickupSettings: pickupSettingsSchema.optional(),
 });
 
 const officeUpdateSchema = z.object({
@@ -99,6 +107,7 @@ const officeUpdateSchema = z.object({
   publicSlug: z.string().optional(),
   documentSettings: z.record(z.unknown()).optional(),
   whatsappSettings: z.record(z.unknown()).optional(),
+  pickupSettings: pickupSettingsSchema.optional(),
 });
 
 const branchCreateSchema = z.object({
@@ -285,10 +294,16 @@ function normalizeBookingRequestBody(body: unknown): unknown {
     b.declaredValue = String(b.declaredValue);
   }
 
-  if (b.weight === null || b.weight === undefined || b.weight === "") {
-    delete b.weight;
+  if (b.weight === null || b.weight === undefined) {
+    b.weight = "";
   } else {
-    b.weight = String(b.weight);
+    b.weight = String(b.weight).trim();
+  }
+
+  if (b.contentDescription === null || b.contentDescription === undefined) {
+    b.contentDescription = "";
+  } else {
+    b.contentDescription = String(b.contentDescription).trim();
   }
 
   for (const key of [
@@ -298,7 +313,7 @@ function normalizeBookingRequestBody(body: unknown): unknown {
     "receiverCity",
     "receiverState",
     "receiverPincode",
-    "contentDescription",
+    "destinationCountry",
     "notes",
     "pickupLocationName",
   ]) {
@@ -307,9 +322,15 @@ function normalizeBookingRequestBody(body: unknown): unknown {
     }
   }
 
+  if (b.shipmentType !== "international") {
+    b.shipmentType = "domestic";
+  }
+
   if (typeof b.numberOfPieces === "string") {
     const parsed = parseInt(b.numberOfPieces, 10);
-    b.numberOfPieces = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    b.numberOfPieces = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } else if (b.numberOfPieces === null || b.numberOfPieces === undefined || b.numberOfPieces === "") {
+    b.numberOfPieces = 0;
   }
 
   return b;
@@ -329,12 +350,21 @@ const bookingRequestCreateSchema = z.object({
   receiverCity: z.string().optional(),
   receiverState: z.string().optional(),
   receiverPincode: z.string().optional(),
-  weight: z.string().optional(),
-  numberOfPieces: z.number().int().positive().default(1),
-  contentDescription: z.string().optional(),
+  weight: z
+    .string()
+    .trim()
+    .min(1, "Weight is required")
+    .refine((v) => {
+      const n = parseFloat(v);
+      return Number.isFinite(n) && n > 0;
+    }, "Weight must be greater than 0"),
+  numberOfPieces: z.number().int().positive("Number of pieces must be at least 1"),
+  contentDescription: z.string().trim().min(1, "Package contents are required"),
   declaredValue: z.string().optional(),
   serviceType: z.enum(["air", "surface"]).default("surface"),
   courierPreference: z.string().optional(),
+  shipmentType: z.enum(["domestic", "international"]).default("domestic"),
+  destinationCountry: z.string().optional(),
   notes: z.string().optional(),
   packagePhotoUrls: z.array(z.string()).optional(),
   pickupLat: z.string().optional().nullable(),
@@ -434,8 +464,117 @@ export async function registerRoutes(
 
   const upload = multer({
     storage: fileStorage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   });
+
+  const tariffUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+
+  function isMultipartRequest(req: any): boolean {
+    const ct = req.headers["content-type"] || "";
+    return ct.includes("multipart/form-data");
+  }
+
+  function handleTariffUpload(req: any, res: Response, next: NextFunction) {
+    tariffUpload.single("file")(req, res, (err: unknown) => {
+      if (err) {
+        const message = err instanceof Error ? err.message : "File upload failed";
+        return res.status(400).json({ message });
+      }
+      next();
+    });
+  }
+
+  function optionalTariffUpload(req: any, res: Response, next: NextFunction) {
+    if (isMultipartRequest(req)) {
+      return handleTariffUpload(req, res, next);
+    }
+    next();
+  }
+
+  const tariffJsonFileSchema = z.object({
+    fileName: z.string().min(1),
+    fileData: z.string().min(1),
+  });
+
+  function readTariffFileBuffer(req: any): { buffer: Buffer; fileName: string } | null {
+    if (req.file?.buffer) {
+      return {
+        buffer: req.file.buffer,
+        fileName: req.file.originalname || "upload.csv",
+      };
+    }
+    const jsonResult = tariffJsonFileSchema.safeParse(req.body);
+    if (jsonResult.success) {
+      try {
+        const buffer = Buffer.from(jsonResult.data.fileData, "base64");
+        if (buffer.length === 0) return null;
+        return { buffer, fileName: jsonResult.data.fileName };
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  async function ensurePartnersForImport(
+    officeId: string,
+    parsed: ReturnType<typeof parseTariffSheetBuffer>,
+    partners: Awaited<ReturnType<typeof storage.getPartnersByOffice>>,
+  ) {
+    const list = [...partners];
+    const createdCodes: string[] = [];
+    const codes = Array.from(new Set(parsed.map((p) => p.partnerCode).filter(Boolean)));
+    const displayNames: Record<string, string> = {
+      UPS: "UPS",
+      FEDEX: "FedEx",
+      DEL: "Delhivery",
+      BD: "Blue Dart",
+      DTDC: "DTDC",
+      ICL: "Indian Couriers",
+    };
+
+    for (const code of codes) {
+      if (resolvePartnerId(code, list)) continue;
+      const upper = code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || code.toUpperCase().slice(0, 20);
+      const created = await storage.createPartner({
+        officeId,
+        name: displayNames[upper] || upper,
+        code: upper,
+        isActive: true,
+        useTariffPricing: true,
+      });
+      list.push(created);
+      createdCodes.push(upper);
+    }
+    return { partners: list, createdCodes };
+  }
+
+  function parseUploadedTariffFile(file: Express.Multer.File, defaultPartnerCode?: string) {
+    if (file.buffer) {
+      return parseTariffSheetBuffer(file.buffer, file.originalname, defaultPartnerCode);
+    }
+    if (file.path) {
+      return parseTariffSheetRows(file.path, defaultPartnerCode);
+    }
+    throw new Error("Uploaded file has no readable content");
+  }
+
+  function persistUploadedFile(file: Express.Multer.File): string {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const filename = uniqueSuffix + path.extname(file.originalname || ".csv");
+    const dest = path.join(uploadDir, filename);
+    if (file.buffer) {
+      fs.writeFileSync(dest, file.buffer);
+    } else if (file.path) {
+      fs.copyFileSync(file.path, dest);
+    } else {
+      throw new Error("Uploaded file has no readable content");
+    }
+    return filename;
+  }
 
   async function isCustomerAuthenticated(req: any, res: Response, next: NextFunction) {
     const token = req.headers["x-customer-token"] as string;
@@ -507,12 +646,11 @@ export async function registerRoutes(
   );
 
   async function getOrCreateOffice(userId: string, officeName?: string): Promise<string> {
-    let office = await storage.getOfficeByUserId(userId);
+    const office = await storage.getOfficeByUserId(userId);
     if (!office) {
-      office = await storage.createOffice({
-        userId,
-        name: officeName || "My Courier Office",
-      });
+      throw new Error(
+        `No XGoo organization is assigned to this staff account${officeName ? ` (${officeName})` : ""}`,
+      );
     }
     return office.id;
   }
@@ -539,6 +677,44 @@ export async function registerRoutes(
     return branch?.id;
   }
 
+  const staffMemberInputSchema = z.object({
+    email: z.string().email(),
+    displayName: z.string().trim().min(1).max(255),
+    role: z.enum(["staff", "branch_manager"]).default("staff"),
+    branchId: z.string().uuid().nullable().optional(),
+  });
+
+  const staffMemberUpdateSchema = z.object({
+    displayName: z.string().trim().min(1).max(255).optional(),
+    role: z.enum(["staff", "branch_manager"]).optional(),
+    status: z.enum(["active", "inactive"]).optional(),
+    branchId: z.string().uuid().nullable().optional(),
+  });
+
+  function isSuperAdmin(req: any): boolean {
+    return req.staffRole === "super_admin";
+  }
+
+  function superAdminOnly(req: any, res: Response, next: NextFunction) {
+    if (!isSuperAdmin(req)) {
+      return res.status(403).json({ message: "Super Admin access is required" });
+    }
+    next();
+  }
+
+  async function requireSuperAdmin(req: any, res: Response) {
+    if (!isSuperAdmin(req)) {
+      res.status(403).json({ message: "Super Admin access is required" });
+      return null;
+    }
+    const office = await storage.getOfficeByUserId(req.user.id);
+    if (!office) {
+      res.status(404).json({ message: "XGoo organization was not found" });
+      return null;
+    }
+    return office;
+  }
+
   // Office routes
   app.get("/api/office", isAuthenticated, async (req: any, res) => {
     try {
@@ -558,7 +734,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/office", isAuthenticated, async (req: any, res) => {
+  app.post("/api/office", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const existing = await storage.getOfficeByUserId(userId);
@@ -577,7 +753,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/office/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/office/:id", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -600,6 +776,151 @@ export async function registerRoutes(
       }
       console.error("Error updating office:", error);
       res.status(500).json({ message: "Failed to update office" });
+    }
+  });
+
+  app.get("/api/staff/me", isAuthenticated, async (req: any, res) => {
+    const office = await storage.getOfficeByUserId(req.user.id);
+    if (!office) return res.status(404).json({ message: "Organization not found" });
+    const member = await storage.getOfficeMemberByUserId(req.user.id);
+    res.json({
+      officeId: office.id,
+      role: isSuperAdmin(req) ? "super_admin" : member?.role || "staff",
+      branchId: member?.branchId || null,
+      isSuperAdmin: isSuperAdmin(req),
+    });
+  });
+
+  app.get("/api/staff-members", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      await storage.upsertOfficeMember({
+        officeId: office.id,
+        userId: req.user.id,
+        email: SUPER_ADMIN_EMAIL,
+        displayName:
+          [req.user.user_metadata?.firstName, req.user.user_metadata?.lastName]
+            .filter(Boolean)
+            .join(" ") || "XGoo Super Admin",
+        role: "super_admin",
+        status: "active",
+        branchId: null,
+        invitedByUserId: req.user.id,
+      });
+      res.json(await storage.getOfficeMembersByOffice(office.id));
+    } catch (error) {
+      console.error("Error fetching staff members:", error);
+      res.status(500).json({ message: "Failed to fetch staff members" });
+    }
+  });
+
+  app.post("/api/staff-members", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const validated = staffMemberInputSchema.parse(req.body);
+      if (validated.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+        return res.status(400).json({ message: "The Super Admin is already a member" });
+      }
+      if (validated.branchId) {
+        const branch = await storage.getBranch(validated.branchId);
+        if (!branch || branch.officeId !== office.id) {
+          return res.status(400).json({ message: "Invalid branch assignment" });
+        }
+      }
+
+      const normalizedEmail = validated.email.trim().toLowerCase();
+      const { data: usersPage, error: listError } =
+        await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (listError) throw listError;
+      let authUser = usersPage.users.find(
+        (user) => user.email?.trim().toLowerCase() === normalizedEmail,
+      );
+      let invitationSent = false;
+      if (!authUser) {
+        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+          normalizedEmail,
+          { data: { displayName: validated.displayName } },
+        );
+        if (error) throw error;
+        authUser = data.user;
+        invitationSent = true;
+      }
+      if (!authUser) {
+        return res.status(500).json({ message: "Failed to create staff identity" });
+      }
+
+      const member = await storage.upsertOfficeMember({
+        officeId: office.id,
+        userId: authUser.id,
+        email: normalizedEmail,
+        displayName: validated.displayName,
+        role: validated.role,
+        status: "active",
+        branchId: validated.branchId || null,
+        invitedByUserId: req.user.id,
+      });
+      res.status(201).json({ member, invitationSent });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const message = error instanceof Error ? error.message : "Failed to add staff member";
+      console.error("Error adding staff member:", error);
+      res.status(500).json({ message });
+    }
+  });
+
+  app.patch("/api/staff-members/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const existing = (await storage.getOfficeMembersByOffice(office.id)).find(
+        (member) => member.id === req.params.id,
+      );
+      if (!existing) return res.status(404).json({ message: "Staff member not found" });
+      if (existing.userId === office.userId || existing.role === "super_admin") {
+        return res.status(400).json({ message: "The Super Admin cannot be modified" });
+      }
+      const validated = staffMemberUpdateSchema.parse(req.body);
+      if (validated.branchId) {
+        const branch = await storage.getBranch(validated.branchId);
+        if (!branch || branch.officeId !== office.id) {
+          return res.status(400).json({ message: "Invalid branch assignment" });
+        }
+      }
+      const updated = await storage.updateOfficeMember(
+        existing.id,
+        office.id,
+        validated,
+      );
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating staff member:", error);
+      res.status(500).json({ message: "Failed to update staff member" });
+    }
+  });
+
+  app.delete("/api/staff-members/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const existing = (await storage.getOfficeMembersByOffice(office.id)).find(
+        (member) => member.id === req.params.id,
+      );
+      if (!existing) return res.status(404).json({ message: "Staff member not found" });
+      if (existing.userId === office.userId || existing.role === "super_admin") {
+        return res.status(400).json({ message: "The Super Admin cannot be removed" });
+      }
+      await storage.deleteOfficeMember(existing.id, office.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing staff member:", error);
+      res.status(500).json({ message: "Failed to remove staff member" });
     }
   });
 
@@ -1239,7 +1560,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/branches", isAuthenticated, async (req: any, res) => {
+  app.post("/api/branches", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1255,7 +1576,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/branches/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/branches/:id", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1276,7 +1597,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/branches/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/branches/:id", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1296,7 +1617,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/branches/:id/service-areas", isAuthenticated, async (req: any, res) => {
+  app.post("/api/branches/:id/service-areas", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1322,7 +1643,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1346,7 +1667,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/branches/:branchId/service-areas/:areaId", isAuthenticated, superAdminOnly, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1618,22 +1939,42 @@ export async function registerRoutes(
   });
 
   const tariffUploadSchema = z.object({
-    label: z.string().min(1),
+    label: z.string().min(1, "Tariff cycle name is required"),
     courierPartnerId: z.string().optional(),
     validFrom: z.string().optional(),
     validTo: z.string().optional(),
     activate: z.enum(["true", "false"]).optional(),
+    compareVersionId: z.string().optional(),
   });
+
+  function readTariffUploadMeta(req: any) {
+    const raw = { ...(req.query ?? {}), ...(req.body ?? {}) };
+    return {
+      label: typeof raw.label === "string" ? raw.label : String(raw.label ?? ""),
+      courierPartnerId: raw.courierPartnerId || undefined,
+      validFrom: raw.validFrom || undefined,
+      validTo: raw.validTo || undefined,
+      activate: raw.activate || undefined,
+      compareVersionId: raw.compareVersionId || undefined,
+    };
+  }
 
   const pricingQuoteSchema = z.object({
     courierPartnerId: z.string().optional(),
     serviceType: z.enum(["air", "surface"]),
+    shipmentType: z.string().optional(),
+    packageType: z.enum(["document", "package"]).optional(),
+    originCountry: z.string().optional(),
+    destinationCountry: z.string().optional(),
     senderPincode: z.string().optional(),
     receiverPincode: z.string().optional(),
     weight: z.union([z.string(), z.number()]),
     length: z.union([z.string(), z.number()]).optional().nullable(),
     width: z.union([z.string(), z.number()]).optional().nullable(),
     height: z.union([z.string(), z.number()]).optional().nullable(),
+    insurance: z.boolean().optional(),
+    declaredValue: z.union([z.string(), z.number()]).optional().nullable(),
+    weightRoundOff: z.union([z.boolean(), z.enum(["off", "ceil_kg"])]).optional(),
   });
 
   // Tariff & pricing routes
@@ -1654,6 +1995,70 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/tariffs", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const label = String(req.body?.label || "").trim();
+      if (!label) {
+        return res.status(400).json({ message: "Sheet name is required" });
+      }
+      const validFrom = req.body?.validFrom
+        ? new Date(req.body.validFrom)
+        : new Date();
+      const validTo = req.body?.validTo
+        ? new Date(req.body.validTo)
+        : new Date(validFrom.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const version = await storage.createTariffVersion({
+        officeId,
+        courierPartnerId: req.body?.courierPartnerId || null,
+        label,
+        fileName: null,
+        fileUrl: null,
+        validFrom,
+        validTo,
+        status: "draft",
+        rowCount: 0,
+        uploadedBy: req.user.id,
+      });
+      res.status(201).json(version);
+    } catch (error) {
+      console.error("Error creating tariff sheet:", error);
+      res.status(500).json({ message: "Failed to create tariff sheet" });
+    }
+  });
+
+  app.patch("/api/tariffs/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff sheet not found" });
+      }
+      const patch: Record<string, unknown> = {};
+      if (typeof req.body?.label === "string") {
+        const label = req.body.label.trim();
+        if (!label) {
+          return res.status(400).json({ message: "Sheet name cannot be empty" });
+        }
+        patch.label = label;
+      }
+      if (req.body?.columnConfig != null) {
+        patch.columnConfig = req.body.columnConfig;
+      }
+      if (typeof req.body?.status === "string") {
+        patch.status = req.body.status;
+      }
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ message: "No updates provided" });
+      }
+      const updated = await storage.updateTariffVersion(version.id, patch as any);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating tariff sheet:", error);
+      res.status(500).json({ message: "Failed to update tariff sheet" });
+    }
+  });
+
   app.get("/api/tariffs/:id/rows", isAuthenticated, async (req: any, res) => {
     try {
       const officeId = await getOrCreateOffice(req.user.id);
@@ -1661,7 +2066,10 @@ export async function registerRoutes(
       if (!version || version.officeId !== officeId) {
         return res.status(404).json({ message: "Tariff not found" });
       }
-      const rows = await storage.getTariffRateRowsByVersion(version.id);
+      const enriched = req.query.enriched === "true";
+      const rows = enriched
+        ? await storage.getTariffRateRowsEnriched(version.id)
+        : await storage.getTariffRateRowsByVersion(version.id);
       res.json(rows);
     } catch (error) {
       console.error("Error fetching tariff rows:", error);
@@ -1669,23 +2077,257 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tariffs/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.get("/api/tariffs/:id/export", isAuthenticated, async (req: any, res) => {
     try {
-      if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      const rows = await storage.getTariffRateRowsEnriched(version.id);
+      const csv = rowsToCsv(rows);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${version.label.replace(/[^a-z0-9]/gi, "-")}-tariff.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting tariff:", error);
+      res.status(500).json({ message: "Failed to export tariff" });
+    }
+  });
+
+  app.patch("/api/tariffs/rows/:rowId", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const row = await storage.getTariffRateRow(req.params.rowId);
+      if (!row || row.officeId !== officeId) {
+        return res.status(404).json({ message: "Row not found" });
+      }
+      const body = req.body || {};
+      const customerPrice = calculateCustomerPrice({
+        tariffAmount: body.tariffAmount ?? row.tariffAmount,
+        fixedMargin: body.fixedMargin ?? row.fixedMargin,
+        percentageMargin: body.percentageMargin ?? row.percentageMargin,
+        affiliateMargin: body.affiliateMargin ?? row.affiliateMargin,
+        offerDiscount: body.offerDiscount ?? row.offerDiscount,
+        fuelCharge: body.fuelCharge ?? row.fuelCharge,
+        handlingCharge: body.handlingCharge ?? row.handlingCharge,
+        insuranceCharge: body.insuranceCharge ?? row.insuranceCharge,
+        remoteAreaCharge: body.remoteAreaCharge ?? row.remoteAreaCharge,
+        gst: body.gst ?? row.gst,
+      });
+      const updated = await storage.updateTariffRateRow(row.id, {
+        ...body,
+        customerPrice: String(customerPrice),
+        updatedBy: req.user.id,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating tariff row:", error);
+      res.status(500).json({ message: "Failed to update row" });
+    }
+  });
+
+  app.post("/api/tariffs/:id/rows/bulk", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+      const result = await storage.bulkSaveTariffRows(version.id, officeId, rows, req.user.id);
+      res.json(result);
+    } catch (error) {
+      console.error("Error bulk saving rows:", error);
+      res.status(500).json({ message: "Failed to save rows" });
+    }
+  });
+
+  app.post("/api/tariffs/:id/rows/delete", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      const deleted = await storage.deleteTariffRateRows(ids);
+      const count = (await storage.getTariffRateRowsByVersion(version.id)).length;
+      await storage.updateTariffVersion(version.id, { rowCount: count });
+      res.json({ deleted });
+    } catch (error) {
+      console.error("Error deleting rows:", error);
+      res.status(500).json({ message: "Failed to delete rows" });
+    }
+  });
+
+  app.post("/api/tariffs/preview", isAuthenticated, optionalTariffUpload, async (req: any, res) => {
+    try {
+      const fileInfo = readTariffFileBuffer(req);
+      if (!fileInfo) {
+        return res.status(400).json({
+          message: "No file uploaded. Send a spreadsheet file or JSON with fileName and fileData (base64).",
+        });
       }
 
+      const body = readTariffUploadMeta(req);
+      const metaResult = tariffUploadSchema.safeParse(body);
+      if (!metaResult.success) {
+        const first = metaResult.error.errors[0];
+        return res.status(400).json({
+          message: first?.message || "Invalid upload metadata",
+          errors: metaResult.error.errors,
+          hint: !body.label?.trim()
+            ? "Tariff cycle name was not received. Refresh the page and try again."
+            : undefined,
+        });
+      }
+      const meta = metaResult.data;
+
       const officeId = await getOrCreateOffice(req.user.id);
-      const meta = tariffUploadSchema.parse(req.body);
-      const partners = await storage.getPartnersByOffice(officeId);
+      let partners = await storage.getPartnersByOffice(officeId);
       const defaultPartner = meta.courierPartnerId
         ? partners.find((p) => p.id === meta.courierPartnerId)
         : undefined;
 
-      const parsed = parseTariffSheetRows(
-        req.file.path,
-        defaultPartner?.code,
+      let parsed;
+      try {
+        parsed = parseTariffSheetBuffer(fileInfo.buffer, fileInfo.fileName, defaultPartner?.code);
+      } catch (parseErr) {
+        const detail = parseErr instanceof Error ? parseErr.message : "Could not read spreadsheet";
+        return res.status(400).json({
+          message: `Could not read file: ${detail}`,
+        });
+      }
+
+      if (parsed.length === 0) {
+        return res.status(400).json({
+          message:
+            "No valid rows found. Ensure columns include partner_code (or set default partner), service_type, weight range, and tariff_amount / partner_rate.",
+        });
+      }
+
+      const ensured = await ensurePartnersForImport(officeId, parsed, partners);
+      partners = ensured.partners;
+
+      let existingRows: Awaited<ReturnType<typeof storage.getTariffRateRowsByVersion>> = [];
+      if (meta.compareVersionId) {
+        const v = await storage.getTariffVersion(meta.compareVersionId);
+        if (v && v.officeId === officeId) {
+          existingRows = await storage.getTariffRateRowsByVersion(meta.compareVersionId);
+        }
+      }
+
+      const { rows, errors } = parsedRowsToInsert(
+        parsed,
+        partners,
+        "preview",
+        officeId,
+        meta.courierPartnerId,
       );
+      if (rows.length === 0) {
+        return res.status(400).json({
+          message: "No rows could be imported. Partner codes in the file must match your Courier Partners.",
+          parseErrors: errors.slice(0, 50),
+          partnerCodes: partners.map((p) => p.code),
+        });
+      }
+
+      const preview = buildImportPreview(rows, existingRows);
+      res.json({
+        preview: preview.rows.slice(0, 500).map(({ data: _data, ...rest }) => rest),
+        summary: preview.summary,
+        totalRows: rows.length,
+        parseErrors: errors,
+        parsedRows: rows.slice(0, 100),
+        createdPartners: ensured.createdCodes,
+      });
+    } catch (error) {
+      console.error("Error previewing tariff:", error);
+      const detail = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({
+        message: `Failed to preview import: ${detail}`,
+        detail,
+      });
+    }
+  });
+
+  app.post("/api/tariffs/compare", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const { versionAId, versionBId } = req.body || {};
+      if (!versionAId || !versionBId) {
+        return res.status(400).json({ message: "versionAId and versionBId required" });
+      }
+      const [a, b] = await Promise.all([
+        storage.getTariffVersion(versionAId),
+        storage.getTariffVersion(versionBId),
+      ]);
+      if (!a || !b || a.officeId !== officeId || b.officeId !== officeId) {
+        return res.status(404).json({ message: "Version not found" });
+      }
+      const comparison = await storage.compareTariffVersions(versionAId, versionBId);
+      res.json({ comparison, versionA: a, versionB: b });
+    } catch (error) {
+      console.error("Error comparing versions:", error);
+      res.status(500).json({ message: "Failed to compare versions" });
+    }
+  });
+
+  app.post("/api/tariffs/:id/archive", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const archived = await storage.archiveTariffVersion(req.params.id, officeId);
+      if (!archived) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      res.json(archived);
+    } catch (error) {
+      console.error("Error archiving tariff:", error);
+      res.status(500).json({ message: "Failed to archive tariff" });
+    }
+  });
+
+  app.post("/api/tariffs/:id/restore", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const version = await storage.getTariffVersion(req.params.id);
+      if (!version || version.officeId !== officeId) {
+        return res.status(404).json({ message: "Tariff not found" });
+      }
+      const restored = await storage.updateTariffVersion(version.id, { status: "draft" });
+      res.json(restored);
+    } catch (error) {
+      console.error("Error restoring tariff:", error);
+      res.status(500).json({ message: "Failed to restore tariff" });
+    }
+  });
+
+  app.post("/api/tariffs/upload", isAuthenticated, optionalTariffUpload, async (req: any, res) => {
+    try {
+      const fileInfo = readTariffFileBuffer(req);
+      if (!fileInfo) {
+        return res.status(400).json({
+          message: "No file uploaded. Send a spreadsheet file or JSON with fileName and fileData (base64).",
+        });
+      }
+
+      const officeId = await getOrCreateOffice(req.user.id);
+      const metaResult = tariffUploadSchema.safeParse(readTariffUploadMeta(req));
+      if (!metaResult.success) {
+        const first = metaResult.error.errors[0];
+        return res.status(400).json({
+          message: first?.message || "Invalid upload metadata",
+          errors: metaResult.error.errors,
+        });
+      }
+      const meta = metaResult.data;
+      let partners = await storage.getPartnersByOffice(officeId);
+      const defaultPartner = meta.courierPartnerId
+        ? partners.find((p) => p.id === meta.courierPartnerId)
+        : undefined;
+
+      const parsed = parseTariffSheetBuffer(fileInfo.buffer, fileInfo.fileName, defaultPartner?.code);
 
       if (parsed.length === 0) {
         return res.status(400).json({
@@ -1693,19 +2335,27 @@ export async function registerRoutes(
         });
       }
 
+      const ensured = await ensurePartnersForImport(officeId, parsed, partners);
+      partners = ensured.partners;
+
       const validFrom = meta.validFrom ? new Date(meta.validFrom) : new Date();
       const validTo = meta.validTo ? new Date(meta.validTo) : new Date(validFrom.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const storedFilename = persistUploadedFile({
+        buffer: fileInfo.buffer,
+        originalname: fileInfo.fileName,
+      } as Express.Multer.File);
 
       const version = await storage.createTariffVersion({
         officeId,
         courierPartnerId: meta.courierPartnerId || null,
         label: meta.label,
-        fileName: req.file.originalname,
-        fileUrl: `/objects/${req.file.filename}`,
+        fileName: fileInfo.fileName,
+        fileUrl: `/objects/${storedFilename}`,
         validFrom,
         validTo,
         status: meta.activate === "true" ? "active" : "draft",
         rowCount: 0,
+        uploadedBy: null,
       });
 
       const { rows, errors } = parsedRowsToInsert(
@@ -1715,6 +2365,14 @@ export async function registerRoutes(
         officeId,
         meta.courierPartnerId,
       );
+
+      if (rows.length === 0) {
+        return res.status(400).json({
+          message: "No rows could be imported. Partner codes in the file must match your Courier Partners.",
+          parseErrors: errors.slice(0, 50),
+          partnerCodes: partners.map((p) => p.code),
+        });
+      }
 
       const inserted = await storage.insertTariffRateRows(rows);
       await storage.updateTariffVersion(version.id, { rowCount: inserted });
@@ -1727,14 +2385,15 @@ export async function registerRoutes(
         version: { ...version, rowCount: inserted },
         imported: inserted,
         parseErrors: errors,
-        preview: rows.slice(0, 20),
+        createdPartners: ensured.createdCodes,
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
-      }
       console.error("Error uploading tariff:", error);
-      res.status(500).json({ message: "Failed to upload tariff" });
+      const detail = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({
+        message: `Failed to upload tariff: ${detail}`,
+        detail,
+      });
     }
   });
 
@@ -1774,8 +2433,18 @@ export async function registerRoutes(
 
       const baseInput = {
         serviceType: data.serviceType,
+        shipmentType: data.shipmentType,
+        packageType: data.packageType,
+        originCountry: data.originCountry,
+        destinationCountry: data.destinationCountry,
         senderPincode: data.senderPincode,
         receiverPincode: data.receiverPincode,
+        insurance: data.insurance,
+        declaredValue:
+          data.declaredValue != null
+            ? parseFloat(String(data.declaredValue))
+            : undefined,
+        weightRoundOff: data.weightRoundOff,
         weight: parseFloat(String(data.weight)) || 0,
         length: data.length != null ? parseFloat(String(data.length)) : undefined,
         width: data.width != null ? parseFloat(String(data.width)) : undefined,
@@ -1790,7 +2459,16 @@ export async function registerRoutes(
         if (!quote) {
           return res.status(404).json({ message: "Partner not found" });
         }
-        return res.json(quote);
+        const partner = await storage.getPartner(data.courierPartnerId);
+        return res.json({
+          quotes: [
+            {
+              ...quote,
+              partnerName: partner?.name || "Courier",
+              partnerCode: partner?.code || "",
+            },
+          ],
+        });
       }
 
       const quotes = await storage.quoteAllPartners(officeId, baseInput);
@@ -1889,6 +2567,17 @@ export async function registerRoutes(
             "converted",
             shipment.id,
           );
+          triggerCustomerNotification(
+            bookingRequest.customerUserId,
+            "Shipment created",
+            `Your booking is confirmed as shipment ${shipment.bookingNumber}.`,
+            "shipment_created",
+            {
+              shipmentId: shipment.id,
+              bookingRequestId: bookingRequest.id,
+              bookingNumber: shipment.bookingNumber,
+            },
+          );
         }
       }
 
@@ -1926,6 +2615,23 @@ export async function registerRoutes(
       const shipment = await storage.updateShipmentStatus(id, validated.status);
       if (!shipment) {
         return res.status(404).json({ message: "Shipment not found" });
+      }
+      if (existing.status !== validated.status) {
+        const bookingRequest = await storage.getBookingRequestByShipmentId(id);
+        const statusLabel = validated.status
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (letter) => letter.toUpperCase());
+        triggerCustomerNotification(
+          bookingRequest?.customerUserId,
+          "Shipment status updated",
+          `${shipment.bookingNumber} is now ${statusLabel}.`,
+          "shipment_status",
+          {
+            shipmentId: shipment.id,
+            bookingRequestId: bookingRequest?.id || null,
+            status: validated.status,
+          },
+        );
       }
       res.json(shipment);
     } catch (error) {
@@ -2338,7 +3044,10 @@ export async function registerRoutes(
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
-      const requests = await storage.getBookingRequestsByOffice(officeId);
+      const requests = await storage.getBookingRequestsByOffice(
+        officeId,
+        req.staffMember?.branchId,
+      );
       res.json(requests);
     } catch (error) {
       console.error("Error fetching booking requests:", error);
@@ -2353,7 +3062,12 @@ export async function registerRoutes(
       const officeId = await getOrCreateOffice(userId);
 
       const request = await storage.getBookingRequest(id);
-      if (!request || request.officeId !== officeId) {
+      if (
+        !request ||
+        request.officeId !== officeId ||
+        (req.staffMember?.branchId &&
+          request.branchId !== req.staffMember.branchId)
+      ) {
         return res.status(404).json({ message: "Booking request not found" });
       }
       res.json(request);
@@ -2371,11 +3085,46 @@ export async function registerRoutes(
       const officeId = await getOrCreateOffice(userId);
 
       const existing = await storage.getBookingRequest(id);
-      if (!existing || existing.officeId !== officeId) {
+      if (
+        !existing ||
+        existing.officeId !== officeId ||
+        (req.staffMember?.branchId &&
+          existing.branchId !== req.staffMember.branchId)
+      ) {
         return res.status(403).json({ message: "Access denied" });
       }
 
       const updated = await storage.updateBookingRequestStatus(id, status, convertedShipmentId);
+      if (updated && existing.status !== status) {
+        const bookingMessages: Record<string, { title: string; body: string }> = {
+          reviewed: {
+            title: "Booking under review",
+            body: `XGoo is reviewing request #${existing.requestNumber}.`,
+          },
+          approved: {
+            title: "Booking approved",
+            body: `Request #${existing.requestNumber} is approved. Pickup confirmation will follow.`,
+          },
+          rejected: {
+            title: "Booking update",
+            body: `Request #${existing.requestNumber} could not be accepted. Contact XGoo support for help.`,
+          },
+          converted: {
+            title: "Shipment created",
+            body: `Request #${existing.requestNumber} is now an active shipment.`,
+          },
+        };
+        const message = bookingMessages[status];
+        if (message) {
+          triggerCustomerNotification(
+            existing.customerUserId,
+            message.title,
+            message.body,
+            `booking_${status}`,
+            { bookingRequestId: existing.id, requestNumber: existing.requestNumber },
+          );
+        }
+      }
       res.json(updated);
     } catch (error) {
       console.error("Error updating booking request:", error);
@@ -2398,6 +3147,9 @@ export async function registerRoutes(
         phone: office.phone,
         email: office.email,
         slug: office.publicSlug,
+        pickupSettings: mergePickupSettings(
+          (office as { pickupSettings?: unknown }).pickupSettings,
+        ),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2451,10 +3203,29 @@ export async function registerRoutes(
         state: office.state,
         phone: office.phone,
         email: office.email,
+        pickupSettings: mergePickupSettings(
+          (office as { pickupSettings?: unknown }).pickupSettings,
+        ),
       });
     } catch (error) {
       console.error("Error fetching public office:", error);
       res.status(500).json({ message: "Failed to fetch office" });
+    }
+  });
+
+  app.get("/api/public/office/:slug/pickup-settings", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      res.json(
+        mergePickupSettings((office as { pickupSettings?: unknown }).pickupSettings),
+      );
+    } catch (error) {
+      console.error("Error fetching pickup settings:", error);
+      res.status(500).json({ message: "Failed to fetch pickup settings" });
     }
   });
 
@@ -2493,6 +3264,7 @@ export async function registerRoutes(
         ...validated,
         officeId: office.id,
         branchId,
+        source: "website",
         status: "pending",
       });
 
@@ -2804,6 +3576,82 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/customer/password", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(8, "New password must be at least 8 characters"),
+      }).parse(req.body);
+      const matches = await bcrypt.compare(
+        validated.currentPassword,
+        req.customerUser.passwordHash,
+      );
+      if (!matches) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+      if (validated.currentPassword === validated.newPassword) {
+        return res.status(400).json({ message: "Choose a different new password" });
+      }
+      await storage.updateCustomerUser(req.customerUser.id, {
+        passwordHash: await bcrypt.hash(validated.newPassword, 10),
+      });
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error changing customer password:", error);
+      res.status(500).json({ message: "Failed to change password" });
+    }
+  });
+
+  app.post("/api/customer/push-token", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = z.object({
+        token: z.string().min(10),
+        platform: z.enum(["android", "ios"]),
+      }).parse(req.body);
+      const saved = await storage.upsertCustomerPushToken(
+        req.customerUser.id,
+        validated.token,
+        validated.platform,
+      );
+      res.json(saved);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error registering customer push token:", error);
+      res.status(500).json({ message: "Failed to register notifications" });
+    }
+  });
+
+  app.get("/api/customer/notifications", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      res.json(await storage.getCustomerNotifications(req.customerUser.id));
+    } catch (error) {
+      console.error("Error fetching customer notifications:", error);
+      res.status(500).json({ message: "Failed to load notifications" });
+    }
+  });
+
+  app.patch("/api/customer/notifications/read", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const validated = z.object({ id: z.string().uuid().optional() }).parse(req.body || {});
+      await storage.markCustomerNotificationsRead(
+        req.customerUser.id,
+        validated.id,
+      );
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error marking customer notifications read:", error);
+      res.status(500).json({ message: "Failed to update notifications" });
+    }
+  });
+
   const customerAddressSchema = z.object({
     label: z.string().min(1, "Label is required"),
     name: z.string().min(1, "Name is required"),
@@ -2929,6 +3777,11 @@ export async function registerRoutes(
         ...validated,
         ...pickupData,
       });
+      const clientSource = String(req.headers["x-xgoo-client"] || "");
+      const source =
+        clientSource === "mobile_android" || clientSource === "mobile_ios"
+          ? clientSource
+          : "customer_portal";
 
       const request = await storage.createBookingRequest({
         ...validated,
@@ -2936,8 +3789,16 @@ export async function registerRoutes(
         officeId: req.customerUser.officeId,
         branchId,
         customerUserId: req.customerUser.id,
+        source,
         status: "pending",
       });
+      triggerCustomerNotification(
+        req.customerUser.id,
+        "Booking request received",
+        `Request #${request.requestNumber} was submitted successfully. XGoo will review it shortly.`,
+        "booking_created",
+        { bookingRequestId: request.id, requestNumber: request.requestNumber },
+      );
 
       const [office] = await db
         .select()

@@ -13,6 +13,8 @@ import {
   Check,
   ExternalLink,
   MessageCircle,
+  Users,
+  Clock3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +36,8 @@ import type { Office } from "@shared/schema";
 import { BranchManagement } from "@/components/branches/BranchManagement";
 import { DemoDataSettings } from "@/components/settings/DemoDataSettings";
 import { WhatsAppBusinessSync } from "@/components/settings/WhatsAppBusinessSync";
+import { StaffManagement } from "@/components/settings/StaffManagement";
+import { PickupSlotSettings } from "@/components/settings/PickupSlotSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const officeSchema = z.object({
@@ -115,7 +119,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground">
-          Manage your organization profile, branches, and WhatsApp Business automation
+          Manage your organization profile, pickup slots, branches, and WhatsApp Business automation
         </p>
       </div>
 
@@ -129,10 +133,18 @@ export default function SettingsPage() {
             <MessageCircle className="h-4 w-4" />
             WhatsApp Business
           </TabsTrigger>
+          <TabsTrigger value="pickup" className="gap-2">
+            <Clock3 className="h-4 w-4" />
+            Pickup Slots
+          </TabsTrigger>
+          <TabsTrigger value="staff" className="gap-2">
+            <Users className="h-4 w-4" />
+            Staff
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-6 mt-0">
-      <BookingPortalLink />
+      <BookingPortalLink office={office} />
 
       {isLoading ? (
         <Card>
@@ -358,15 +370,25 @@ export default function SettingsPage() {
         <TabsContent value="whatsapp" className="mt-0">
           <WhatsAppBusinessSync />
         </TabsContent>
+
+        <TabsContent value="pickup" className="mt-0">
+          <PickupSlotSettings />
+        </TabsContent>
+
+        <TabsContent value="staff" className="mt-0">
+          <StaffManagement />
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function BookingPortalLink() {
+function BookingPortalLink({ office }: { office?: Office | null }) {
   const [copied, setCopied] = useState(false);
 
-  const portalUrl = `${window.location.origin}/book`;
+  const portalUrl = office?.publicSlug
+    ? `${window.location.origin}/book/${office.publicSlug}`
+    : `${window.location.origin}/book`;
 
   const copyToClipboard = async () => {
     try {
@@ -393,7 +415,8 @@ function BookingPortalLink() {
           Customer Booking Portal
         </CardTitle>
         <CardDescription>
-          Share this link with your customers so they can book shipments, track parcels, and manage their account online.
+          Share this link with customers. Bookings submitted here appear under{" "}
+          <strong>Booking Requests</strong> in your staff portal — approve and convert them into shipments.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -424,7 +447,8 @@ function BookingPortalLink() {
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Customers can register, book pickups with map location, track shipments, and manage their profile through this link.
+          This link is tied to your office{office?.publicSlug ? ` (${office.publicSlug})` : ""}. Website bookings will not
+          show under Shipments until you approve them in Booking Requests.
         </p>
       </CardContent>
     </Card>

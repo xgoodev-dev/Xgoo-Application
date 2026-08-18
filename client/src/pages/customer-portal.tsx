@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,14 +20,6 @@ import {
   Sparkles,
   X,
   Mic,
-} from "lucide-react";
-import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
-import { ProductAttribution } from "@/components/marketing/ProductAttribution";
-import { XGOO_BRAND } from "@/components/marketing/site-info";
-import { PageSeo } from "@/components/seo/PageSeo";
-import { SEO_PAGES } from "@/lib/seo";
-import { trackMetaLead } from "@/lib/meta-pixel";
-import {
   ClipboardList,
   Search,
   Clock,
@@ -37,13 +29,21 @@ import {
   Plus,
   Eye,
   LocateFixed,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from "lucide-react";
+import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
+import { ProductAttribution } from "@/components/marketing/ProductAttribution";
+import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { PageSeo } from "@/components/seo/PageSeo";
+import { SEO_PAGES } from "@/lib/seo";
+import { trackMetaLead } from "@/lib/meta-pixel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Form,
   FormControl,
@@ -62,10 +62,37 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AddressPicker, SavedAddressesManager, saveAddressFromBooking } from "@/components/customer/SavedAddresses";
+import { AddressPicker, SavedAddressesManager, saveAddressFromBooking, suggestAddressLabel } from "@/components/customer/SavedAddresses";
 import type { SavedAddressValue } from "@/components/customer/SavedAddresses";
 import { BookingTrackingPanel } from "@/components/customer/BookingTrackingPanel";
+import {
+  CustomerAuthShell,
+  customerAuthFieldClass,
+  customerAuthPrimaryButtonClass,
+  customerAuthSecondaryButtonClass,
+} from "@/components/customer/CustomerAuthShell";
+import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
+import {
+  TrackingLoadsWorkspace,
+  loadProgressFromStatus,
+  type LoadDetail,
+  type LoadItem,
+} from "@/components/customer/TrackingLoadsWorkspace";
+import {
+  BookShipmentWorkspace,
+  type AddressScope,
+  type BookFlowStep,
+  type ShipmentMapPoint,
+} from "@/components/customer/BookShipmentWorkspace";
 import { buildCustomerTracking, type CustomerTrackingView } from "@shared/customer-tracking";
+import {
+  DEFAULT_PICKUP_SETTINGS,
+  enabledPickupSlots,
+  mergePickupSettings,
+  pickupSlotLabel,
+  type PickupSettings,
+} from "@shared/pickup-settings";
+import { cn } from "@/lib/utils";
 
 interface OfficeInfo {
   id: string;
@@ -108,6 +135,8 @@ interface BookingRequestInfo {
   createdAt: string;
   convertedShipmentId?: string | null;
   pickupLocationName?: string | null;
+  pickupLat?: string | null;
+  pickupLng?: string | null;
   reviewedAt?: string | null;
   senderCity?: string | null;
   senderState?: string | null;
@@ -156,12 +185,7 @@ interface GuestBookingRef {
   savedAt: string;
 }
 
-const PICKUP_TIME_SLOTS = [
-  { value: "09:00-12:00", label: "Morning (9 AM – 12 PM)" },
-  { value: "12:00-15:00", label: "Afternoon (12 PM – 3 PM)" },
-  { value: "15:00-18:00", label: "Evening (3 PM – 6 PM)" },
-  { value: "18:00-21:00", label: "Night (6 PM – 9 PM)" },
-];
+const FALLBACK_PICKUP_SLOTS = enabledPickupSlots(DEFAULT_PICKUP_SETTINGS);
 
 function guestBookingsStorageKey(slug: string) {
   return `xgoo_guest_bookings_${slug}`;
@@ -315,24 +339,40 @@ const bookingSchema = z.object({
     ),
   ),
   senderAddress: requiredText("Sender address"),
-  senderCity: optionalText(),
-  senderState: optionalText(),
-  senderPincode: optionalText(),
+  senderCity: requiredText("Sender city"),
+  senderState: requiredText("Sender state"),
+  senderPincode: requiredText("Sender pincode"),
   receiverName: requiredText("Receiver name"),
   receiverPhone: phoneText("Receiver phone"),
   receiverAddress: requiredText("Receiver address"),
-  receiverCity: optionalText(),
-  receiverState: optionalText(),
-  receiverPincode: optionalText(),
-  weight: optionalText(),
+  receiverCity: requiredText("Receiver city"),
+  receiverState: requiredText("Receiver state"),
+  receiverPincode: requiredText("Receiver pincode"),
+  weight: z.preprocess(
+    toFormString,
+    z
+      .string()
+      .trim()
+      .min(1, "Weight is required")
+      .refine((v) => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) && n > 0;
+      }, "Enter a valid weight greater than 0"),
+  ),
   numberOfPieces: z.preprocess(
     (val) => {
-      const s = toFormString(val);
-      return s || "1";
+      const s = toFormString(val).trim();
+      return s;
     },
-    z.string().min(1, "Number of pieces is required"),
+    z
+      .string()
+      .min(1, "Number of pieces is required")
+      .refine((v) => {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) && n >= 1;
+      }, "Enter at least 1 piece"),
   ),
-  contentDescription: optionalText(),
+  contentDescription: requiredText("Package contents"),
   declaredValue: optionalText(),
   serviceType: z.preprocess(
     (val) => (val === "air" || val === "surface" ? val : "surface"),
@@ -595,33 +635,34 @@ function CustomerBookingHeader({ showBack = false }: { showBack?: boolean }) {
   const [, navigate] = useLocation();
 
   return (
-    <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
+    <header className="sticky top-0 z-50 border-b border-zinc-100 bg-white">
       <div className="mx-auto max-w-3xl px-4 py-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             {showBack && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/")}
-                className="shrink-0 -ml-2"
+                className="shrink-0 -ml-2 rounded-none"
                 data-testid="button-back-to-home"
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 <span className="hidden sm:inline">Home</span>
               </Button>
             )}
-            <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md shrink-0" />
+            <img src={xgooLogo} alt="XGoo" className="h-9 w-9 object-contain shrink-0" />
             <div className="min-w-0">
-              <span className="text-lg font-semibold">{XGOO_BRAND.productName}</span>
-              <span className="text-muted-foreground text-xs block sm:inline sm:ml-2 sm:text-sm">
+              <span className="text-lg font-extrabold tracking-tight text-[#FF4907] block leading-none">
+                {XGOO_BRAND.productName}
+              </span>
+              <span className="text-[11px] text-zinc-400 block truncate">
                 from {XGOO_BRAND.parentCompany}
                 <span className="hidden sm:inline"> · Book a Parcel</span>
               </span>
             </div>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground mt-1 sm:hidden">Book a Parcel</p>
       </div>
     </header>
   );
@@ -661,48 +702,94 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-8">
-      <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl" data-testid="text-auth-title">Welcome Back</CardTitle>
-          <CardDescription>Sign in to book with {office.name}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
-              <FormField control={form.control} name="phone" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone Number</FormLabel>
-                  <FormControl><Input {...field} placeholder="10-digit phone" data-testid="input-login-phone" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="password" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl><Input {...field} type="password" placeholder="Your password" data-testid="input-login-password" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-login">
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Sign In
-              </Button>
-            </form>
-          </Form>
-          <div className="mt-4 space-y-2 text-center">
-            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode" className="w-full">
-              Don't have an account? Register
-            </Button>
-            {onContinueAsGuest && (
-              <Button type="button" variant="outline" className="w-full" onClick={onContinueAsGuest} data-testid="button-continue-as-guest">
-                Continue without signing up
-              </Button>
+    <CustomerAuthShell
+      title="Sign In"
+      subtitle={`Book and track shipments with ${office.name}. Use your phone number and password.`}
+      officeName={office.name}
+    >
+      <h2 className="sr-only" data-testid="text-auth-title">
+        Welcome Back
+      </h2>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Phone Number</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder="Phone number"
+                    autoComplete="tel"
+                    className={customerAuthFieldClass}
+                    data-testid="input-login-phone"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Password</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="password"
+                    placeholder="Password"
+                    autoComplete="current-password"
+                    className={customerAuthFieldClass}
+                    data-testid="input-login-password"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <p className="text-center text-sm text-stone-600 pt-2">
+            Don&apos;t have an account?{" "}
+            <button
+              type="button"
+              onClick={onToggle}
+              className="font-semibold text-[#FF4907] hover:underline"
+              data-testid="button-toggle-auth-mode"
+            >
+              Sign up
+            </button>
+          </p>
+          <Button
+            type="submit"
+            className={customerAuthPrimaryButtonClass}
+            disabled={isSubmitting}
+            data-testid="button-login"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Log In
+          </Button>
+        </form>
+      </Form>
+      {onContinueAsGuest && (
+        <div className="mt-4">
+          <Button
+            type="button"
+            variant="outline"
+            className={customerAuthSecondaryButtonClass}
+            onClick={onContinueAsGuest}
+            data-testid="button-continue-as-guest"
+          >
+            Continue as guest
+          </Button>
+          <p className="mt-2 text-center text-xs text-stone-400">
+            Guests can book once. Sign in to save addresses and track history.
+          </p>
+        </div>
+      )}
+    </CustomerAuthShell>
   );
 }
 
@@ -740,62 +827,184 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-8">
-      <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl" data-testid="text-auth-title">Create Account</CardTitle>
-          <CardDescription>Register to book courier services with {office.name}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => (
-                <FormItem><FormLabel>Full Name *</FormLabel><FormControl><Input {...field} placeholder="Your name" data-testid="input-register-name" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                <FormField control={form.control} name="phone" render={({ field }) => (
-                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} placeholder="10-digit" data-testid="input-register-phone" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="email" render={({ field }) => (
-                  <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" placeholder="email" data-testid="input-register-email" /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <FormField control={form.control} name="password" render={({ field }) => (
-                <FormItem><FormLabel>Password *</FormLabel><FormControl><Input {...field} type="password" placeholder="Min 6 chars" data-testid="input-register-password" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="address" render={({ field }) => (
-                <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} placeholder="Your address" data-testid="input-register-address" /></FormControl></FormItem>
-              )} />
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-                <FormField control={form.control} name="city" render={({ field }) => (
-                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} placeholder="City" data-testid="input-register-city" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="state" render={({ field }) => (
-                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} placeholder="State" data-testid="input-register-state" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="pincode" render={({ field }) => (
-                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} placeholder="Pincode" data-testid="input-register-pincode" /></FormControl></FormItem>
-                )} />
-              </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting} data-testid="button-register">
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Create Account
-              </Button>
-            </form>
-          </Form>
-          <div className="mt-4 space-y-2 text-center">
-            <Button variant="ghost" onClick={onToggle} data-testid="button-toggle-auth-mode" className="w-full">
-              Already have an account? Sign In
-            </Button>
-            {onContinueAsGuest && (
-              <Button type="button" variant="outline" className="w-full" onClick={onContinueAsGuest} data-testid="button-continue-as-guest-register">
-                Continue without signing up
-              </Button>
+    <CustomerAuthShell
+      title="Create account"
+      subtitle={`Register once to book faster with ${office.name} and track every pickup.`}
+      officeName={office.name}
+    >
+      <h2 className="sr-only" data-testid="text-auth-title">
+        Create Account
+      </h2>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-3">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Full Name</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder="Full name *"
+                    autoComplete="name"
+                    className={customerAuthFieldClass}
+                    data-testid="input-register-name"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )}
+          />
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="sr-only">Phone</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Phone *"
+                      autoComplete="tel"
+                      className={customerAuthFieldClass}
+                      data-testid="input-register-phone"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="sr-only">Email</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="email"
+                      placeholder="Email (optional)"
+                      autoComplete="email"
+                      className={customerAuthFieldClass}
+                      data-testid="input-register-email"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
-        </CardContent>
-      </Card>
-    </div>
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Password</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="password"
+                    placeholder="Password (min 6 characters) *"
+                    autoComplete="new-password"
+                    className={customerAuthFieldClass}
+                    data-testid="input-register-password"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="address"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Address</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder="Pickup address (optional)"
+                    className={customerAuthFieldClass}
+                    data-testid="input-register-address"
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+            <FormField
+              control={form.control}
+              name="city"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Input {...field} placeholder="City" className={customerAuthFieldClass} data-testid="input-register-city" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="state"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Input {...field} placeholder="State" className={customerAuthFieldClass} data-testid="input-register-state" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="pincode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Input {...field} placeholder="Pincode" className={customerAuthFieldClass} data-testid="input-register-pincode" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+          <p className="text-center text-sm text-stone-600 pt-2">
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={onToggle}
+              className="font-semibold text-[#FF4907] hover:underline"
+              data-testid="button-toggle-auth-mode"
+            >
+              Sign in
+            </button>
+          </p>
+          <Button
+            type="submit"
+            className={customerAuthPrimaryButtonClass}
+            disabled={isSubmitting}
+            data-testid="button-register"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Create Account
+          </Button>
+        </form>
+      </Form>
+      {onContinueAsGuest && (
+        <div className="mt-4">
+          <Button
+            type="button"
+            variant="outline"
+            className={customerAuthSecondaryButtonClass}
+            onClick={onContinueAsGuest}
+            data-testid="button-continue-as-guest-register"
+          >
+            Continue as guest
+          </Button>
+        </div>
+      )}
+    </CustomerAuthShell>
   );
 }
 
@@ -805,7 +1014,11 @@ function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onContinueAsGuest?: () => void;
 }) {
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register">(() => {
+    if (typeof window === "undefined") return "login";
+    const m = new URLSearchParams(window.location.search).get("mode");
+    return m === "register" ? "register" : "login";
+  });
   const toggle = useCallback(() => setMode((m) => (m === "login" ? "register" : "login")), []);
 
   if (mode === "register") {
@@ -840,7 +1053,53 @@ function BookingTab({
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("from") === "whatsapp";
   });
-  const [pickupLocation, setPickupLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [pickupPoint, setPickupPoint] = useState<ShipmentMapPoint | null>(() => {
+    if (user?.defaultPickupLat && user?.defaultPickupLng) {
+      const lat = parseFloat(user.defaultPickupLat);
+      const lng = parseFloat(user.defaultPickupLng);
+      if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+        return {
+          lat,
+          lng,
+          label: user.address || "Saved pickup location",
+          address: user.address || undefined,
+          city: user.city || undefined,
+          state: user.state || undefined,
+          pincode: user.pincode || undefined,
+        };
+      }
+    }
+    return null;
+  });
+  const [destinationPoint, setDestinationPoint] = useState<ShipmentMapPoint | null>(null);
+  const [addressScope, setAddressScope] = useState<AddressScope>("domestic");
+  const [bookStep, setBookStep] = useState<BookFlowStep>("pickup");
+  const [returnToReview, setReturnToReview] = useState(false);
+  const [confirmReady, setConfirmReady] = useState(false);
+  const [detailsAcknowledged, setDetailsAcknowledged] = useState(false);
+  const [pickupSettings, setPickupSettings] = useState<PickupSettings>(DEFAULT_PICKUP_SETTINGS);
+  const pickupSlots = enabledPickupSlots(pickupSettings);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/public/office/${encodeURIComponent(slug)}/pickup-settings`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        setPickupSettings(mergePickupSettings(data));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const pickupLocation = pickupPoint
+    ? { lat: pickupPoint.lat, lng: pickupPoint.lng, name: pickupPoint.label }
+    : null;
   const [saveSenderAddress, setSaveSenderAddress] = useState(false);
   const [saveReceiverAddress, setSaveReceiverAddress] = useState(false);
   const [smartFillText, setSmartFillText] = useState("");
@@ -883,9 +1142,17 @@ function BookingTab({
       notes: "",
       packagePhotoUrls: [],
       pickupDate: todayStr,
-      pickupTimeSlot: "09:00-12:00",
+      pickupTimeSlot: FALLBACK_PICKUP_SLOTS[0]?.value || "09:00",
     },
   });
+
+  useEffect(() => {
+    if (!pickupSlots.length) return;
+    const current = form.getValues("pickupTimeSlot");
+    if (!pickupSlots.some((slot) => slot.value === current)) {
+      form.setValue("pickupTimeSlot", pickupSlots[0].value);
+    }
+  }, [pickupSlots, form]);
 
   useEffect(() => {
     if (!user) return;
@@ -898,6 +1165,27 @@ function BookingTab({
     if (user.pincode) form.setValue("senderPincode", user.pincode);
   }, [user, form]);
 
+  function applyPickupPoint(point: ShipmentMapPoint) {
+    setPickupPoint(point);
+    form.setValue("senderAddress", point.address || point.label, { shouldValidate: true });
+    form.setValue("senderCity", point.city || "", { shouldValidate: true });
+    form.setValue("senderState", point.state || "", { shouldValidate: true });
+    form.setValue("senderPincode", point.pincode || "", { shouldValidate: true });
+  }
+
+  function applyDestinationPoint(point: ShipmentMapPoint) {
+    setDestinationPoint(point);
+    const base = point.address || point.label;
+    const withCountry =
+      addressScope === "international" && point.country && !base.toLowerCase().includes(point.country.toLowerCase())
+        ? `${base}, ${point.country}`
+        : base;
+    form.setValue("receiverAddress", withCountry, { shouldValidate: true });
+    form.setValue("receiverCity", point.city || "", { shouldValidate: true });
+    form.setValue("receiverState", point.state || "", { shouldValidate: true });
+    form.setValue("receiverPincode", point.pincode || "", { shouldValidate: true });
+  }
+
   function applySavedAddress(prefix: "sender" | "receiver", addr: SavedAddressValue) {
     form.setValue(`${prefix}Name` as any, addr.name);
     form.setValue(`${prefix}Phone` as any, addr.phone);
@@ -906,7 +1194,26 @@ function BookingTab({
     if (addr.state) form.setValue(`${prefix}State` as any, addr.state);
     if (addr.pincode) form.setValue(`${prefix}Pincode` as any, addr.pincode);
     if (prefix === "sender" && addr.lat && addr.lng) {
-      setPickupLocation({ lat: parseFloat(addr.lat), lng: parseFloat(addr.lng), name: addr.address });
+      applyPickupPoint({
+        lat: parseFloat(addr.lat),
+        lng: parseFloat(addr.lng),
+        label: addr.address,
+        address: addr.address,
+        city: addr.city || undefined,
+        state: addr.state || undefined,
+        pincode: addr.pincode || undefined,
+      });
+    }
+    if (prefix === "receiver" && addr.lat && addr.lng) {
+      applyDestinationPoint({
+        lat: parseFloat(addr.lat),
+        lng: parseFloat(addr.lng),
+        label: addr.address,
+        address: addr.address,
+        city: addr.city || undefined,
+        state: addr.state || undefined,
+        pincode: addr.pincode || undefined,
+      });
     }
   }
 
@@ -1182,7 +1489,10 @@ function BookingTab({
     receiverAddress: "Receiver address",
     pickupDate: "Pickup date",
     pickupTimeSlot: "Pickup time slot",
+    weight: "Weight",
     numberOfPieces: "Number of pieces",
+    contentDescription: "Package contents",
+    serviceType: "Service type",
   };
 
   const FIELD_TEST_IDS: Record<string, string> = {
@@ -1190,13 +1500,20 @@ function BookingTab({
     senderPhone: "input-sender-phone",
     senderEmail: "input-sender-email",
     senderAddress: "input-sender-address",
+    senderCity: "input-sender-city",
+    senderState: "input-sender-state",
+    senderPincode: "input-sender-pincode",
     receiverName: "input-receiver-name",
     receiverPhone: "input-receiver-phone",
     receiverAddress: "input-receiver-address",
+    receiverCity: "input-receiver-city",
+    receiverState: "input-receiver-state",
+    receiverPincode: "input-receiver-pincode",
     pickupDate: "input-pickup-date",
     pickupTimeSlot: "select-pickup-time",
     numberOfPieces: "input-pieces",
     weight: "input-weight",
+    contentDescription: "input-content",
     declaredValue: "input-declared-value",
     serviceType: "select-service-type",
   };
@@ -1217,20 +1534,88 @@ function BookingTab({
       variant: "destructive",
       duration: 10000,
     });
+
+    const firstField = flat[0]?.field || "";
+    const pickupFields = new Set(["senderAddress", "senderCity", "senderState", "senderPincode"]);
+    const dropFields = new Set(["receiverAddress", "receiverCity", "receiverState", "receiverPincode"]);
+    const packageFields = new Set([
+      "weight",
+      "numberOfPieces",
+      "contentDescription",
+      "serviceType",
+      "declaredValue",
+      "notes",
+      "courierPreference",
+    ]);
+
+    if (!pickupPoint || pickupFields.has(firstField)) setBookStep("pickup");
+    else if (!destinationPoint || dropFields.has(firstField)) setBookStep("destination");
+    else if (packageFields.has(firstField)) setBookStep("package");
+    else setBookStep("details");
+
     const first = flat[0];
     const testId = first ? FIELD_TEST_IDS[first.field] : null;
-    const el =
-      (testId && document.querySelector(`[data-testid="${testId}"]`)) ||
-      document.querySelector("[aria-invalid='true']");
-    if (el && "scrollIntoView" in el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      if ("focus" in el && typeof el.focus === "function") {
-        (el as HTMLElement).focus();
+    requestAnimationFrame(() => {
+      const el =
+        (testId && document.querySelector(`[data-testid="${testId}"]`)) ||
+        document.querySelector("[aria-invalid='true']");
+      if (el && "scrollIntoView" in el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if ("focus" in el && typeof el.focus === "function") {
+          (el as HTMLElement).focus();
+        }
       }
-    }
+    });
   }
 
-  async function onSubmit(data: z.infer<typeof bookingSchema>) {
+  async function placeBooking() {
+    if (bookStep !== "review") {
+      toast({
+        title: "Review required",
+        description: "Please review your booking details before confirming.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!detailsAcknowledged) {
+      toast({
+        title: "Confirm details",
+        description: "Please confirm that the booking details are correct.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const ok = await form.trigger();
+    if (!ok) {
+      toast({
+        title: "Please check the form",
+        description: "Some required booking details are missing or invalid.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const data = form.getValues();
+
+    if (!pickupPoint) {
+      toast({
+        title: "Pickup location needed",
+        description: "Search or drop a pickup pin on the map.",
+        variant: "destructive",
+      });
+      setBookStep("pickup");
+      return;
+    }
+    if (!destinationPoint) {
+      toast({
+        title: "Destination needed",
+        description: "Search or drop a destination pin on the map.",
+        variant: "destructive",
+      });
+      setBookStep("destination");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -1289,7 +1674,12 @@ function BookingTab({
         }
         if (saveSenderAddress) {
           await saveAddressFromBooking(token, {
-            label: "Pickup",
+            label: suggestAddressLabel({
+              city: data.senderCity,
+              address: data.senderAddress,
+              name: data.senderName,
+              fallback: "Pickup",
+            }),
             name: data.senderName,
             phone: data.senderPhone,
             address: data.senderAddress,
@@ -1303,7 +1693,12 @@ function BookingTab({
         }
         if (saveReceiverAddress) {
           await saveAddressFromBooking(token, {
-            label: "Delivery",
+            label: suggestAddressLabel({
+              city: data.receiverCity,
+              address: data.receiverAddress,
+              name: data.receiverName,
+              fallback: "Delivery",
+            }),
             name: data.receiverName,
             phone: data.receiverPhone,
             address: data.receiverAddress,
@@ -1330,357 +1725,628 @@ function BookingTab({
 
   if (submitted) {
     return (
-      <div className="mx-auto max-w-lg py-8">
-        <Card className="text-center">
-          <CardContent className="pt-8 pb-8">
-            <div className="flex justify-center mb-6">
-              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-              </div>
+      <div className="flex h-full items-center justify-center overflow-y-auto p-6">
+        <div className="mx-auto max-w-lg w-full">
+        <div className="border border-stone-200 bg-white p-8 text-center rounded-2xl shadow-sm">
+          <div className="flex justify-center mb-6">
+            <div className="h-16 w-16 bg-[#FF4907]/10 flex items-center justify-center">
+              <CheckCircle className="h-8 w-8 text-[#FF4907]" />
             </div>
-            <h2 className="text-2xl font-bold mb-2" data-testid="text-booking-success">Booking Submitted!</h2>
-            <p className="text-muted-foreground mb-6">Your booking request has been sent for processing.</p>
-            <div className="bg-muted rounded-md p-4 mb-6">
-              <p className="text-sm text-muted-foreground mb-1">Request Number</p>
-              <p className="text-2xl font-mono font-bold text-primary" data-testid="text-booking-request-number">{submitted.requestNumber}</p>
-            </div>
-            {submitted.whatsappReturnUrl && (
-              <div className="mb-6 space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {cameFromWhatsApp
-                    ? "Return to WhatsApp to get your booking details in chat."
-                    : "Open WhatsApp to receive updates about this booking."}
-                </p>
-                <Button asChild className="w-full bg-green-600 hover:bg-green-700">
-                  <a
-                    href={submitted.whatsappReturnUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="button-return-whatsapp"
-                  >
-                    Open WhatsApp
-                  </a>
-                </Button>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground mb-4">
-              A confirmation message will be sent to your phone if WhatsApp automation is enabled.
+          </div>
+          <h2 className="text-2xl font-bold mb-2 tracking-tight" data-testid="text-booking-success">
+            Booking request submitted
+          </h2>
+          <p className="text-stone-500 mb-6 text-sm">
+            Our team will confirm your pickup shortly. Save your request number to track status.
+          </p>
+          <div className="bg-[#f5f3f2] p-4 mb-6">
+            <p className="text-sm text-stone-500 mb-1">Request Number</p>
+            <p className="text-2xl font-mono font-bold text-[#FF4907]" data-testid="text-booking-request-number">
+              {submitted.requestNumber}
             </p>
-            <Button variant="outline" onClick={() => { setSubmitted(null); form.reset({ ...form.getValues(), receiverName: "", receiverPhone: "", receiverAddress: "", receiverCity: "", receiverState: "", receiverPincode: "", weight: "", contentDescription: "", declaredValue: "", notes: "" }); setPickupLocation(null); }} data-testid="button-book-another">
-              Book Another Shipment
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          {submitted.whatsappReturnUrl && (
+            <div className="mb-6 space-y-2">
+              <p className="text-sm text-stone-500">
+                {cameFromWhatsApp
+                  ? "Return to WhatsApp to get your booking details in chat."
+                  : "Open WhatsApp to receive updates about this booking."}
+              </p>
+              <Button asChild className="w-full rounded-none bg-green-600 hover:bg-green-700">
+                <a
+                  href={submitted.whatsappReturnUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="button-return-whatsapp"
+                >
+                  Open WhatsApp
+                </a>
+              </Button>
+            </div>
+          )}
+          <p className="text-xs text-stone-400 mb-4">
+            A confirmation message will be sent to your phone if WhatsApp automation is enabled.
+          </p>
+          <Button
+            variant="outline"
+            className="rounded-none w-full sm:w-auto"
+            onClick={() => {
+              setSubmitted(null);
+              form.reset({
+                ...form.getValues(),
+                receiverName: "",
+                receiverPhone: "",
+                receiverAddress: "",
+                receiverCity: "",
+                receiverState: "",
+                receiverPincode: "",
+                weight: "",
+                contentDescription: "",
+                declaredValue: "",
+                notes: "",
+              });
+              setPickupPoint(null);
+              setDestinationPoint(null);
+              setReturnToReview(false);
+              setDetailsAcknowledged(false);
+              setConfirmReady(false);
+              setBookStep("pickup");
+            }}
+            data-testid="button-book-another"
+          >
+            Book Another Shipment
+          </Button>
+        </div>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="mx-auto max-w-3xl py-4 pb-28">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold" data-testid="text-booking-title">Book a Shipment</h2>
-        <p className="text-muted-foreground text-sm">
-          {isGuest
-            ? "Fill in your details. You will get a request number to track this booking."
-            : "Fill in details below. Your sender info is pre-filled from your profile."}
-        </p>
-      </div>
-      <input type="file" ref={cameraRef} accept="image/*" capture="environment" className="hidden" onChange={handleCameraScan} data-testid="input-camera-scan" />
-      <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, handleFormInvalid)} className="space-y-6 pb-28">
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <LocateFixed className="h-4 w-4 text-primary" /> Your Pickup Location
-              </CardTitle>
-              <CardDescription>We detect your current location automatically. Adjust the pin if needed.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {pickupLocation && (
-                <div className="rounded-md border bg-background px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Current location</p>
-                  <p className="text-sm font-medium line-clamp-2">{pickupLocation.name}</p>
+  const STEP_ORDER: BookFlowStep[] = ["pickup", "destination", "details", "package", "review"];
+
+  function editFromReview(step: BookFlowStep) {
+    setReturnToReview(true);
+    setBookStep(step);
+  }
+
+  async function goNextBookStep() {
+    if (bookStep === "pickup") {
+      if (!pickupPoint) {
+        toast({
+          title: "Set pickup first",
+          description: "Search or tap the map to place the pickup pin.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const ok = await form.trigger(["senderAddress", "senderCity", "senderState", "senderPincode"]);
+      if (!ok) {
+        toast({
+          title: "Complete pickup address",
+          description: "Fill in the address details below the map pin.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (returnToReview) {
+        setReturnToReview(false);
+        setBookStep("review");
+        return;
+      }
+      setBookStep("destination");
+      return;
+    }
+    if (bookStep === "destination") {
+      if (!destinationPoint) {
+        toast({
+          title: "Set destination",
+          description: "Search or tap the map to place the drop pin.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const ok = await form.trigger(["receiverAddress", "receiverCity", "receiverState", "receiverPincode"]);
+      if (!ok) {
+        toast({
+          title: "Complete delivery address",
+          description: "Fill in the destination address details below.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (returnToReview) {
+        setReturnToReview(false);
+        setBookStep("review");
+        return;
+      }
+      setBookStep("details");
+      return;
+    }
+    if (bookStep === "details") {
+      const ok = await form.trigger([
+        "pickupDate",
+        "pickupTimeSlot",
+        "senderName",
+        "senderPhone",
+        "senderAddress",
+        "receiverName",
+        "receiverPhone",
+        "receiverAddress",
+      ]);
+      if (!ok) return;
+      if (returnToReview) {
+        setReturnToReview(false);
+        setBookStep("review");
+        return;
+      }
+      setBookStep("package");
+      return;
+    }
+    if (bookStep === "package") {
+      const ok = await form.trigger([
+        "weight",
+        "numberOfPieces",
+        "contentDescription",
+        "serviceType",
+      ]);
+      if (!ok) {
+        toast({
+          title: "Complete package details",
+          description: "Weight, pieces, contents, and service type are required.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setReturnToReview(false);
+      setDetailsAcknowledged(false);
+      setConfirmReady(false);
+      setBookStep("review");
+    }
+  }
+
+  function goBackBookStep() {
+    if (returnToReview) {
+      setReturnToReview(false);
+      setBookStep("review");
+      return;
+    }
+    const i = STEP_ORDER.indexOf(bookStep);
+    if (i > 0) setBookStep(STEP_ORDER[i - 1]);
+  }
+
+  useEffect(() => {
+    if (bookStep !== "review") {
+      setConfirmReady(false);
+      return;
+    }
+    setDetailsAcknowledged(false);
+    setConfirmReady(false);
+    // Prevent accidental double-click from Package → Confirm landing on the same button
+    const t = window.setTimeout(() => setConfirmReady(true), 700);
+    return () => window.clearTimeout(t);
+  }, [bookStep]);
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={(e) => {
+          // Never place a booking via native form submit / Enter — only via Confirm button
+          e.preventDefault();
+          if (bookStep !== "review") {
+            void goNextBookStep();
+          }
+        }}
+        className="h-full min-h-0"
+        data-testid="book-shipment-form"
+      >
+        <input type="file" ref={cameraRef} accept="image/*" capture="environment" className="hidden" onChange={handleCameraScan} data-testid="input-camera-scan" />
+        <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
+
+        <BookShipmentWorkspace
+          step={bookStep}
+          onStepChange={(s) => {
+            if (bookStep === "review" && s !== "review") setReturnToReview(true);
+            if (s === "review") setReturnToReview(false);
+            setBookStep(s);
+          }}
+          scope={addressScope}
+          onScopeChange={setAddressScope}
+          pickup={pickupPoint}
+          destination={destinationPoint}
+          onPickupChange={applyPickupPoint}
+          onDestinationChange={applyDestinationPoint}
+          onContinue={goNextBookStep}
+          onBack={goBackBookStep}
+          continueLabel={
+            returnToReview ? "Save & review" : bookStep === "package" ? "Review booking" : "Continue"
+          }
+          showSubmit={bookStep === "review"}
+          submitLabel="Confirm & place booking"
+          onConfirm={placeBooking}
+          confirmDisabled={!confirmReady || !detailsAcknowledged}
+          isSubmitting={isSubmitting}
+          continueDisabled={
+            (bookStep === "pickup" && !pickupPoint) || (bookStep === "destination" && !destinationPoint)
+          }
+        >
+          {bookStep === "pickup" && (
+            <div className="space-y-4">
+              {!pickupPoint ? (
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  Search or tap the map to set pickup. You can edit full address details after the pin is placed.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900">Pickup address details</h3>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Review and edit what the map filled in — house no., street, landmark, etc.
+                    </p>
+                  </div>
+                  <FormField control={form.control} name="senderAddress" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Street / building / area *</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          rows={3}
+                          className="resize-none rounded-xl"
+                          placeholder="House / flat no., street, landmark"
+                          data-testid="input-sender-address"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <div className="grid gap-3 grid-cols-2">
+                    <FormField control={form.control} name="senderCity" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City *</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-sender-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="senderState" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>State *</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="rounded-xl" placeholder="State" data-testid="input-sender-state" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  <FormField control={form.control} name="senderPincode" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pincode *</FormLabel>
+                      <FormControl>
+                        <Input {...field} className="rounded-xl" placeholder="6-digit pincode" inputMode="numeric" data-testid="input-sender-pincode" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <p className="text-[11px] text-zinc-400">
+                    Map pin: {pickupPoint.lat.toFixed(5)}, {pickupPoint.lng.toFixed(5)} — drag the pin to refine.
+                  </p>
                 </div>
               )}
-              <PickupMapComponent
-                onLocationSelect={(lat, lng, name) => setPickupLocation({ lat, lng, name })}
-                initialLat={user?.defaultPickupLat ? parseFloat(user.defaultPickupLat) : undefined}
-                initialLng={user?.defaultPickupLng ? parseFloat(user.defaultPickupLng) : undefined}
-                autoDetectOnMount
-              />
-            </CardContent>
-          </Card>
+            </div>
+          )}
 
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Schedule Pickup</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <FormField control={form.control} name="pickupDate" render={({ field }) => (
+          {bookStep === "destination" && (
+            <div className="space-y-4">
+              {!destinationPoint ? (
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  Search or tap the map to set delivery
+                  {addressScope === "international" ? " (international addresses supported)" : ""}
+                  . You can edit full address details after the pin is placed.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900">
+                      Delivery address details
+                      {addressScope === "international" ? " (International)" : ""}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Edit door number, street, and locality so the courier can find it easily.
+                    </p>
+                  </div>
+                  <FormField control={form.control} name="receiverAddress" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Street / building / area *</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          rows={3}
+                          className="resize-none rounded-xl"
+                          placeholder="House / flat no., street, landmark"
+                          data-testid="input-receiver-address"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <div className="grid gap-3 grid-cols-2">
+                    <FormField control={form.control} name="receiverCity" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City *</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-receiver-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="receiverState" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{addressScope === "international" ? "State / Region *" : "State *"}</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "State / province" : "State"} data-testid="input-receiver-state" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  <FormField control={form.control} name="receiverPincode" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{addressScope === "international" ? "Postal code *" : "Pincode *"}</FormLabel>
+                      <FormControl>
+                        <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "Postal / ZIP code" : "6-digit pincode"} data-testid="input-receiver-pincode" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  {destinationPoint.country && (
+                    <div className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                      Country: <span className="font-medium text-zinc-900">{destinationPoint.country}</span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-zinc-400">
+                    Map pin: {destinationPoint.lat.toFixed(5)}, {destinationPoint.lng.toFixed(5)} — drag the pin to refine.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {bookStep === "details" && (
+            <div className="space-y-5">
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-zinc-900">When to pick up</h3>
+                <div className="grid gap-3 grid-cols-2">
+                  <FormField control={form.control} name="pickupDate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date *</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="date" min={new Date().toISOString().split("T")[0]} className="rounded-xl" data-testid="input-pickup-date" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="pickupTimeSlot" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Slot *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || pickupSlots[0]?.value}>
+                        <FormControl>
+                          <SelectTrigger className="rounded-xl" data-testid="select-pickup-time"><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(pickupSlots.length ? pickupSlots : FALLBACK_PICKUP_SLOTS).map((slot) => (
+                            <SelectItem key={slot.value} value={slot.value}>{slot.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+                {pickupSettings.cutoffNote ? (
+                  <div className="rounded-xl border border-[#FF4907]/20 bg-[#FFF7F3] px-3.5 py-3 text-sm text-zinc-700 leading-relaxed">
+                    {pickupSettings.cutoffNote}
+                  </div>
+                ) : null}
+              </section>
+
+              <section
+                className="overflow-hidden rounded-2xl border border-[#FF4907]/25 bg-[#FFF7F3]"
+                data-testid="section-sender-details"
+              >
+                <div className="flex items-center gap-2.5 border-b border-[#FF4907]/15 bg-[#FF4907]/10 px-3.5 py-2.5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FF4907] text-[11px] font-bold text-white">
+                    P
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-zinc-900">Sender</h3>
+                    <p className="text-[11px] text-zinc-500">Who is sending the parcel</p>
+                  </div>
+                </div>
+                <div className="space-y-3 px-3.5 py-3.5">
+                  {!isGuest && token && (
+                    <AddressPicker token={token} addressType="sender" onSelect={(a) => applySavedAddress("sender", a)} />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBookStep("pickup")}
+                    className="w-full rounded-xl border border-[#FF4907]/20 bg-white px-3 py-2.5 text-left transition-colors hover:border-[#FF4907]/40 hover:bg-[#FF4907]/5"
+                    data-testid="button-edit-pickup-address"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-[#FF4907]/80">Pickup address</p>
+                        <p className="mt-0.5 text-sm text-zinc-800 whitespace-pre-wrap break-words">
+                          {[form.watch("senderAddress"), [form.watch("senderCity"), form.watch("senderState"), form.watch("senderPincode")].filter(Boolean).join(", ")].filter(Boolean).join("\n") || "No address set"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-medium text-[#FF4907]">Edit</span>
+                    </div>
+                  </button>
+                  <div className="grid gap-3 grid-cols-2">
+                    <FormField control={form.control} name="senderName" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name *</FormLabel>
+                        <FormControl><Input {...field} className="rounded-xl bg-white" data-testid="input-sender-name" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="senderPhone" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone *</FormLabel>
+                        <FormControl><Input {...field} className="rounded-xl bg-white" data-testid="input-sender-phone" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  <FormField control={form.control} name="senderEmail" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl><Input {...field} type="email" className="rounded-xl bg-white" data-testid="input-sender-email" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  {!isGuest && token && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox checked={saveSenderAddress} onCheckedChange={(v) => setSaveSenderAddress(!!v)} />
+                      Save sender for next time
+                    </label>
+                  )}
+                </div>
+              </section>
+
+              <section
+                className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/40"
+                data-testid="section-receiver-details"
+              >
+                <div className="flex items-center gap-2.5 border-b border-emerald-100 bg-emerald-50/80 px-3.5 py-2.5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-[11px] font-bold text-white">
+                    D
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-zinc-900">Receiver</h3>
+                    <p className="text-[11px] text-zinc-500">Who will receive the parcel</p>
+                  </div>
+                </div>
+                <div className="space-y-3 px-3.5 py-3.5">
+                  {!isGuest && token && (
+                    <AddressPicker token={token} addressType="receiver" onSelect={(a) => applySavedAddress("receiver", a)} />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBookStep("destination")}
+                    className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/50"
+                    data-testid="button-edit-delivery-address"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80">Delivery address</p>
+                        <p className="mt-0.5 text-sm text-zinc-800 whitespace-pre-wrap break-words">
+                          {[
+                            form.watch("receiverAddress"),
+                            [form.watch("receiverCity"), form.watch("receiverState"), form.watch("receiverPincode")].filter(Boolean).join(", "),
+                            destinationPoint?.country,
+                          ].filter(Boolean).join("\n") || "No address set"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-medium text-emerald-700">Edit</span>
+                    </div>
+                  </button>
+                  <div className="grid gap-3 grid-cols-2">
+                    <FormField control={form.control} name="receiverName" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name *</FormLabel>
+                        <FormControl><Input {...field} className="rounded-xl bg-white" data-testid="input-receiver-name" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="receiverPhone" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone *</FormLabel>
+                        <FormControl><Input {...field} className="rounded-xl bg-white" data-testid="input-receiver-phone" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  {!isGuest && token && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox checked={saveReceiverAddress} onCheckedChange={(v) => setSaveReceiverAddress(!!v)} />
+                      Save receiver for next time
+                    </label>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {bookStep === "package" && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Package & service</h3>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Weight, pieces, and contents are required before submitting.
+                </p>
+              </div>
+              <div className="grid gap-3 grid-cols-2">
+                <FormField control={form.control} name="weight" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weight (kg) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ""}
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        placeholder="e.g. 2.5"
+                        className="rounded-xl"
+                        data-testid="input-weight"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="numberOfPieces" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pieces *</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ""}
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        className="rounded-xl"
+                        data-testid="input-pieces"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="contentDescription" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Pickup Date *</FormLabel>
+                  <FormLabel>Contents *</FormLabel>
                   <FormControl>
-                    <Input {...field} type="date" min={new Date().toISOString().split("T")[0]} data-testid="input-pickup-date" />
+                    <Input
+                      {...field}
+                      placeholder="Documents, electronics…"
+                      className="rounded-xl"
+                      data-testid="input-content"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="pickupTimeSlot" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Time Slot *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "09:00-12:00"}>
-                    <FormControl><SelectTrigger data-testid="select-pickup-time"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {PICKUP_TIME_SLOTS.map((slot) => (
-                        <SelectItem key={slot.value} value={slot.value}>{slot.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </CardContent>
-          </Card>
-
-          <Card className="border-dashed">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">AI Smart Fill</span>
-                <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">AI</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">Describe your shipment in plain words and we'll fill the form for you.</p>
-              <div className="flex gap-2">
-                <Input
-                  value={smartFillText}
-                  onChange={(e) => setSmartFillText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSmartFill(); } }}
-                  placeholder='e.g. "Send 2kg documents to Amit in Mumbai 400001"'
-                  disabled={isSmartFilling}
-                  data-testid="input-smart-fill"
-                />
-                <Button type="button" size="icon" variant="ghost" onClick={handleSmartFillVoice} data-testid="button-mic-smartfill" className={recordingSection === "smartfill" ? "text-red-500" : ""}>
-                  <Mic className="h-4 w-4" />
-                </Button>
-                <Button type="button" onClick={handleSmartFill} disabled={isSmartFilling || !smartFillText.trim()} data-testid="button-smart-fill">
-                  {isSmartFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Sender Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!isGuest && token && (
-                <AddressPicker token={token} addressType="sender" onSelect={(a) => applySavedAddress("sender", a)} />
-              )}
-              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
-                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
-                <Input value={sectionAiText.sender} onChange={(e) => setSectionAiText(prev => ({ ...prev, sender: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("sender"); } }} placeholder='e.g. Raj Kumar, 9876543210, MG Road Bangalore (any language)' className="text-sm" disabled={sectionAiLoading.sender} data-testid="input-ai-sender" />
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("sender")} data-testid="button-mic-sender" className={recordingSection === "sender" ? "text-red-500" : ""}>
-                  <Mic className="h-4 w-4" />
-                </Button>
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("sender")} disabled={sectionAiLoading.sender || !sectionAiText.sender?.trim()} data-testid="button-ai-sender">
-                  {sectionAiLoading.sender ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                </Button>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField control={form.control} name="senderName" render={({ field }) => (
-                  <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-sender-name" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="senderPhone" render={({ field }) => (
-                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} data-testid="input-sender-phone" /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <FormField control={form.control} name="senderEmail" render={({ field }) => (
-                <FormItem><FormLabel>Email</FormLabel><FormControl><Input {...field} type="email" data-testid="input-sender-email" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="senderAddress" render={({ field }) => (
-                <FormItem><FormLabel>Address *</FormLabel><FormControl><Textarea {...field} className="resize-none" data-testid="input-sender-address" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <div className="grid gap-4 sm:grid-cols-3">
-                <FormField control={form.control} name="senderCity" render={({ field }) => (
-                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-sender-city" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="senderState" render={({ field }) => (
-                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} data-testid="input-sender-state" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="senderPincode" render={({ field }) => (
-                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-sender-pincode" /></FormControl></FormItem>
-                )} />
-              </div>
-              {!isGuest && token && (
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={saveSenderAddress} onCheckedChange={(v) => setSaveSenderAddress(!!v)} />
-                  Save sender address for future bookings
-                </label>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Receiver Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!isGuest && token && (
-                <AddressPicker token={token} addressType="receiver" onSelect={(a) => applySavedAddress("receiver", a)} />
-              )}
-              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
-                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
-                <Input value={sectionAiText.receiver} onChange={(e) => setSectionAiText(prev => ({ ...prev, receiver: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("receiver"); } }} placeholder='e.g. Amit ko Delhi Connaught Place bhejo (any language)' className="text-sm" disabled={sectionAiLoading.receiver} data-testid="input-ai-receiver" />
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("receiver")} data-testid="button-mic-receiver" className={recordingSection === "receiver" ? "text-red-500" : ""}>
-                  <Mic className="h-4 w-4" />
-                </Button>
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("receiver")} disabled={sectionAiLoading.receiver || !sectionAiText.receiver?.trim()} data-testid="button-ai-receiver">
-                  {sectionAiLoading.receiver ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                </Button>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField control={form.control} name="receiverName" render={({ field }) => (
-                  <FormItem><FormLabel>Name *</FormLabel><FormControl><Input {...field} data-testid="input-receiver-name" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="receiverPhone" render={({ field }) => (
-                  <FormItem><FormLabel>Phone *</FormLabel><FormControl><Input {...field} data-testid="input-receiver-phone" /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <FormField control={form.control} name="receiverAddress" render={({ field }) => (
-                <FormItem><FormLabel>Address *</FormLabel><FormControl><Textarea {...field} className="resize-none" data-testid="input-receiver-address" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <div className="grid gap-4 sm:grid-cols-3">
-                <FormField control={form.control} name="receiverCity" render={({ field }) => (
-                  <FormItem><FormLabel>City</FormLabel><FormControl><Input {...field} data-testid="input-receiver-city" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="receiverState" render={({ field }) => (
-                  <FormItem><FormLabel>State</FormLabel><FormControl><Input {...field} data-testid="input-receiver-state" /></FormControl></FormItem>
-                )} />
-                <FormField control={form.control} name="receiverPincode" render={({ field }) => (
-                  <FormItem><FormLabel>Pincode</FormLabel><FormControl><Input {...field} data-testid="input-receiver-pincode" /></FormControl></FormItem>
-                )} />
-              </div>
-              {!isGuest && token && (
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={saveReceiverAddress} onCheckedChange={(v) => setSaveReceiverAddress(!!v)} />
-                  Save receiver address for future bookings
-                </label>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="flex items-center gap-2 text-base"><Scale className="h-4 w-4" /> Package Details</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">AI</Badge>
-                  <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} disabled={isMeasuring} data-testid="button-scan-package">
-                    {isMeasuring ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Camera className="h-4 w-4 mr-1" />}
-                    Scan Package
-                  </Button>
-                </div>
-              </div>
-              <CardDescription>Enter details manually or scan your package with AI</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
-                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
-                <Input value={sectionAiText.package} onChange={(e) => setSectionAiText(prev => ({ ...prev, package: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("package"); } }} placeholder='e.g. 5 kilo electronics, value 10000 (any language)' className="text-sm" disabled={sectionAiLoading.package} data-testid="input-ai-package" />
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("package")} data-testid="button-mic-package" className={recordingSection === "package" ? "text-red-500" : ""}>
-                  <Mic className="h-4 w-4" />
-                </Button>
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("package")} disabled={sectionAiLoading.package || !sectionAiText.package?.trim()} data-testid="button-ai-package">
-                  {sectionAiLoading.package ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                </Button>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField control={form.control} name="weight" render={({ field }) => (
-                  <FormItem><FormLabel>Approx. Weight (kg)</FormLabel><FormControl><Input {...field} value={field.value ?? ""} type="number" step="0.1" data-testid="input-weight" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="numberOfPieces" render={({ field }) => (
-                  <FormItem><FormLabel>No. of Pieces</FormLabel><FormControl><Input {...field} value={field.value ?? ""} type="number" min="1" data-testid="input-pieces" /></FormControl><FormMessage /></FormItem>
-                )} />
-              </div>
-              <FormField control={form.control} name="contentDescription" render={({ field }) => (
-                <FormItem><FormLabel>Content Description</FormLabel><FormControl><Input {...field} placeholder="e.g., Documents, Electronics" data-testid="input-content" /></FormControl></FormItem>
-              )} />
-              <FormField control={form.control} name="declaredValue" render={({ field }) => (
-                <FormItem><FormLabel>Declared Value (Rs.)</FormLabel><FormControl><Input {...field} value={field.value ?? ""} type="number" data-testid="input-declared-value" /></FormControl><FormMessage /></FormItem>
-              )} />
-
-              <div className="border-t pt-4">
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Upload className="h-4 w-4" />
-                    <span className="text-sm font-medium">Package Photos</span>
-                    <span className="text-xs text-muted-foreground">({packagePhotos.length}/3)</span>
-                  </div>
-                  {packagePhotos.length < 3 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => (isGuest ? toast({ title: "Photos", description: "Sign in to attach package photos." }) : photoUploadRef.current?.click())}
-                      disabled={isUploading}
-                      data-testid="button-upload-photo"
-                    >
-                      {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-                      Add Photo
-                    </Button>
-                  )}
-                </div>
-                {packagePhotos.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {packagePhotos.map((url, i) => (
-                      <div key={i} className="relative group">
-                        <div className="h-20 w-20 rounded-md border overflow-hidden bg-muted">
-                          <img src={url} alt={`Package ${i + 1}`} className="h-full w-full object-cover" />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon"
-                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
-                          onClick={() => removePhoto(i)}
-                          data-testid={`button-remove-photo-${i}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {packagePhotos.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Optionally add photos of your package for better service.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base"><Truck className="h-4 w-4" /> Service Preference</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2 mb-1 pb-3 border-b border-dashed">
-                <div className="flex items-center gap-1.5 shrink-0"><Sparkles className="h-3.5 w-3.5 text-primary" /></div>
-                <Input value={sectionAiText.service} onChange={(e) => setSectionAiText(prev => ({ ...prev, service: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("service"); } }} placeholder='e.g. air express urgent delivery (any language)' className="text-sm" disabled={sectionAiLoading.service} data-testid="input-ai-service" />
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("service")} data-testid="button-mic-service" className={recordingSection === "service" ? "text-red-500" : ""}>
-                  <Mic className="h-4 w-4" />
-                </Button>
-                <Button type="button" size="icon" variant="ghost" onClick={() => handleSectionAiFill("service")} disabled={sectionAiLoading.service || !sectionAiText.service?.trim()} data-testid="button-ai-service">
-                  {sectionAiLoading.service ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                </Button>
-              </div>
               <FormField control={form.control} name="serviceType" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Service Type</FormLabel>
+                  <FormLabel>Service *</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-service-type"><SelectValue /></SelectTrigger></FormControl>
+                    <FormControl>
+                      <SelectTrigger className="rounded-xl" data-testid="select-service-type">
+                        <SelectValue placeholder="Select service" />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
                       <SelectItem value="surface">Surface (Standard)</SelectItem>
                       <SelectItem value="air">Air (Express)</SelectItem>
@@ -1692,49 +2358,233 @@ function BookingTab({
               {partners.length > 0 && (
                 <FormField control={form.control} name="courierPreference" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Preferred Courier (Optional)</FormLabel>
+                    <FormLabel>Courier (optional)</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value || "none"}>
-                      <FormControl><SelectTrigger data-testid="select-courier"><SelectValue placeholder="No preference" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger className="rounded-xl" data-testid="select-courier"><SelectValue placeholder="No preference" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="none">No preference</SelectItem>
                         {partners.map((p) => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
                   </FormItem>
                 )} />
               )}
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Additional Notes</FormLabel>
+                  <FormLabel>Notes</FormLabel>
                   <FormControl>
-                    <Textarea {...field} value={field.value ?? ""} className="resize-none" placeholder="Any special instructions" data-testid="input-notes" />
+                    <Textarea {...field} value={field.value ?? ""} className="resize-none rounded-xl" rows={2} placeholder="Any special instructions" data-testid="input-notes" />
                   </FormControl>
-                  <FormMessage />
                 </FormItem>
               )} />
-            </CardContent>
-          </Card>
-
-          <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
-            <div className="mx-auto flex max-w-3xl items-center gap-3 p-4">
-              <p className="hidden text-xs text-muted-foreground sm:block">
-                Review your details, then submit your pickup request.
-              </p>
-              <Button
-                type="submit"
-                className="ml-auto w-full sm:w-auto sm:min-w-[220px]"
-                disabled={isSubmitting}
-                data-testid="button-submit-booking"
-              >
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                Submit Booking Request
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => cameraRef.current?.click()} disabled={isMeasuring} data-testid="button-scan-package">
+                  {isMeasuring ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Camera className="h-4 w-4 mr-1" />}
+                  Scan
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  onClick={() => (isGuest ? toast({ title: "Photos", description: "Sign in to attach photos." }) : photoUploadRef.current?.click())}
+                  disabled={isUploading || packagePhotos.length >= 3}
+                  data-testid="button-upload-photo"
+                >
+                  {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+                  Photo ({packagePhotos.length}/3)
+                </Button>
+              </div>
+              {packagePhotos.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {packagePhotos.map((url, i) => (
+                    <div key={i} className="relative">
+                      <img src={url} alt="" className="h-14 w-14 rounded-lg border object-cover" />
+                      <Button type="button" size="icon" variant="destructive" className="absolute -right-2 -top-2 h-5 w-5 rounded-full" onClick={() => removePhoto(i)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        </form>
-      </Form>
-    </div>
+          )}
+
+          {bookStep === "review" && (() => {
+            const v = form.getValues();
+            const slotLabel =
+              pickupSlotLabel(pickupSettings, v.pickupTimeSlot);
+            const courierLabel =
+              !v.courierPreference || v.courierPreference === "none"
+                ? "No preference"
+                : v.courierPreference;
+            const pickupAddress = [
+              v.senderAddress,
+              [v.senderCity, v.senderState, v.senderPincode].filter(Boolean).join(", "),
+            ]
+              .filter(Boolean)
+              .join("\n");
+            const deliveryAddress = [
+              v.receiverAddress,
+              [v.receiverCity, v.receiverState, v.receiverPincode].filter(Boolean).join(", "),
+              destinationPoint?.country,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            const ReviewBlock = ({
+              title,
+              badge,
+              badgeClass,
+              onEdit,
+              children,
+              testId,
+            }: {
+              title: string;
+              badge: string;
+              badgeClass: string;
+              onEdit: () => void;
+              children: ReactNode;
+              testId: string;
+            }) => (
+              <section
+                className="overflow-hidden rounded-2xl border border-zinc-200 bg-white"
+                data-testid={testId}
+              >
+                <div className="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50 px-3.5 py-2.5">
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold text-white",
+                      badgeClass,
+                    )}
+                  >
+                    {badge}
+                  </span>
+                  <h3 className="min-w-0 flex-1 text-sm font-semibold text-zinc-900">{title}</h3>
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="shrink-0 text-xs font-semibold text-[#FF4907] hover:underline"
+                    data-testid={`${testId}-edit`}
+                  >
+                    Edit
+                  </button>
+                </div>
+                <div className="space-y-2 px-3.5 py-3 text-sm text-zinc-700">{children}</div>
+              </section>
+            );
+
+            const Row = ({ label, value }: { label: string; value?: string | null }) =>
+              value ? (
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{label}</p>
+                  <p className="mt-0.5 whitespace-pre-wrap break-words text-zinc-800">{value}</p>
+                </div>
+              ) : null;
+
+            return (
+              <div className="space-y-3" data-testid="booking-review-summary">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">Confirm your booking</h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Review everything below. Edit any section if needed, then confirm to place the request.
+                  </p>
+                </div>
+
+                <ReviewBlock
+                  title="Pickup"
+                  badge="P"
+                  badgeClass="bg-[#FF4907]"
+                  onEdit={() => editFromReview("pickup")}
+                  testId="review-pickup"
+                >
+                  <Row label="Address" value={pickupAddress} />
+                </ReviewBlock>
+
+                <ReviewBlock
+                  title="Delivery"
+                  badge="D"
+                  badgeClass="bg-emerald-600"
+                  onEdit={() => editFromReview("destination")}
+                  testId="review-delivery"
+                >
+                  <Row label="Address" value={deliveryAddress} />
+                </ReviewBlock>
+
+                <ReviewBlock
+                  title="Contacts & schedule"
+                  badge="C"
+                  badgeClass="bg-zinc-700"
+                  onEdit={() => editFromReview("details")}
+                  testId="review-details"
+                >
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Row
+                      label="Sender"
+                      value={[v.senderName, v.senderPhone, v.senderEmail].filter(Boolean).join("\n")}
+                    />
+                    <Row label="Receiver" value={[v.receiverName, v.receiverPhone].filter(Boolean).join("\n")} />
+                  </div>
+                  <Row label="Pickup schedule" value={[v.pickupDate, slotLabel].filter(Boolean).join(" · ")} />
+                </ReviewBlock>
+
+                <ReviewBlock
+                  title="Package & service"
+                  badge="Pk"
+                  badgeClass="bg-sky-600"
+                  onEdit={() => editFromReview("package")}
+                  testId="review-package"
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <Row label="Weight" value={v.weight ? `${v.weight} kg` : null} />
+                    <Row label="Pieces" value={v.numberOfPieces} />
+                  </div>
+                  <Row label="Contents" value={v.contentDescription} />
+                  <Row
+                    label="Service"
+                    value={v.serviceType === "air" ? "Air (Express)" : "Surface (Standard)"}
+                  />
+                  <Row label="Courier" value={courierLabel} />
+                  <Row label="Notes" value={v.notes} />
+                  {packagePhotos.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                        Photos ({packagePhotos.length})
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-2">
+                        {packagePhotos.map((url, i) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt=""
+                            className="h-12 w-12 rounded-lg border object-cover"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </ReviewBlock>
+
+                <label
+                  className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-zinc-200 bg-zinc-50 px-3.5 py-3"
+                  data-testid="review-acknowledge"
+                >
+                  <Checkbox
+                    checked={detailsAcknowledged}
+                    onCheckedChange={(v) => setDetailsAcknowledged(!!v)}
+                    className="mt-0.5"
+                    disabled={!confirmReady}
+                  />
+                  <span className="text-sm leading-snug text-zinc-700">
+                    I have reviewed the pickup, delivery, contact, and package details above and they are correct.
+                  </span>
+                </label>
+              </div>
+            );
+          })()}
+        </BookShipmentWorkspace>
+      </form>
+    </Form>
   );
 }
 
@@ -1784,7 +2634,30 @@ function mapShipmentForTracking(shipment: ShipmentTrackingInfo | null | undefine
   };
 }
 
-function MyBookingsTab({ token }: { token: string }) {
+function bookingToLoadItem(b: BookingRequestInfo): LoadItem {
+  const status = b.tracking?.overallStatus ?? b.status;
+  return {
+    id: b.id,
+    requestNumber: b.requestNumber,
+    status,
+    statusLabel: b.tracking?.overallStatusLabel ?? statusLabel(status),
+    senderName: b.senderName,
+    receiverName: b.receiverName,
+    fromLabel: b.senderCity || b.pickupLocationName || "Pickup",
+    toLabel: b.receiverCity || "Destination",
+    createdAt: b.createdAt,
+    progress: loadProgressFromStatus(status),
+    phone: b.senderPhone,
+  };
+}
+
+function MyBookingsTab({
+  token,
+  onBookShipment,
+}: {
+  token: string;
+  onBookShipment: () => void;
+}) {
   const [bookings, setBookings] = useState<BookingRequestInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
@@ -1862,112 +2735,44 @@ function MyBookingsTab({ token }: { token: string }) {
     return () => window.clearInterval(interval);
   }, [selectedBooking, loadBookingDetail]);
 
-  if (selectedBooking) {
-    if (isLoadingDetail || !bookingDetail) {
-      return (
-        <div className="mx-auto max-w-2xl py-4">
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedBooking(null); setBookingDetail(null); }} className="mb-4" data-testid="button-back-to-bookings">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Bookings
-          </Button>
-          <Skeleton className="h-64 w-full" />
-        </div>
-      );
-    }
+  const loads = bookings.map(bookingToLoadItem);
 
-    const { request, shipment, tracking } = bookingDetail;
-    return (
-      <div className="mx-auto max-w-2xl py-4">
-        <Button variant="ghost" size="sm" onClick={() => { setSelectedBooking(null); setBookingDetail(null); }} className="mb-4" data-testid="button-back-to-bookings">
-          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Bookings
-        </Button>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-lg" data-testid="text-detail-request-number">#{request.requestNumber}</CardTitle>
-              <Badge variant={statusColor(tracking.overallStatus)} data-testid="badge-detail-status">
-                {tracking.overallStatusLabel}
-              </Badge>
-            </div>
-            <CardDescription>Submitted {new Date(request.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-sm font-medium mb-1">Sender</p>
-                <p className="text-sm">{request.senderName}</p>
-                <p className="text-sm text-muted-foreground">{request.senderPhone}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-1">Receiver</p>
-                <p className="text-sm">{request.receiverName}</p>
-                <p className="text-sm text-muted-foreground">{request.receiverCity || "N/A"}</p>
-              </div>
-            </div>
-            {request.pickupLocationName && (
-              <div>
-                <p className="text-sm font-medium mb-1">Pickup Location</p>
-                <p className="text-sm text-muted-foreground flex items-start gap-1">
-                  <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
-                  {request.pickupLocationName}
-                </p>
-              </div>
-            )}
-            <BookingTrackingPanel
-              tracking={tracking}
-              bookingNumber={shipment?.bookingNumber}
-              awbNumber={shipment?.awbNumber}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const detail: LoadDetail | null =
+    bookingDetail && selectedBooking === bookingDetail.request.id
+      ? {
+          requestNumber: bookingDetail.request.requestNumber,
+          statusLabel: bookingDetail.tracking.overallStatusLabel,
+          senderName: bookingDetail.request.senderName,
+          senderPhone: bookingDetail.request.senderPhone,
+          receiverName: bookingDetail.request.receiverName,
+          receiverCity: bookingDetail.request.receiverCity ?? undefined,
+          pickupLocationName: bookingDetail.request.pickupLocationName ?? undefined,
+          tracking: bookingDetail.tracking,
+          bookingNumber: bookingDetail.shipment?.bookingNumber,
+          awbNumber: bookingDetail.shipment?.awbNumber,
+          mapLat: bookingDetail.request.pickupLat
+            ? parseFloat(bookingDetail.request.pickupLat)
+            : null,
+          mapLng: bookingDetail.request.pickupLng
+            ? parseFloat(bookingDetail.request.pickupLng)
+            : null,
+        }
+      : null;
 
   return (
-    <div className="mx-auto max-w-2xl py-4">
-      <h2 className="text-xl font-bold mb-4" data-testid="text-my-bookings-title">My Bookings</h2>
-      {isLoading ? (
-        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
-      ) : bookings.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No bookings yet. Start by booking a shipment!</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {bookings.map((b) => (
-            <Card key={b.id} className="hover-elevate cursor-pointer" onClick={() => viewDetail(b.id)} data-testid={`card-booking-${b.id}`}>
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <p className="font-mono font-bold text-sm" data-testid={`text-request-number-${b.id}`}>#{b.requestNumber}</p>
-                    <p className="text-sm text-muted-foreground">{b.senderName} &rarr; {b.receiverName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      {b.receiverCity ? ` | To: ${b.receiverCity}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={statusColor(b.tracking?.overallStatus ?? b.status)} className="text-xs">
-                      {b.tracking?.overallStatusLabel ?? statusLabel(b.status)}
-                    </Badge>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-                {b.tracking?.currentLocation && (
-                  <p className="mt-2 flex items-start gap-1 text-xs text-muted-foreground">
-                    <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
-                    <span>{b.tracking.currentLocation}</span>
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+    <TrackingLoadsWorkspace
+      loads={loads}
+      isLoading={isLoading}
+      selectedId={selectedBooking}
+      onSelect={viewDetail}
+      onAddLoad={onBookShipment}
+      detail={detail}
+      detailLoading={isLoadingDetail}
+      onCloseDetail={() => {
+        setSelectedBooking(null);
+        setBookingDetail(null);
+      }}
+    />
   );
 }
 
@@ -2391,7 +3196,7 @@ export default function CustomerPortalPage() {
   const [isLoadingOffice, setIsLoadingOffice] = useState(true);
   const [officeError, setOfficeError] = useState(false);
   const auth = useCustomerAuth(slug);
-  const [activeTab, setActiveTab] = useState("book");
+  const [activeTab, setActiveTab] = useState("bookings");
   const [guestMode, setGuestMode] = useState(false);
   const [guestBookingsTick, setGuestBookingsTick] = useState(0);
 
@@ -2431,6 +3236,22 @@ export default function CustomerPortalPage() {
       setActiveTab("bookings");
     }
   }, [auth.isAuthenticated, activeTab]);
+
+  // Prevent document scroll while the portal shell is open (map/form scroll internally).
+  useEffect(() => {
+    const portalOpen = auth.isAuthenticated || guestMode;
+    if (!portalOpen) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, [auth.isAuthenticated, guestMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2525,81 +3346,28 @@ export default function CustomerPortalPage() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <PageSeo {...SEO_PAGES.book} />
-      {!auth.isAuthenticated && !guestMode ? (
-        <>
-          <CustomerBookingHeader showBack />
-          <div className="flex-1">
-            <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
-          </div>
-          <CustomerBookingFooter />
-        </>
-      ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-screen flex flex-col">
-          <div className="sticky top-0 z-[100] border-b bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
-            <div className="mx-auto max-w-3xl px-4 py-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3">
-                  <img src={xgooLogo} alt="XGoo" className="h-9 w-9 rounded-md" />
-                  <div>
-                    <span className="text-lg font-semibold">{XGOO_BRAND.productName}</span>
-                    <span className="text-muted-foreground text-xs block sm:inline sm:ml-2 sm:text-sm">
-                      from {XGOO_BRAND.parentCompany}
-                      <span className="hidden sm:inline"> · Courier Booking</span>
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {office.phone && (
-                    <a href={`tel:${office.phone}`} className="text-sm text-primary hover:underline hidden sm:block" data-testid="link-office-phone">
-                      {office.phone}
-                    </a>
-                  )}
-                  {guestMode && !auth.isAuthenticated && (
-                    <>
-                      <span className="text-xs text-muted-foreground rounded-md border px-2 py-1" data-testid="badge-guest">
-                        Guest
-                      </span>
-                      <Button variant="outline" size="sm" onClick={exitGuestMode} data-testid="button-guest-sign-in">
-                        Sign in
-                      </Button>
-                    </>
-                  )}
-                  {auth.isAuthenticated && (
-                    <span className="text-sm text-muted-foreground" data-testid="text-welcome-user">
-                      <UserCircle className="h-4 w-4 inline mr-1" />
-                      {auth.user?.name}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1 sm:hidden">Courier Booking</p>
-            </div>
-            <div className="mx-auto max-w-3xl px-4 pb-3">
-              <TabsList className="grid w-full grid-cols-3 h-auto" data-testid="tabs-navigation">
-                <TabsTrigger value="book" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-book">
-                  <Plus className="h-4 w-4 mr-1 hidden sm:block" /> Book
-                </TabsTrigger>
-                <TabsTrigger value="bookings" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-bookings">
-                  <ClipboardList className="h-4 w-4 mr-1 hidden sm:block" /> My Bookings
-                </TabsTrigger>
-                {guestMode && !auth.isAuthenticated ? (
-                  <TabsTrigger value="track" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-track">
-                    <Search className="h-4 w-4 mr-1 hidden sm:block" /> Track
-                  </TabsTrigger>
-                ) : (
-                  <TabsTrigger value="account" className="text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-account">
-                    <UserCircle className="h-4 w-4 mr-1 hidden sm:block" /> Account
-                  </TabsTrigger>
-                )}
-              </TabsList>
-            </div>
-          </div>
+  const portalOpen = auth.isAuthenticated || guestMode;
 
-          <main className="mx-auto max-w-3xl px-4 pt-4">
-            <TabsContent value="book" className="mt-0">
+  return (
+    <div className={portalOpen ? "h-dvh max-h-dvh overflow-hidden bg-[#F4F4F5]" : "min-h-screen bg-background flex flex-col"}>
+      <PageSeo {...SEO_PAGES.book} />
+      {!portalOpen ? (
+        <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
+      ) : (
+        <CustomerPortalShell
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          userName={auth.isAuthenticated ? auth.user?.name : "Guest"}
+          userSubtitle={guestMode && !auth.isAuthenticated ? "Guest booking" : "Customer"}
+          isGuest={guestMode && !auth.isAuthenticated}
+          showTrack={guestMode && !auth.isAuthenticated}
+          showAccount={auth.isAuthenticated}
+          officePhone={office.phone}
+          onLogout={auth.logout}
+          onSignIn={exitGuestMode}
+        >
+          {activeTab === "book" && (
+            <div className="h-full min-h-0">
               {guestMode && !auth.isAuthenticated ? (
                 <BookingTab
                   slug={slug}
@@ -2615,21 +3383,34 @@ export default function CustomerPortalPage() {
                   user={auth.user!}
                 />
               )}
-            </TabsContent>
-            <TabsContent value="bookings" className="mt-0">
+            </div>
+          )}
+          {activeTab === "bookings" && (
+            <div className="h-full min-h-0">
               {guestMode && !auth.isAuthenticated ? (
-                <GuestBookingsTab slug={slug} refreshTick={guestBookingsTick} />
+                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+                  <div className="mx-auto max-w-3xl">
+                    <GuestBookingsTab slug={slug} refreshTick={guestBookingsTick} />
+                  </div>
+                </div>
               ) : (
-                <MyBookingsTab token={auth.token!} />
+                <MyBookingsTab
+                  token={auth.token!}
+                  onBookShipment={() => setActiveTab("book")}
+                />
               )}
-            </TabsContent>
-            {guestMode && !auth.isAuthenticated && (
-              <TabsContent value="track" className="mt-0">
+            </div>
+          )}
+          {activeTab === "track" && guestMode && !auth.isAuthenticated && (
+            <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+              <div className="mx-auto max-w-3xl">
                 <TrackTab slug={slug} />
-              </TabsContent>
-            )}
-            {!(guestMode && !auth.isAuthenticated) && (
-              <TabsContent value="account" className="mt-0">
+              </div>
+            </div>
+          )}
+          {activeTab === "account" && auth.isAuthenticated && (
+            <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+              <div className="mx-auto max-w-3xl">
                 <AccountTab
                   token={auth.token!}
                   user={auth.user!}
@@ -2639,11 +3420,10 @@ export default function CustomerPortalPage() {
                   }}
                   onLogout={auth.logout}
                 />
-              </TabsContent>
-            )}
-          </main>
-          <CustomerBookingFooter />
-        </Tabs>
+              </div>
+            </div>
+          )}
+        </CustomerPortalShell>
       )}
     </div>
   );

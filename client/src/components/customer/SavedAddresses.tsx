@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { CustomerAddress } from "@shared/schema";
 
 const addressFormSchema = z.object({
@@ -49,6 +50,22 @@ export interface SavedAddressValue {
   lng?: string | null;
 }
 
+/** Prefer a readable place name over generic Pickup/Delivery labels. */
+export function suggestAddressLabel(opts: {
+  city?: string | null;
+  address?: string | null;
+  name?: string | null;
+  fallback: string;
+}) {
+  const city = opts.city?.trim();
+  if (city) return city;
+  const firstLine = opts.address?.split(",")[0]?.trim();
+  if (firstLine && firstLine.length >= 2 && firstLine.length <= 40) return firstLine;
+  const name = opts.name?.trim();
+  if (name) return `${name}'s address`;
+  return opts.fallback;
+}
+
 export function AddressPicker({
   token,
   addressType,
@@ -58,6 +75,7 @@ export function AddressPicker({
   addressType: "sender" | "receiver";
   onSelect: (address: SavedAddressValue) => void;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data: addresses = [] } = useQuery<CustomerAddress[]>({
     queryKey: ["/api/customer/addresses"],
     queryFn: async () => {
@@ -69,37 +87,100 @@ export function AddressPicker({
     },
   });
 
-  const filtered = addresses.filter((a) => a.addressType === addressType);
+  const filtered = addresses
+    .filter((a) => a.addressType === addressType)
+    .slice()
+    .sort((a, b) => Number(!!b.isDefault) - Number(!!a.isDefault));
+
   if (filtered.length === 0) return null;
 
+  const accent =
+    addressType === "sender"
+      ? {
+          wrap: "border-[#FF4907]/20 bg-white",
+          selected: "border-[#FF4907] bg-[#FFF7F3] ring-1 ring-[#FF4907]/30",
+          icon: "bg-[#FF4907]/10 text-[#FF4907]",
+          hint: "Tap a saved pickup address to fill sender details",
+        }
+      : {
+          wrap: "border-emerald-200 bg-white",
+          selected: "border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-500/30",
+          icon: "bg-emerald-50 text-emerald-700",
+          hint: "Tap a saved delivery address to fill receiver details",
+        };
+
   return (
-    <div className="flex flex-wrap gap-2 mb-3">
-      <span className="text-xs text-muted-foreground w-full">Saved addresses:</span>
-      {filtered.map((addr) => (
-        <Button
-          key={addr.id}
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-xs h-8"
-          onClick={() =>
-            onSelect({
-              name: addr.name,
-              phone: addr.phone,
-              address: addr.address,
-              city: addr.city || undefined,
-              state: addr.state || undefined,
-              pincode: addr.pincode || undefined,
-              lat: addr.lat,
-              lng: addr.lng,
-            })
-          }
-        >
-          <MapPin className="h-3 w-3 mr-1" />
-          {addr.label}
-          {addr.isDefault && <Star className="h-3 w-3 ml-1 fill-amber-400 text-amber-400" />}
-        </Button>
-      ))}
+    <div className="space-y-2" data-testid={`saved-addresses-${addressType}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-zinc-700">Saved addresses</p>
+        <p className="text-[11px] text-zinc-400">{filtered.length} saved</p>
+      </div>
+      <p className="text-[11px] text-zinc-500">{accent.hint}</p>
+      <ul className="max-h-52 space-y-2 overflow-y-auto pr-0.5">
+        {filtered.map((addr) => {
+          const locality = [addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+          const selected = selectedId === addr.id;
+          return (
+            <li key={addr.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedId(addr.id);
+                  onSelect({
+                    name: addr.name,
+                    phone: addr.phone,
+                    address: addr.address,
+                    city: addr.city || undefined,
+                    state: addr.state || undefined,
+                    pincode: addr.pincode || undefined,
+                    lat: addr.lat,
+                    lng: addr.lng,
+                  });
+                }}
+                className={cn(
+                  "flex w-full items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  selected ? accent.selected : `${accent.wrap} hover:border-zinc-300 hover:bg-zinc-50`,
+                )}
+                data-testid={`saved-address-${addr.id}`}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                    accent.icon,
+                  )}
+                >
+                  <MapPin className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-zinc-900">
+                      {addr.label || (addressType === "sender" ? "Pickup" : "Delivery")}
+                    </span>
+                    {addr.isDefault && (
+                      <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                        <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+                        Default
+                      </span>
+                    )}
+                    {selected && (
+                      <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#FF4907]">
+                        Selected
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-600">
+                    {[addr.name, addr.phone].filter(Boolean).join(" · ")}
+                  </span>
+                  <span className="mt-0.5 block line-clamp-2 text-xs leading-snug text-zinc-500">
+                    {addr.address}
+                    {locality ? `, ${locality}` : ""}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

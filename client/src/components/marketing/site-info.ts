@@ -1,6 +1,9 @@
 export const XGOO_CONTACT = {
   email: "connect@xgoo.in",
-  phone: "+1 555-952-9213",
+  /** Voice / support phone (India) */
+  phone: "+91 93471 38235",
+  /** Display label for WhatsApp Business */
+  whatsappDisplay: "+1 555-952-9213",
   /** Digits only with country code — used for wa.me chat widget */
   whatsapp: "15559529213",
   website: "www.xgoo.in",
@@ -24,4 +27,3 @@ export {
   XGOO_BRAND_FOUNDATION,
   XGOO_BRAND_VOICE,
 } from "./brand-foundation";
-

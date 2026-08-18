@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Package,
@@ -34,6 +35,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import type { Office, BookingRequest } from "@shared/schema";
 
 const mainNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -54,6 +56,23 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const [portalCopied, setPortalCopied] = useState(false);
 
+  const { data: office } = useQuery<Office | null>({
+    queryKey: ["/api/office"],
+  });
+  const { data: staffAccess } = useQuery<{ isSuperAdmin: boolean }>({
+    queryKey: ["/api/staff/me"],
+  });
+
+  const { data: bookingRequests } = useQuery<BookingRequest[]>({
+    queryKey: ["/api/booking-requests"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 20_000,
+  });
+
+  const pendingRequestCount =
+    bookingRequests?.filter((r) => r.status === "pending" || r.status === "reviewed").length ?? 0;
+
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
     return name
@@ -68,7 +87,10 @@ export function AppSidebar() {
     ? `${user.user_metadata.firstName}${user.user_metadata.lastName ? ` ${user.user_metadata.lastName}` : ""}`
     : user?.email || "User";
 
-  const portalUrl = `${window.location.origin}/book`;
+  // Always point customers at this staff office so bookings land in Booking Requests here.
+  const portalUrl = office?.publicSlug
+    ? `${window.location.origin}/book/${office.publicSlug}`
+    : `${window.location.origin}/book`;
 
   const copyPortalLink = async () => {
     if (!portalUrl) return;
@@ -132,9 +154,18 @@ export function AppSidebar() {
                     <Link
                       href={item.url}
                       data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                      className="relative"
                     >
                       <item.icon className="size-4 shrink-0" />
                       <span>{item.title}</span>
+                      {item.url === "/booking-requests" && pendingRequestCount > 0 && (
+                        <span
+                          className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
+                          data-testid="badge-pending-booking-requests"
+                        >
+                          {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -174,26 +205,28 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {settingsNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title} isActive={location === item.url}>
-                    <Link
-                      href={item.url}
-                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      <item.icon className="size-4 shrink-0" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {staffAccess?.isSuperAdmin ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>Settings</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {settingsNavItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild tooltip={item.title} isActive={location === item.url}>
+                      <Link
+                        href={item.url}
+                        data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        <item.icon className="size-4 shrink-0" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter>
@@ -219,7 +252,6 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-
       <SidebarRail />
     </Sidebar>
   );

@@ -230,6 +230,9 @@ export default function DashboardPage() {
 
   const { data: bookingRequests, isLoading: requestsLoading } = useQuery<BookingRequest[]>({
     queryKey: ["/api/booking-requests"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 20_000,
   });
 
   const { data: reportData, isLoading: chartsLoading } = useQuery<ReportData>({

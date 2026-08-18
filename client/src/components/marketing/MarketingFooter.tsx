@@ -78,12 +78,18 @@ export function MarketingFooter() {
                 {XGOO_CONTACT.email}
               </a>
               <a
+                href={`tel:${XGOO_CONTACT.phone.replace(/\s/g, "")}`}
+                className="block hover:text-white"
+              >
+                Phone {XGOO_CONTACT.phone}
+              </a>
+              <a
                 href={`https://wa.me/${XGOO_CONTACT.whatsapp}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block font-medium text-[#FF4907] hover:text-[#ff6a33]"
               >
-                WhatsApp {XGOO_CONTACT.phone}
+                WhatsApp {XGOO_CONTACT.whatsappDisplay}
               </a>
             </div>
           </div>

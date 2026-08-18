@@ -11,6 +11,7 @@ import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { SEO_PAGES, buildBreadcrumbJsonLd, buildLocalBusinessJsonLd } from "@/lib/seo";
 import { useToast } from "@/hooks/use-toast";
 import { Clock, Loader2, Mail, MapPin, Phone, Send } from "lucide-react";
+import { SiWhatsapp } from "react-icons/si";
 
 export default function ContactPage() {
   const { toast } = useToast();
@@ -70,6 +71,13 @@ export default function ContactPage() {
       href: `tel:${XGOO_CONTACT.phone.replace(/\s/g, "")}`,
     },
     {
+      icon: SiWhatsapp,
+      label: "WhatsApp Business",
+      value: XGOO_CONTACT.whatsappDisplay,
+      href: `https://wa.me/${XGOO_CONTACT.whatsapp}`,
+      external: true,
+    },
+    {
       icon: MapPin,
       label: "Office",
       value: XGOO_CONTACT.address,
@@ -127,7 +135,13 @@ export default function ContactPage() {
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">{item.label}</p>
                       {item.href ? (
-                        <a href={item.href} className="text-gray-900 hover:text-[#FF4907] transition-colors font-medium">
+                        <a
+                          href={item.href}
+                          className="text-gray-900 hover:text-[#FF4907] transition-colors font-medium"
+                          {...("external" in item && item.external
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : {})}
+                        >
                           {item.value}
                         </a>
                       ) : (

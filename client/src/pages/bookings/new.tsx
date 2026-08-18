@@ -552,8 +552,13 @@ export default function NewBookingPage() {
         length: maxLength > 0 ? maxLength.toString() : undefined,
         width: maxWidth > 0 ? maxWidth.toString() : undefined,
         height: maxHeight > 0 ? maxHeight.toString() : undefined,
+        weightRoundOff: "ceil_kg",
       });
-      return res.json();
+      const data = await res.json();
+      if (Array.isArray(data?.quotes) && data.quotes[0]) {
+        return data.quotes[0] as PricingQuoteResult;
+      }
+      return data as PricingQuoteResult;
     },
     enabled: !!selectedPartnerId && totalWeight > 0,
   });

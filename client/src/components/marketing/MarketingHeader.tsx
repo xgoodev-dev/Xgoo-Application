@@ -87,7 +87,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
       <LaunchingSoonRunner />
-      <nav className="border-b border-zinc-100 bg-white/95 shadow-sm backdrop-blur-md">
+      <nav className="border-b border-zinc-100 bg-white shadow-sm">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
           <button
             type="button"
@@ -116,11 +116,19 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
           <div className="flex shrink-0 items-center gap-2">
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => navigate("/book?mode=login")}
+              className="hidden sm:inline-flex rounded-none border-zinc-200 font-medium text-zinc-700 hover:text-[#FF4907]"
+            >
+              Sign in
+            </Button>
+            <Button
+              size="sm"
               onClick={() => navigate("/book")}
-              className="gap-1 border-0 bg-[#FF4907] px-4 font-semibold text-white hover:bg-[#e03d00]"
+              className="gap-1 rounded-none border-0 bg-[#FF4907] px-4 font-semibold text-white hover:bg-[#e03d00]"
             >
               <span className="sm:hidden">Book</span>
-              <span className="hidden sm:inline">Get Started</span>
+              <span className="hidden sm:inline">Book a Parcel</span>
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Button>
 
@@ -129,7 +137,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="lg:hidden shrink-0"
+                  className="lg:hidden shrink-0 rounded-none"
                   aria-label="Open menu"
                 >
                   <Menu className="h-4 w-4" />
@@ -143,10 +151,17 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
                   {navLinks}
                   <button
                     type="button"
+                    onClick={() => goTo("/book?mode=login")}
+                    className="text-left font-medium text-zinc-800 transition-colors hover:text-[#FF4907]"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => goTo("/book")}
                     className="text-left font-semibold text-[#FF4907] transition-colors hover:text-[#e03d00]"
                   >
-                    Get Started
+                    Book a Parcel
                   </button>
                 </div>
               </SheetContent>

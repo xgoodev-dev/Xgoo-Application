@@ -16,6 +16,7 @@ import {
   X,
   ArrowRight,
   ExternalLink,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -244,6 +245,28 @@ export default function ShipmentsPage() {
           </Link>
         </Button>
       </div>
+
+      <Card className="border-[#FF4907]/25 bg-[#FFF7F3]">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FF4907]/10 text-[#FF4907]">
+              <Inbox className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-zinc-900">Looking for website bookings?</p>
+              <p className="text-xs text-zinc-600">
+                Customer portal requests appear under Booking Requests first. Approve and convert them here to create a shipment.
+              </p>
+            </div>
+          </div>
+          <Button asChild variant="outline" className="shrink-0 border-[#FF4907]/30" data-testid="button-go-booking-requests">
+            <Link href="/booking-requests">
+              Open Booking Requests
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-4">

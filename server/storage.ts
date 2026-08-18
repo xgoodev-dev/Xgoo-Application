@@ -1,6 +1,7 @@
 import {
   offices,
   branches,
+  officeMembers,
   branchServiceAreas,
   customers,
   courierPartners,
@@ -14,10 +15,14 @@ import {
   customerUsers,
   customerSessions,
   customerAddresses,
+  customerPushTokens,
+  customerNotifications,
   type Office,
   type InsertOffice,
   type Branch,
   type InsertBranch,
+  type OfficeMember,
+  type InsertOfficeMember,
   type BranchServiceArea,
   type InsertBranchServiceArea,
   type BranchWithServiceAreas,
@@ -45,6 +50,9 @@ import {
   type InsertCustomerAddress,
   type CustomerSession,
   type InsertCustomerSession,
+  type CustomerPushToken,
+  type CustomerNotification,
+  type InsertCustomerNotification,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -59,6 +67,15 @@ export interface IStorage {
   createOffice(office: InsertOffice): Promise<Office>;
   updateOffice(id: string, office: Partial<InsertOffice>): Promise<Office | undefined>;
   backfillPublicSlugs(): Promise<void>;
+  getOfficeMemberByUserId(userId: string): Promise<OfficeMember | undefined>;
+  getOfficeMembersByOffice(officeId: string): Promise<OfficeMember[]>;
+  upsertOfficeMember(member: InsertOfficeMember): Promise<OfficeMember>;
+  updateOfficeMember(
+    id: string,
+    officeId: string,
+    data: Partial<InsertOfficeMember>,
+  ): Promise<OfficeMember | undefined>;
+  deleteOfficeMember(id: string, officeId: string): Promise<boolean>;
 
   // Branch operations
   getBranchesByOffice(officeId: string): Promise<BranchWithServiceAreas[]>;
@@ -100,6 +117,21 @@ export interface IStorage {
   insertTariffRateRows(rows: InsertTariffRateRow[]): Promise<number>;
   getActiveTariffRows(officeId: string, courierPartnerId: string): Promise<TariffRateRow[]>;
   getTariffRateRowsByVersion(tariffVersionId: string): Promise<TariffRateRow[]>;
+  getTariffRateRowsEnriched(tariffVersionId: string): Promise<Array<TariffRateRow & { partnerName: string; partnerCode: string }>>;
+  getTariffRateRow(id: string): Promise<TariffRateRow | undefined>;
+  updateTariffRateRow(id: string, data: Partial<InsertTariffRateRow>): Promise<TariffRateRow | undefined>;
+  deleteTariffRateRows(ids: string[]): Promise<number>;
+  bulkSaveTariffRows(
+    versionId: string,
+    officeId: string,
+    rows: Array<Partial<InsertTariffRateRow> & { id?: string }>,
+    userId?: string,
+  ): Promise<{ created: number; updated: number }>;
+  compareTariffVersions(
+    versionAId: string,
+    versionBId: string,
+  ): Promise<Array<{ weight: string; oldPrice: number; newPrice: number; diff: number; pctDiff: number }>>;
+  archiveTariffVersion(id: string, officeId: string): Promise<TariffVersion | undefined>;
   quotePrice(officeId: string, input: PricingQuoteInput): Promise<PricingQuoteResult | null>;
   quoteAllPartners(
     officeId: string,
@@ -138,11 +170,12 @@ export interface IStorage {
   deleteQuotation(id: string): Promise<boolean>;
 
   // Booking Request operations
-  getBookingRequestsByOffice(officeId: string): Promise<BookingRequest[]>;
+  getBookingRequestsByOffice(officeId: string, branchId?: string | null): Promise<BookingRequest[]>;
   getBookingRequest(id: string): Promise<BookingRequest | undefined>;
   createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest>;
   updateBookingRequestStatus(id: string, status: string, convertedShipmentId?: string): Promise<BookingRequest | undefined>;
   getShipmentForBookingRequest(request: BookingRequest): Promise<Shipment | undefined>;
+  getBookingRequestByShipmentId(shipmentId: string): Promise<BookingRequest | undefined>;
 
   // Customer User operations
   getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
@@ -156,6 +189,17 @@ export interface IStorage {
   getCustomerSessionByToken(token: string): Promise<CustomerSession | undefined>;
   deleteCustomerSession(token: string): Promise<boolean>;
   deleteExpiredSessions(): Promise<void>;
+  upsertCustomerPushToken(
+    customerUserId: string,
+    token: string,
+    platform: string,
+  ): Promise<CustomerPushToken>;
+  getCustomerPushTokens(customerUserId: string): Promise<CustomerPushToken[]>;
+  createCustomerNotification(
+    notification: InsertCustomerNotification,
+  ): Promise<CustomerNotification>;
+  getCustomerNotifications(customerUserId: string): Promise<CustomerNotification[]>;
+  markCustomerNotificationsRead(customerUserId: string, id?: string): Promise<void>;
 
   // Customer booking requests (by customer user)
   getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]>;
@@ -214,7 +258,20 @@ export class DatabaseStorage implements IStorage {
   // Office operations
   async getOfficeByUserId(userId: string): Promise<Office | undefined> {
     const [office] = await db.select().from(offices).where(eq(offices.userId, userId));
-    return office;
+    if (office) return office;
+
+    const [membership] = await db
+      .select({ office: offices })
+      .from(officeMembers)
+      .innerJoin(offices, eq(officeMembers.officeId, offices.id))
+      .where(
+        and(
+          eq(officeMembers.userId, userId),
+          eq(officeMembers.status, "active"),
+        ),
+      )
+      .limit(1);
+    return membership?.office;
   }
 
   async createOffice(office: InsertOffice): Promise<Office> {
@@ -224,6 +281,64 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(offices).values(office).returning();
     await this.ensureDefaultBranchForOffice(created);
     return created;
+  }
+
+  async getOfficeMemberByUserId(userId: string): Promise<OfficeMember | undefined> {
+    const [member] = await db
+      .select()
+      .from(officeMembers)
+      .where(eq(officeMembers.userId, userId))
+      .limit(1);
+    return member;
+  }
+
+  async getOfficeMembersByOffice(officeId: string): Promise<OfficeMember[]> {
+    return db
+      .select()
+      .from(officeMembers)
+      .where(eq(officeMembers.officeId, officeId))
+      .orderBy(asc(officeMembers.displayName), asc(officeMembers.email));
+  }
+
+  async upsertOfficeMember(member: InsertOfficeMember): Promise<OfficeMember> {
+    const [saved] = await db
+      .insert(officeMembers)
+      .values(member)
+      .onConflictDoUpdate({
+        target: officeMembers.userId,
+        set: {
+          officeId: member.officeId,
+          email: member.email,
+          displayName: member.displayName,
+          role: member.role,
+          status: member.status,
+          branchId: member.branchId,
+          invitedByUserId: member.invitedByUserId,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return saved;
+  }
+
+  async updateOfficeMember(
+    id: string,
+    officeId: string,
+    data: Partial<InsertOfficeMember>,
+  ): Promise<OfficeMember | undefined> {
+    const [updated] = await db
+      .update(officeMembers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(officeMembers.id, id), eq(officeMembers.officeId, officeId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteOfficeMember(id: string, officeId: string): Promise<boolean> {
+    const result = await db
+      .delete(officeMembers)
+      .where(and(eq(officeMembers.id, id), eq(officeMembers.officeId, officeId)));
+    return (result.rowCount ?? 0) > 0;
   }
 
   private async generateUniqueSlug(name: string): Promise<string> {
@@ -421,6 +536,138 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(tariffRateRows.weightMin));
   }
 
+  async getTariffRateRowsEnriched(tariffVersionId: string) {
+    const rows = await db
+      .select({
+        row: tariffRateRows,
+        partnerName: courierPartners.name,
+        partnerCode: courierPartners.code,
+      })
+      .from(tariffRateRows)
+      .innerJoin(courierPartners, eq(tariffRateRows.courierPartnerId, courierPartners.id))
+      .where(eq(tariffRateRows.tariffVersionId, tariffVersionId))
+      .orderBy(asc(tariffRateRows.weightMin));
+    return rows.map((r) => ({
+      ...r.row,
+      partnerName: r.partnerName,
+      partnerCode: r.partnerCode,
+    }));
+  }
+
+  async getTariffRateRow(id: string): Promise<TariffRateRow | undefined> {
+    const [row] = await db.select().from(tariffRateRows).where(eq(tariffRateRows.id, id));
+    return row;
+  }
+
+  async updateTariffRateRow(id: string, data: Partial<InsertTariffRateRow>): Promise<TariffRateRow | undefined> {
+    const [updated] = await db
+      .update(tariffRateRows)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tariffRateRows.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTariffRateRows(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.delete(tariffRateRows).where(inArray(tariffRateRows.id, ids));
+    return ids.length;
+  }
+
+  async bulkSaveTariffRows(
+    versionId: string,
+    officeId: string,
+    rows: Array<Partial<InsertTariffRateRow> & { id?: string }>,
+    userId?: string,
+  ): Promise<{ created: number; updated: number }> {
+    let created = 0;
+    let updated = 0;
+    for (const row of rows) {
+      const { id, ...data } = row;
+      if (id && !id.startsWith("new-")) {
+        await this.updateTariffRateRow(id, { ...data, updatedBy: userId || null });
+        updated++;
+      } else {
+        await db.insert(tariffRateRows).values({
+          tariffVersionId: versionId,
+          officeId,
+          courierPartnerId: data.courierPartnerId!,
+          serviceType: data.serviceType || "surface",
+          shipmentType: data.shipmentType || "domestic",
+          originCountry: data.originCountry || "IN",
+          destinationCountry: data.destinationCountry || null,
+          originPincode: data.originPincode || null,
+          destinationPincode: data.destinationPincode || null,
+          originZone: data.originZone || null,
+          destinationZone: data.destinationZone || null,
+          weightMin: data.weightMin || "0",
+          weightMax: data.weightMax || "999",
+          tariffAmount: data.tariffAmount || "0",
+          fixedMargin: data.fixedMargin || "0",
+          percentageMargin: data.percentageMargin || "0",
+          affiliateMargin: data.affiliateMargin || "0",
+          offerDiscount: data.offerDiscount || "0",
+          fuelCharge: data.fuelCharge || "0",
+          handlingCharge: data.handlingCharge || "0",
+          insuranceCharge: data.insuranceCharge || "0",
+          remoteAreaCharge: data.remoteAreaCharge || "0",
+          gst: data.gst || "0",
+          customerPrice: data.customerPrice || "0",
+          transitDays: data.transitDays ?? null,
+          isActive: data.isActive !== false,
+          notes: data.notes || null,
+          customFields: data.customFields || {},
+          updatedBy: userId || null,
+        });
+        created++;
+      }
+    }
+    const count = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(tariffRateRows)
+      .where(eq(tariffRateRows.tariffVersionId, versionId));
+    await this.updateTariffVersion(versionId, { rowCount: count[0]?.c ?? 0 });
+    return { created, updated };
+  }
+
+  async compareTariffVersions(versionAId: string, versionBId: string) {
+    const [rowsA, rowsB] = await Promise.all([
+      this.getTariffRateRowsByVersion(versionAId),
+      this.getTariffRateRowsByVersion(versionBId),
+    ]);
+    const mapA = new Map(rowsA.map((r) => [
+      `${r.courierPartnerId}|${r.serviceType}|${r.weightMin}|${r.weightMax}|${r.originPincode}|${r.destinationPincode}`,
+      parseFloat(r.customerPrice || r.tariffAmount || "0"),
+    ]));
+    const mapB = new Map(rowsB.map((r) => [
+      `${r.courierPartnerId}|${r.serviceType}|${r.weightMin}|${r.weightMax}|${r.originPincode}|${r.destinationPincode}`,
+      { price: parseFloat(r.customerPrice || r.tariffAmount || "0"), row: r },
+    ]));
+    const keys = Array.from(new Set([...Array.from(mapA.keys()), ...Array.from(mapB.keys())]));
+    const result: Array<{ weight: string; oldPrice: number; newPrice: number; diff: number; pctDiff: number }> = [];
+    for (const key of keys) {
+      const oldPrice = mapA.get(key) ?? 0;
+      const bEntry = mapB.get(key);
+      const newPrice = bEntry?.price ?? 0;
+      const weight = bEntry?.row ? `${bEntry.row.weightMin}–${bEntry.row.weightMax}` : key.split("|")[2] + "–" + key.split("|")[3];
+      const diff = newPrice - oldPrice;
+      const pctDiff = oldPrice > 0 ? Math.round((diff / oldPrice) * 10000) / 100 : newPrice > 0 ? 100 : 0;
+      result.push({ weight, oldPrice, newPrice, diff, pctDiff });
+    }
+    return result.sort((a, b) => a.weight.localeCompare(b.weight));
+  }
+
+  async archiveTariffVersion(id: string, officeId: string): Promise<TariffVersion | undefined> {
+    const version = await this.getTariffVersion(id);
+    if (!version || version.officeId !== officeId) return undefined;
+    const [archived] = await db
+      .update(tariffVersions)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(eq(tariffVersions.id, id))
+      .returning();
+    return archived;
+  }
+
   async quotePrice(officeId: string, input: PricingQuoteInput): Promise<PricingQuoteResult | null> {
     const partner = await this.getPartner(input.courierPartnerId);
     if (!partner || partner.officeId !== officeId || !partner.isActive) return null;
@@ -606,8 +853,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Booking Request operations
-  async getBookingRequestsByOffice(officeId: string): Promise<BookingRequest[]> {
-    return db.select().from(bookingRequests).where(eq(bookingRequests.officeId, officeId)).orderBy(desc(bookingRequests.createdAt));
+  async getBookingRequestsByOffice(
+    officeId: string,
+    branchId?: string | null,
+  ): Promise<BookingRequest[]> {
+    return db
+      .select()
+      .from(bookingRequests)
+      .where(
+        branchId
+          ? and(
+              eq(bookingRequests.officeId, officeId),
+              eq(bookingRequests.branchId, branchId),
+            )
+          : eq(bookingRequests.officeId, officeId),
+      )
+      .orderBy(desc(bookingRequests.createdAt));
   }
 
   async getBookingRequest(id: string): Promise<BookingRequest | undefined> {
@@ -671,6 +932,17 @@ export class DatabaseStorage implements IStorage {
     return undefined;
   }
 
+  async getBookingRequestByShipmentId(
+    shipmentId: string,
+  ): Promise<BookingRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(bookingRequests)
+      .where(eq(bookingRequests.convertedShipmentId, shipmentId))
+      .limit(1);
+    return request;
+  }
+
   // Customer User operations
   async getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined> {
     const [user] = await db.select().from(customerUsers).where(
@@ -725,6 +997,66 @@ export class DatabaseStorage implements IStorage {
 
   async deleteExpiredSessions(): Promise<void> {
     await db.delete(customerSessions).where(lte(customerSessions.expiresAt, new Date()));
+  }
+
+  async upsertCustomerPushToken(
+    customerUserId: string,
+    token: string,
+    platform: string,
+  ): Promise<CustomerPushToken> {
+    const [saved] = await db
+      .insert(customerPushTokens)
+      .values({ customerUserId, token, platform })
+      .onConflictDoUpdate({
+        target: customerPushTokens.token,
+        set: { customerUserId, platform, updatedAt: new Date() },
+      })
+      .returning();
+    return saved;
+  }
+
+  async getCustomerPushTokens(customerUserId: string): Promise<CustomerPushToken[]> {
+    return db
+      .select()
+      .from(customerPushTokens)
+      .where(eq(customerPushTokens.customerUserId, customerUserId));
+  }
+
+  async createCustomerNotification(
+    notification: InsertCustomerNotification,
+  ): Promise<CustomerNotification> {
+    const [created] = await db
+      .insert(customerNotifications)
+      .values(notification)
+      .returning();
+    return created;
+  }
+
+  async getCustomerNotifications(
+    customerUserId: string,
+  ): Promise<CustomerNotification[]> {
+    return db
+      .select()
+      .from(customerNotifications)
+      .where(eq(customerNotifications.customerUserId, customerUserId))
+      .orderBy(desc(customerNotifications.createdAt));
+  }
+
+  async markCustomerNotificationsRead(
+    customerUserId: string,
+    id?: string,
+  ): Promise<void> {
+    await db
+      .update(customerNotifications)
+      .set({ readAt: new Date() })
+      .where(
+        id
+          ? and(
+              eq(customerNotifications.customerUserId, customerUserId),
+              eq(customerNotifications.id, id),
+            )
+          : eq(customerNotifications.customerUserId, customerUserId),
+      );
   }
 
   // Customer booking requests
@@ -1099,18 +1431,54 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDefaultBookingOffice(): Promise<Office | undefined> {
+    const canonicalOfficeId = process.env.XGOO_CANONICAL_OFFICE_ID?.trim();
+    if (canonicalOfficeId) {
+      const [office] = await db
+        .select()
+        .from(offices)
+        .where(eq(offices.id, canonicalOfficeId))
+        .limit(1);
+      if (office) return office;
+    }
+
     const envSlug = process.env.DEFAULT_OFFICE_SLUG?.trim();
     if (envSlug) {
       const office = await this.getOfficeBySlug(envSlug);
       if (office) return office;
     }
-    const [office] = await db
-      .select()
+
+    const withSlug = await db
+      .select({
+        office: offices,
+        bookingCount: count(bookingRequests.id),
+      })
       .from(offices)
+      .leftJoin(bookingRequests, eq(bookingRequests.officeId, offices.id))
       .where(isNotNull(offices.publicSlug))
-      .orderBy(asc(offices.createdAt))
-      .limit(1);
-    return office;
+      .groupBy(offices.id)
+      .orderBy(desc(count(bookingRequests.id)), desc(offices.createdAt));
+
+    if (withSlug.length === 0) return undefined;
+    if (withSlug.length === 1) return withSlug[0].office;
+
+    // Use the established operational office, not a newly-created empty
+    // placeholder. This keeps customer apps and the Staff Portal in one tenant.
+    const activeOffice = withSlug.find(
+      ({ office, bookingCount }) =>
+        Number(bookingCount) > 0 &&
+        office.publicSlug !== "demo-office" &&
+        !/^demo/i.test(office.name || ""),
+    );
+    if (activeOffice) return activeOffice.office;
+
+    // Prefer a real tenant office over seed/demo placeholders when /book has no slug.
+    const preferred = withSlug.find(
+      ({ office }) =>
+        office.publicSlug !== "demo-office" &&
+        office.name !== "My Courier Office" &&
+        !/^demo/i.test(office.name || ""),
+    );
+    return preferred?.office || withSlug[0].office;
   }
 
   // Dashboard stats

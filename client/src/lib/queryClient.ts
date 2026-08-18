@@ -16,6 +16,9 @@ async function throwIfResNotOk(res: Response) {
     try {
       const j = JSON.parse(text) as {
         message?: string;
+        hint?: string;
+        parseErrors?: string[];
+        partnerCodes?: string[];
         step?: string;
         details?: {
           type?: string;
@@ -29,6 +32,13 @@ async function throwIfResNotOk(res: Response) {
       };
       if (typeof j.message === "string" && j.message.trim()) {
         detail = j.message.trim();
+        if (j.hint) detail += ` ${j.hint}`;
+        if (Array.isArray(j.parseErrors) && j.parseErrors.length > 0) {
+          detail += ` (${j.parseErrors.slice(0, 3).join("; ")})`;
+        }
+        if (Array.isArray(j.partnerCodes) && j.partnerCodes.length > 0 && detail.includes("Courier Partners")) {
+          detail += ` Available: ${j.partnerCodes.join(", ")}.`;
+        }
         const parts: string[] = [];
         if (j.step) parts.push(`step: ${j.step}`);
         if (j.details?.code != null) parts.push(`Meta #${j.details.code}`);
@@ -64,6 +74,73 @@ export async function apiRequest(
   });
 
   await throwIfResNotOk(res);
+  return res;
+}
+
+/** Read a file as base64 for JSON tariff upload (avoids multipart parsing issues). */
+export async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    for (let j = 0; j < slice.length; j++) {
+      binary += String.fromCharCode(slice[j]);
+    }
+  }
+  return btoa(binary);
+}
+
+export type TariffUploadPayload = {
+  label: string;
+  fileName: string;
+  fileData: string;
+  courierPartnerId?: string;
+  compareVersionId?: string;
+  validFrom?: string;
+  validTo?: string;
+  activate?: "true" | "false";
+};
+
+/** JSON body for tariff preview / import (preferred over multipart). */
+export async function buildTariffUploadPayload(
+  file: File,
+  meta: Omit<TariffUploadPayload, "fileName" | "fileData">,
+): Promise<TariffUploadPayload> {
+  return {
+    ...meta,
+    fileName: file.name,
+    fileData: await fileToBase64(file),
+  };
+}
+
+/** Multipart upload (e.g. CSV/Excel) — do not set Content-Type; browser adds boundary. */
+export async function apiFormRequest(
+  method: string,
+  url: string,
+  formData: FormData,
+): Promise<Response> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(url, {
+    method,
+    headers: authHeaders,
+    body: formData,
+    credentials: "include",
+  });
+  await throwIfResNotOk(res);
+  return res;
+}
+
+/** Authenticated fetch for downloads and custom requests. */
+export async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  const authHeaders = await getAuthHeaders();
+  const extra = (init?.headers as Record<string, string> | undefined) ?? {};
+  const res = await fetch(url, {
+    ...init,
+    headers: { ...authHeaders, ...extra },
+    credentials: "include",
+  });
   return res;
 }
 

@@ -15,16 +15,25 @@ declare module "http" {
   }
 }
 
-app.use(
+function isMultipart(req: Request): boolean {
+  const ct = req.headers["content-type"] || "";
+  return ct.includes("multipart/form-data");
+}
+
+app.use((req, res, next) => {
+  if (isMultipart(req)) return next();
   express.json({
     limit: "50mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
-  }),
-);
+  })(req, res, next);
+});
 
-app.use(express.urlencoded({ extended: false }));
+app.use((req, res, next) => {
+  if (isMultipart(req)) return next();
+  express.urlencoded({ extended: false })(req, res, next);
+});
 
 // Serve local uploads
 app.use("/objects", express.static("uploads"));

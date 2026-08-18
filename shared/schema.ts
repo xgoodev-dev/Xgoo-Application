@@ -1,12 +1,13 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export * from "./models/auth";
 export * from "./models/chat";
+import { users } from "./models/auth";
 
-// Organization account (e.g. XGoo) — one per staff user
+// Organization account. userId remains the Super Admin/owner identity.
 export const offices = pgTable("offices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique(),
@@ -22,6 +23,7 @@ export const offices = pgTable("offices", {
   publicSlug: varchar("public_slug", { length: 50 }).unique(),
   documentSettings: jsonb("document_settings"),
   whatsappSettings: jsonb("whatsapp_settings"),
+  pickupSettings: jsonb("pickup_settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -33,6 +35,7 @@ export const officesRelations = relations(offices, ({ many }) => ({
   courierPartners: many(courierPartners),
   shipments: many(shipments),
   branches: many(branches),
+  members: many(officeMembers),
 }));
 
 // Operational branches under an organization
@@ -60,6 +63,39 @@ export const branchesRelations = relations(branches, ({ one, many }) => ({
     references: [offices.id],
   }),
   serviceAreas: many(branchServiceAreas),
+  members: many(officeMembers),
+}));
+
+// Staff identities sharing one organization. Authorization is database-backed;
+// Supabase metadata is presentation-only and is not trusted for access control.
+export const officeMembers = pgTable("office_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  displayName: varchar("display_name", { length: 255 }),
+  role: varchar("role", { length: 30 }).notNull().default("staff"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  branchId: varchar("branch_id").references(() => branches.id, { onDelete: "set null" }),
+  invitedByUserId: varchar("invited_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_office_members_user").on(table.userId),
+  uniqueIndex("uq_office_members_email").on(table.email),
+  index("idx_office_members_office").on(table.officeId),
+  index("idx_office_members_branch").on(table.branchId),
+]);
+
+export const officeMembersRelations = relations(officeMembers, ({ one }) => ({
+  office: one(offices, {
+    fields: [officeMembers.officeId],
+    references: [offices.id],
+  }),
+  branch: one(branches, {
+    fields: [officeMembers.branchId],
+    references: [branches.id],
+  }),
 }));
 
 // Pincodes (and optional radius) each branch serves
@@ -163,8 +199,10 @@ export const tariffVersions = pgTable("tariff_versions", {
   fileUrl: varchar("file_url", { length: 500 }),
   validFrom: timestamp("valid_from").notNull(),
   validTo: timestamp("valid_to"),
-  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft, active, expired
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft, active, expired, archived
   rowCount: integer("row_count").default(0),
+  uploadedBy: varchar("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  columnConfig: jsonb("column_config").default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -199,6 +237,25 @@ export const tariffRateRows = pgTable("tariff_rate_rows", {
   weightMin: decimal("weight_min", { precision: 10, scale: 2 }).notNull().default("0"),
   weightMax: decimal("weight_max", { precision: 10, scale: 2 }).notNull().default("999"),
   tariffAmount: decimal("tariff_amount", { precision: 12, scale: 2 }).notNull(),
+  shipmentType: varchar("shipment_type", { length: 30 }).default("domestic"),
+  originCountry: varchar("origin_country", { length: 100 }).default("IN"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  fixedMargin: decimal("fixed_margin", { precision: 12, scale: 2 }).default("0"),
+  percentageMargin: decimal("percentage_margin", { precision: 8, scale: 2 }).default("0"),
+  affiliateMargin: decimal("affiliate_margin", { precision: 12, scale: 2 }).default("0"),
+  offerDiscount: decimal("offer_discount", { precision: 12, scale: 2 }).default("0"),
+  fuelCharge: decimal("fuel_charge", { precision: 12, scale: 2 }).default("0"),
+  handlingCharge: decimal("handling_charge", { precision: 12, scale: 2 }).default("0"),
+  insuranceCharge: decimal("insurance_charge", { precision: 12, scale: 2 }).default("0"),
+  remoteAreaCharge: decimal("remote_area_charge", { precision: 12, scale: 2 }).default("0"),
+  gst: decimal("gst", { precision: 12, scale: 2 }).default("0"),
+  customerPrice: decimal("customer_price", { precision: 12, scale: 2 }).default("0"),
+  transitDays: integer("transit_days"),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  customFields: jsonb("custom_fields").default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_tariff_rate_rows_version").on(table.tariffVersionId),
@@ -444,16 +501,23 @@ export const bookingRequests = pgTable("booking_requests", {
   // Service preference
   serviceType: varchar("service_type", { length: 20 }).default("surface"),
   courierPreference: varchar("courier_preference", { length: 255 }),
+  // domestic | international
+  shipmentType: varchar("shipment_type", { length: 30 }).notNull().default("domestic"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
   
   // Pickup location
   pickupLat: decimal("pickup_lat", { precision: 10, scale: 7 }),
   pickupLng: decimal("pickup_lng", { precision: 10, scale: 7 }),
   pickupLocationName: varchar("pickup_location_name", { length: 500 }),
   pickupDate: varchar("pickup_date", { length: 10 }),
-  pickupTimeSlot: varchar("pickup_time_slot", { length: 20 }),
+  pickupTimeSlot: varchar("pickup_time_slot", { length: 40 }),
   
   // Customer user link
   customerUserId: varchar("customer_user_id").references(() => customerUsers.id),
+
+  // Origin channel: mobile_android, mobile_ios, whatsapp, in_store,
+  // website, customer_portal, phone, partner_api, or legacy.
+  source: varchar("source", { length: 30 }).notNull().default("legacy"),
   
   // Status
   status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, reviewed, approved, rejected, converted
@@ -509,6 +573,8 @@ export const customerUsersRelations = relations(customerUsers, ({ one, many }) =
     references: [offices.id],
   }),
   addresses: many(customerAddresses),
+  pushTokens: many(customerPushTokens),
+  notifications: many(customerNotifications),
 }));
 
 // Saved addresses for customer portal users
@@ -557,6 +623,46 @@ export const customerSessionsRelations = relations(customerSessions, ({ one }) =
   }),
 }));
 
+export const customerPushTokens = pgTable("customer_push_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 255 }).notNull(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_customer_push_tokens_token").on(table.token),
+  index("idx_customer_push_tokens_user").on(table.customerUserId),
+]);
+
+export const customerPushTokensRelations = relations(customerPushTokens, ({ one }) => ({
+  customerUser: one(customerUsers, {
+    fields: [customerPushTokens.customerUserId],
+    references: [customerUsers.id],
+  }),
+}));
+
+export const customerNotifications = pgTable("customer_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  type: varchar("type", { length: 40 }).notNull().default("general"),
+  data: jsonb("data"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_customer_notifications_user").on(table.customerUserId),
+  index("idx_customer_notifications_created").on(table.createdAt),
+]);
+
+export const customerNotificationsRelations = relations(customerNotifications, ({ one }) => ({
+  customerUser: one(customerUsers, {
+    fields: [customerNotifications.customerUserId],
+    references: [customerUsers.id],
+  }),
+}));
+
 // Insert schemas
 export const insertOfficeSchema = createInsertSchema(offices).omit({
   id: true,
@@ -565,6 +671,12 @@ export const insertOfficeSchema = createInsertSchema(offices).omit({
 });
 
 export const insertBranchSchema = createInsertSchema(branches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOfficeMemberSchema = createInsertSchema(officeMembers).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -596,6 +708,7 @@ export const insertTariffVersionSchema = createInsertSchema(tariffVersions).omit
 export const insertTariffRateRowSchema = createInsertSchema(tariffRateRows).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export const insertShipmentSchema = createInsertSchema(shipments).omit({
@@ -645,12 +758,26 @@ export const insertCustomerSessionSchema = createInsertSchema(customerSessions).
   createdAt: true,
 });
 
+export const insertCustomerPushTokenSchema = createInsertSchema(customerPushTokens).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCustomerNotificationSchema = createInsertSchema(customerNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Office = typeof offices.$inferSelect;
 export type InsertOffice = z.infer<typeof insertOfficeSchema>;
 
 export type Branch = typeof branches.$inferSelect;
 export type InsertBranch = z.infer<typeof insertBranchSchema>;
+
+export type OfficeMember = typeof officeMembers.$inferSelect;
+export type InsertOfficeMember = z.infer<typeof insertOfficeMemberSchema>;
 
 export type BranchServiceArea = typeof branchServiceAreas.$inferSelect;
 export type InsertBranchServiceArea = z.infer<typeof insertBranchServiceAreaSchema>;
@@ -694,6 +821,12 @@ export type InsertCustomerAddress = z.infer<typeof insertCustomerAddressSchema>;
 
 export type CustomerSession = typeof customerSessions.$inferSelect;
 export type InsertCustomerSession = z.infer<typeof insertCustomerSessionSchema>;
+
+export type CustomerPushToken = typeof customerPushTokens.$inferSelect;
+export type InsertCustomerPushToken = z.infer<typeof insertCustomerPushTokenSchema>;
+
+export type CustomerNotification = typeof customerNotifications.$inferSelect;
+export type InsertCustomerNotification = z.infer<typeof insertCustomerNotificationSchema>;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

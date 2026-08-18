@@ -136,7 +136,7 @@ const faqs = [
   },
   {
     q: "How do I contact support?",
-    a: `Chat with us on WhatsApp at ${XGOO_CONTACT.phone}, email ${XGOO_CONTACT.email}, or use the Contact page. Support hours: ${XGOO_CONTACT.hours}.`,
+    a: `Chat with us on WhatsApp at ${XGOO_CONTACT.whatsappDisplay}, call ${XGOO_CONTACT.phone}, email ${XGOO_CONTACT.email}, or use the Contact page. Support hours: ${XGOO_CONTACT.hours}.`,
   },
   {
     q: "What if my parcel is delayed or returned?",

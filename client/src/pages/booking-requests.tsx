@@ -73,17 +73,44 @@ const statusLabels: Record<string, string> = {
   converted: "Converted",
 };
 
+const sourceLabels: Record<string, string> = {
+  mobile_android: "Android App",
+  mobile_ios: "iOS App",
+  mobile_app: "Mobile App (Legacy)",
+  whatsapp: "WhatsApp",
+  in_store: "In Store",
+  phone: "Phone",
+  partner_api: "Partner API",
+  customer_portal: "Web Customer Portal",
+  website: "Website",
+  staff_portal: "Staff Portal",
+  api: "API",
+  legacy: "Legacy",
+};
+
+function bookingSourceLabel(request: BookingRequest) {
+  if (request.source === "legacy" && request.customerUserId) {
+    return "Customer App / Portal";
+  }
+  return sourceLabels[request.source] || "Unknown";
+}
+
 export default function BookingRequestsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedRequest, setSelectedRequest] = useState<BookingRequest | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
-  const { data: bookingRequests, isLoading } = useQuery<BookingRequest[]>({
+  const { data: bookingRequests, isLoading, isFetching, refetch } = useQuery<BookingRequest[]>({
     queryKey: ["/api/booking-requests"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 15_000,
   });
 
   const updateStatusMutation = useMutation({
@@ -161,8 +188,9 @@ export default function BookingRequestsPage() {
       request.receiverPhone.includes(search);
 
     const matchesStatus = statusFilter === "all" || request.status === statusFilter;
+    const matchesSource = sourceFilter === "all" || request.source === sourceFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesSource;
   });
 
   return (
@@ -170,8 +198,20 @@ export default function BookingRequestsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Booking Requests</h1>
-          <p className="text-muted-foreground">Review and process customer booking requests</p>
+          <p className="text-muted-foreground">
+            Review requests from every booking channel, then approve and convert them into shipments.
+          </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          data-testid="button-refresh-booking-requests"
+        >
+          {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Refresh
+        </Button>
       </div>
 
       <Card>
@@ -202,6 +242,22 @@ export default function BookingRequestsPage() {
                   <SelectItem value="converted">Converted</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[170px]" data-testid="select-source-filter">
+                  <SelectValue placeholder="Booking source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="mobile_android">Android App</SelectItem>
+                  <SelectItem value="mobile_ios">iOS App</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="in_store">In Store</SelectItem>
+                  <SelectItem value="website">Website</SelectItem>
+                  <SelectItem value="customer_portal">Web Customer Portal</SelectItem>
+                  <SelectItem value="phone">Phone</SelectItem>
+                  <SelectItem value="partner_api">Partner API</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
@@ -230,6 +286,7 @@ export default function BookingRequestsPage() {
                     <TableHead>Request #</TableHead>
                     <TableHead>Sender</TableHead>
                     <TableHead>Receiver</TableHead>
+                    <TableHead>Created from</TableHead>
                     <TableHead>Service</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Date</TableHead>
@@ -256,8 +313,18 @@ export default function BookingRequestsPage() {
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          {bookingSourceLabel(request)}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="capitalize">
-                        {request.serviceType || "surface"}
+                        <div className="space-y-1">
+                          <div>{request.serviceType || "surface"}</div>
+                          <Badge variant="secondary" className="whitespace-nowrap capitalize">
+                            {request.shipmentType === "international" ? "International" : "Domestic"}
+                          </Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={statusColors[request.status]}>
@@ -334,6 +401,15 @@ export default function BookingRequestsPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className={statusColors[selectedRequest.status]}>
                   {statusLabels[selectedRequest.status]}
+                </Badge>
+                <Badge variant="outline">
+                  Created from {bookingSourceLabel(selectedRequest)}
+                </Badge>
+                <Badge variant="secondary" className="capitalize">
+                  {selectedRequest.shipmentType === "international" ? "International" : "Domestic"}
+                  {selectedRequest.shipmentType === "international" && selectedRequest.destinationCountry
+                    ? ` · ${selectedRequest.destinationCountry}`
+                    : ""}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
                   Submitted on {selectedRequest.createdAt 

@@ -49,7 +49,7 @@ export const SEO_PAGES = {
   contact: {
     path: "/contact",
     title: "Contact XGoo | Support & Enquiries",
-    description: `Contact XGoo at ${XGOO_CONTACT.email} or WhatsApp ${XGOO_CONTACT.phone}. ${XGOO_CONTACT.hours}. ${XGOO_CONTACT.address}.`,
+    description: `Contact XGoo at ${XGOO_CONTACT.email}, phone ${XGOO_CONTACT.phone}, or WhatsApp ${XGOO_CONTACT.whatsappDisplay}. ${XGOO_CONTACT.hours}. ${XGOO_CONTACT.address}.`,
     keywords: ["contact XGoo", "courier support", "WhatsApp courier"],
   },
   book: {
