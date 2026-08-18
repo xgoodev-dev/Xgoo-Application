@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
@@ -6,6 +6,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Circle,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,16 @@ import {
 } from "@shared/partner-sync";
 import type { CourierPartner, ShipmentWithRelations } from "@shared/schema";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isWorldFirstPartner } from "@shared/world-first";
+import type { BookingWorkflowStep } from "@shared/world-first";
+import {
+  BOOKING_JOB_STATUS_LABELS,
+  BOOKING_METHOD_LABELS,
+  resolveBookingMethod,
+  type BookingJobStatus,
+  type BookingMethod,
+  type BookingValidationIssue,
+} from "@shared/booking-engine";
 import { cn } from "@/lib/utils";
 
 const syncStatusColors: Record<PartnerSyncStatus, string> = {
@@ -42,6 +54,27 @@ const syncStatusColors: Record<PartnerSyncStatus, string> = {
   synced: "bg-green-100 text-green-800 dark:bg-zinc-800 dark:text-green-400",
   failed: "bg-red-100 text-red-800 dark:bg-zinc-800 dark:text-red-400",
 };
+
+interface BookingSnapshot {
+  job: {
+    id: string;
+    status: BookingJobStatus;
+    bookingMethod: BookingMethod;
+    attemptCount: number;
+    maxAttempts: number;
+    error?: string | null;
+    actionRequiredReason?: string | null;
+    nextAction?: string | null;
+    awbNumber?: string | null;
+  } | null;
+  events: Array<{ id: string; step: string; message: string; createdAt: string }>;
+  method: BookingMethod;
+  connectorId?: string | null;
+  ready: boolean;
+  issues: BookingValidationIssue[];
+  workflow?: BookingWorkflowStep[];
+  autofillToken?: string;
+}
 
 interface PartnerSyncPanelProps {
   shipment: ShipmentWithRelations;
@@ -67,29 +100,46 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     return shipment.courierPartner ?? undefined;
   }, [shipment.courierPartnerId, shipment.courierPartner, partners]);
 
-  const payload = useMemo(
-    () => buildPartnerSyncPayload(shipment, partner ?? undefined),
-    [shipment, partner],
-  );
+  const { data: booking, isLoading: bookingLoading } = useQuery<BookingSnapshot>({
+    queryKey: ["/api/shipments", shipment.id, "booking"],
+  });
+
+  const payload = useMemo(() => {
+    const base = buildPartnerSyncPayload(shipment, partner ?? undefined);
+    return {
+      ...base,
+      autofillToken: booking?.autofillToken,
+      xgooOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+    };
+  }, [shipment, partner, booking?.autofillToken]);
+
+  useEffect(() => {
+    if (!payload.shipmentId || !payload.partnerCode) return;
+    notifyExtension(payload);
+  }, [payload]);
 
   const resolvedPortalUrl = payload.portalUrl ?? resolvePartnerPortalUrl(partner ?? undefined);
   const portalConfigured = !!resolvedPortalUrl;
   const isDelhivery = isDelhiveryPartner(partner?.code, partner?.name);
+  const isWorldFirst = isWorldFirstPartner(partner?.code, partner?.name);
 
-  const { data: delhiveryStatus } = useQuery<{ configured: boolean }>({
-    queryKey: ["/api/integrations/delhivery/status"],
-    enabled: isDelhivery,
-  });
+  const bookingMethod = booking?.method ?? resolveBookingMethod(partner ?? {});
+  const jobStatus = booking?.job?.status;
+  const isApiBooking = bookingMethod === "api" && !isWorldFirst;
+  const needsBrowserAssist = bookingMethod === "browser_automation" || isWorldFirst;
 
-  const delhiveryApiReady = isDelhivery && delhiveryStatus?.configured === true;
+  const invalidateBooking = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/shipments", shipment.id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/shipments", shipment.id, "booking"] });
+  };
 
   const syncMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
       return apiRequest("PATCH", `/api/shipments/${shipment.id}/partner-sync`, body);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shipments", shipment.id] });
+      invalidateBooking();
     },
     onError: (error: Error) => {
       toast({
@@ -100,24 +150,71 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     },
   });
 
-  const delhiverySyncMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/shipments/${shipment.id}/delhivery-sync`);
-      return res.json() as Promise<{ waybill: string }>;
+  const bookMutation = useMutation({
+    mutationFn: async (retry: boolean) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/shipments/${shipment.id}/booking/${retry ? "retry" : "start"}`,
+      );
+      return res.json() as Promise<BookingSnapshot>;
     },
-    onSuccess: (data) => {
-      setExternalAwb(data.waybill);
-      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shipments", shipment.id] });
-      toast({
-        title: "Created on Delhivery",
-        description: `AWB ${data.waybill} assigned.`,
-      });
+    onSuccess: (snapshot) => {
+      if (snapshot.job?.awbNumber) setExternalAwb(snapshot.job.awbNumber);
+      if (snapshot.job?.error) setSyncError(snapshot.job.error);
+      invalidateBooking();
+      if (snapshot.job?.status === "booked") {
+        toast({
+          title: "Booking successful",
+          description: snapshot.job.awbNumber
+            ? `AWB ${snapshot.job.awbNumber} assigned.`
+            : `${partnerName} booking completed.`,
+        });
+        return;
+      }
+      if (snapshot.issues.length > 0) {
+        toast({
+          title: "Action required",
+          description: snapshot.issues.map((issue) => issue.message).join(" • "),
+          variant: "destructive",
+        });
+        return;
+      }
+      if (snapshot.job?.status === "action_required") {
+        toast({
+          title: "Action required",
+          description: snapshot.job.actionRequiredReason || "Finish this booking with the courier.",
+        });
+        return;
+      }
+      if (snapshot.job?.status === "booking_failed") {
+        toast({
+          title: "Booking failed",
+          description: snapshot.job.error || "The courier booking could not be completed.",
+          variant: "destructive",
+        });
+      }
     },
     onError: (error: Error) => {
       setSyncError(error.message);
       toast({
-        title: "Delhivery sync failed",
+        title: "Booking failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/shipments/${shipment.id}/booking/resume`);
+      return res.json() as Promise<BookingSnapshot>;
+    },
+    onSuccess: () => {
+      invalidateBooking();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not continue booking",
         description: error.message,
         variant: "destructive",
       });
@@ -191,26 +288,70 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
 
   const partnerName = partner?.name ?? shipment.courierPartner?.name ?? "Courier partner";
   const actionDisabled =
-    syncMutation.isPending || delhiverySyncMutation.isPending || partnersLoading;
-  const alreadySynced = !!(shipment.externalAwb?.trim() || externalAwb.trim());
+    syncMutation.isPending ||
+    bookMutation.isPending ||
+    resumeMutation.isPending ||
+    partnersLoading ||
+    bookingLoading;
+  const alreadySynced = !!(
+    shipment.externalAwb?.trim() ||
+    externalAwb.trim() ||
+    jobStatus === "booked"
+  );
+  const canRetry = jobStatus === "booking_failed" && (booking?.job?.attemptCount ?? 0) < (booking?.job?.maxAttempts ?? 3);
+  const loginDone = booking?.events?.some((event) => event.step === "resume") ?? false;
+  const waitingOnLogin =
+    isWorldFirst &&
+    !loginDone &&
+    jobStatus === "action_required" &&
+    (booking?.job?.nextAction === "login" ||
+      booking?.job?.nextAction === "otp" ||
+      booking?.job?.nextAction === "browser");
+
+  const runBooking = async (retry = false) => {
+    const snapshot = await bookMutation.mutateAsync(retry);
+    if (
+      snapshot.job?.status === "action_required" &&
+      (snapshot.job.nextAction === "browser" ||
+        snapshot.job.nextAction === "otp" ||
+        snapshot.job.nextAction === "login")
+    ) {
+      await openPartnerPortal();
+    }
+  };
+
+  const continueAfterLogin = async () => {
+    await resumeMutation.mutateAsync();
+    await openPartnerPortal();
+    toast({
+      title: "Continue on World First",
+      description: "After you click Login (saved password or OTP), use Autofill on the AWB Entry screen.",
+    });
+  };
 
   return (
     <Card data-testid="panel-partner-sync">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">Partner sync</CardTitle>
+            <CardTitle className="text-lg">Book shipment</CardTitle>
             <CardDescription>
-              {delhiveryApiReady
-                ? `Create this booking on Delhivery via API, or use manual options below.`
-                : `Push this booking to ${partnerName} and record the partner AWB when done.`}
+              {BOOKING_METHOD_LABELS[bookingMethod]} · {partnerName}. The courier website stays an
+              implementation detail — XGoo starts the booking from here.
             </CardDescription>
           </div>
-          <Badge className={cn("shrink-0", syncStatusColors[syncStatus])}>
-            {PARTNER_SYNC_STATUS_LABELS[syncStatus]}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            {jobStatus ? (
+              <Badge className="shrink-0" variant="secondary">
+                {BOOKING_JOB_STATUS_LABELS[jobStatus]}
+              </Badge>
+            ) : null}
+            <Badge className={cn("shrink-0", syncStatusColors[syncStatus])}>
+              {PARTNER_SYNC_STATUS_LABELS[syncStatus]}
+            </Badge>
+          </div>
         </div>
-        {!extensionChecking && !delhiveryApiReady && (
+        {!extensionChecking && needsBrowserAssist && (
           <Badge
             variant="outline"
             className={cn(
@@ -227,23 +368,37 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-wrap gap-2">
-          {delhiveryApiReady && (
+          <Button
+            onClick={() => void runBooking(canRetry)}
+            disabled={actionDisabled || alreadySynced}
+            data-testid="button-book-shipment"
+          >
+            {bookMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            )}
+            {alreadySynced ? "Booked" : canRetry ? "Retry booking" : "Book shipment"}
+          </Button>
+          {waitingOnLogin ? (
             <Button
-              onClick={() => delhiverySyncMutation.mutate()}
-              disabled={actionDisabled || alreadySynced}
-              data-testid="button-delhivery-api-sync"
+              variant="secondary"
+              onClick={() => void continueAfterLogin()}
+              disabled={actionDisabled}
+              data-testid="button-continue-after-login"
             >
-              {delhiverySyncMutation.isPending ? (
+              {resumeMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <CheckCircle2 className="mr-2 h-4 w-4" />
               )}
-              {alreadySynced ? "Synced to Delhivery" : "Create on Delhivery"}
+              Continue after login
             </Button>
-          )}
-          {!delhiveryApiReady && (
+          ) : null}
+          {needsBrowserAssist || !isApiBooking ? (
             <>
               <Button
+                variant={isApiBooking ? "outline" : "secondary"}
                 onClick={openPartnerPortal}
                 disabled={actionDisabled}
                 data-testid="button-open-partner-portal"
@@ -265,10 +420,76 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
                 Copy payload
               </Button>
             </>
-          )}
+          ) : null}
         </div>
 
-        {isDelhivery && !delhiveryApiReady && !partnersLoading && (
+        {isWorldFirst && needsBrowserAssist ? (
+          <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              World First login is usually your saved username and password — click{" "}
+              <strong>Login</strong> if Chrome filled them. <strong>Login With OTP</strong> is
+              optional. XGoo never stores partner passwords or OTPs. After you reach AWB Entry, click
+              Autofill — the extension reads the form and uses AI to map this shipment onto every
+              matching field. Review Product/Vendor/Service, click + Add for pieces if needed, then
+              paste the AWB here.
+            </p>
+          </div>
+        ) : null}
+
+        {booking?.workflow && booking.workflow.length > 0 ? (
+          <div className="space-y-1.5 border p-3 text-sm" data-testid="list-world-first-workflow">
+            <p className="font-medium mb-2">World First booking steps</p>
+            <ol className="space-y-1.5">
+              {booking.workflow.map((step) => (
+                <li key={step.id} className="flex items-center gap-2">
+                  {step.status === "done" ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                  ) : step.status === "waiting" ? (
+                    <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className={step.status === "pending" ? "text-muted-foreground" : undefined}>
+                    {step.label}
+                    {step.status === "waiting" ? " — waiting on login" : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+
+        {booking && !booking.ready ? (
+          <div className="rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium mb-1">Action required</p>
+            <ul className="list-disc pl-4 space-y-1">
+              {booking.issues.map((issue) => (
+                <li key={issue.code}>{issue.message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {booking?.job?.actionRequiredReason && booking.job.status === "action_required" ? (
+          <div className="rounded-none border p-3 text-sm">
+            <p className="font-medium">Waiting on operator</p>
+            <p className="text-muted-foreground mt-1">{booking.job.actionRequiredReason}</p>
+          </div>
+        ) : null}
+
+        {booking?.events?.length ? (
+          <div className="space-y-1 border p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground mb-2">Booking activity</p>
+            {booking.events.slice(-8).map((event) => (
+              <p key={event.id}>
+                {new Date(event.createdAt).toLocaleTimeString("en-IN")} · {event.message}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        {isDelhivery && isApiBooking && booking?.issues.some((issue) => issue.code === "api_not_configured") && !partnersLoading && (
           <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
@@ -279,7 +500,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           </div>
         )}
 
-        {!delhiveryApiReady && !extensionInstalled && !extensionChecking && (
+        {needsBrowserAssist && !extensionInstalled && !extensionChecking && (
           <div className="flex gap-2 rounded-none border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
@@ -290,7 +511,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           </div>
         )}
 
-        {!delhiveryApiReady && !partnersLoading && !portalConfigured && (
+        {needsBrowserAssist && !partnersLoading && !portalConfigured && (
           <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
@@ -300,7 +521,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           </div>
         )}
 
-        {portalConfigured && resolvedPortalUrl && !delhiveryApiReady && (
+        {portalConfigured && resolvedPortalUrl && needsBrowserAssist && (
           <p className="text-sm text-muted-foreground">
             Portal:{" "}
             <a
@@ -402,11 +623,15 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
         )}
 
         <p className="text-xs text-muted-foreground">
-          {delhiveryApiReady
-            ? "Delhivery API creates the shipment and returns the AWB automatically. Docs: one.delhivery.com/developer-portal"
-            : extensionInstalled
-              ? "Open the partner portal, log in if needed, then click Autofill on the orange XGoo banner."
-              : "Install the browser extension for autofill, or use Copy payload and enter the partner AWB manually."}
+          {isApiBooking
+            ? "API booking uses the courier connector (Delhivery today). Other methods stay the same in this screen when they are added."
+            : needsBrowserAssist
+              ? extensionInstalled
+                ? isWorldFirst
+                  ? "Open Xpresion, click Login if your password is saved (OTP is optional), then Autofill on AWB Entry. AI maps shipper, consignee, pieces, and content — review catalog fields before Save."
+                  : "Open the partner portal, log in if needed, then click Autofill on the orange XGoo banner."
+                : "Install the browser extension for autofill, or use Copy payload and enter the partner AWB manually."
+              : "Book with the partner, then paste the AWB here. Automated website login is not used."}
         </p>
       </CardContent>
     </Card>

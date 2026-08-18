@@ -1,8 +1,25 @@
 (function () {
+  if (window.__xgooPartnerSyncInjected) return;
+  window.__xgooPartnerSyncInjected = true;
+
   const BANNER_ID = "xgoo-partner-sync-banner";
 
-  function createBanner(payload, onFill, onDismiss) {
+  function looksLikeLoginPage() {
+    if (/shipentry|customershipentry|awb/i.test(location.pathname)) return false;
+    const password = document.querySelector('input[type="password"]');
+    if (!password) return false;
+    const text = (document.body?.innerText || "").toLowerCase();
+    if (text.includes("consignee details") || text.includes("shipper details")) return false;
+    return (
+      text.includes("login with otp") ||
+      text.includes("welcome to world first") ||
+      ((text.includes("username") || text.includes("user id")) && text.includes("password"))
+    );
+  }
+
+  function createBanner(payload, onFill, onDismiss, mode) {
     if (document.getElementById(BANNER_ID)) return;
+    const isLogin = mode === "login";
 
     const banner = document.createElement("div");
     banner.id = BANNER_ID;
@@ -10,14 +27,21 @@
       "position:fixed;top:0;left:0;right:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px;font:14px system-ui,sans-serif;background:#0a0a0a;color:#fafafa;border-bottom:3px solid #f97316;box-shadow:0 2px 12px rgba(0,0,0,.25);";
 
     const text = document.createElement("span");
-    text.textContent = `XGoo: Fill booking ${payload.bookingNumber} for ${payload.partnerName || payload.partnerCode}?`;
+    text.textContent = isLogin
+      ? `XGoo: ${payload.bookingNumber} — if your password is saved, click Login. OTP is optional. Autofill starts on the booking form.`
+      : `XGoo: AI-match booking ${payload.bookingNumber} onto this form for ${payload.partnerName || payload.partnerCode}?`;
 
-    const fillBtn = document.createElement("button");
-    fillBtn.type = "button";
-    fillBtn.textContent = "Autofill";
-    fillBtn.style.cssText =
-      "cursor:pointer;padding:6px 14px;font:inherit;font-weight:600;background:#f97316;color:#000;border:none;";
-    fillBtn.addEventListener("click", onFill);
+    banner.appendChild(text);
+
+    if (!isLogin) {
+      const fillBtn = document.createElement("button");
+      fillBtn.type = "button";
+      fillBtn.textContent = "Autofill";
+      fillBtn.style.cssText =
+        "cursor:pointer;padding:6px 14px;font:inherit;font-weight:600;background:#f97316;color:#000;border:none;";
+      fillBtn.addEventListener("click", onFill);
+      banner.appendChild(fillBtn);
+    }
 
     const dismissBtn = document.createElement("button");
     dismissBtn.type = "button";
@@ -25,9 +49,6 @@
     dismissBtn.style.cssText =
       "cursor:pointer;padding:6px 14px;font:inherit;background:transparent;color:#fafafa;border:1px solid #525252;";
     dismissBtn.addEventListener("click", onDismiss);
-
-    banner.appendChild(text);
-    banner.appendChild(fillBtn);
     banner.appendChild(dismissBtn);
     document.body.appendChild(banner);
   }
@@ -37,26 +58,55 @@
   }
 
   function requestPayload(cb) {
-    chrome.runtime.sendMessage(
-      { type: "XGOO_GET_PAYLOAD", hostname: window.location.hostname },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          cb(null, chrome.runtime.lastError.message);
-          return;
-        }
-        if (!response?.ok || !response.payload) {
-          cb(null, response?.mismatch ? "Partner mismatch" : "No pending booking");
-          return;
-        }
-        cb(response.payload, null);
-      },
-    );
+    xgooSendRuntimeMessage({ type: "XGOO_GET_PAYLOAD", hostname: window.location.hostname }, (response, err) => {
+      if (err) {
+        cb(null, err);
+        return;
+      }
+      if (!response?.ok || !response.payload) {
+        cb(null, response?.mismatch ? "Partner mismatch" : "No pending booking");
+        return;
+      }
+      cb(response.payload, null);
+    });
   }
 
-  function doFill(payload) {
+  function requestAiMappings(payload, fields) {
+    return new Promise((resolve) => {
+      xgooSendRuntimeMessage({ type: "XGOO_AI_MAP", payload, fields }, (response, err) => {
+        if (err) {
+          resolve({ mappings: [], usedAi: false });
+          return;
+        }
+        resolve(response || { mappings: [], usedAi: false });
+      });
+    });
+  }
+
+  async function doFill(payload) {
+    showToast("XGoo is reading this form and matching shipment fields…");
+    let filled = 0;
+    let usedAi = false;
+    try {
+      const fields = typeof scrapeVisibleFields === "function" ? scrapeVisibleFields() : [];
+      if (fields.length && payload?.autofillToken) {
+        const mapped = await requestAiMappings(payload, fields);
+        usedAi = !!mapped?.usedAi;
+        if (typeof applyMappings === "function") {
+          filled += applyMappings(mapped?.mappings || []);
+        }
+      }
+    } catch {
+      /* fall through to local matching */
+    }
     const result = runAutofill(payload);
-    if (result.filled > 0) {
-      showToast(`XGoo filled ${result.filled} field(s). Review and submit on the partner site.`);
+    filled += result.filled || 0;
+    if (filled > 0) {
+      showToast(
+        usedAi
+          ? `XGoo AI-filled ${filled} field(s). Review Product/Vendor/Service, then Save on the partner site.`
+          : `XGoo filled ${filled} field(s). Review and submit on the partner site.`,
+      );
       removeBanner();
     } else {
       showToast(
@@ -64,8 +114,32 @@
         true,
       );
     }
-    return result;
+    return { adapter: result.adapter, filled };
   }
+
+  function fillWithStoredPayload() {
+    return new Promise((resolve) => {
+      if (looksLikeLoginPage()) {
+        resolve({
+          ok: false,
+          filled: 0,
+          error: "This is the login page. Click Login if your password is saved, then Autofill on AWB Entry.",
+        });
+        return;
+      }
+      requestPayload((payload, err) => {
+        if (!payload) {
+          resolve({ ok: false, filled: 0, error: err || "No pending booking" });
+          return;
+        }
+        doFill(payload).then((result) => {
+          resolve({ ok: result.filled > 0, filled: result.filled, adapter: result.adapter });
+        });
+      });
+    });
+  }
+
+  window.__xgooFillNow = fillWithStoredPayload;
 
   function tryShowBanner() {
     requestPayload((payload, err) => {
@@ -75,24 +149,23 @@
         payload,
         () => doFill(payload),
         () => removeBanner(),
+        looksLikeLoginPage() ? "login" : "fill",
       );
     });
   }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "XGOO_FILL_CURRENT_TAB") {
-      requestPayload((payload, err) => {
-        if (!payload) {
-          sendResponse({ ok: false, error: err || "No payload" });
-          return;
-        }
-        const result = doFill(payload);
-        sendResponse({ ok: result.filled > 0, ...result });
-      });
-      return true;
-    }
-    return false;
-  });
+  try {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!xgooExtensionAlive()) return false;
+      if (message?.type === "XGOO_FILL_CURRENT_TAB") {
+        fillWithStoredPayload().then(sendResponse);
+        return true;
+      }
+      return false;
+    });
+  } catch {
+    /* extension was reloaded while this tab was open */
+  }
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", tryShowBanner);
@@ -102,6 +175,10 @@
 
   let lastUrl = location.href;
   setInterval(() => {
+    if (!xgooExtensionAlive()) {
+      removeBanner();
+      return;
+    }
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       removeBanner();

@@ -3,21 +3,21 @@ import { router } from 'expo-router';
 import {
   ArrowRight,
   Bell,
-  Box,
   Clock3,
-  MapPin,
   Moon,
+  Package,
   PackageCheck,
-  Plus,
+  Phone,
   Sun,
   Truck,
 } from 'lucide-react-native';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { CallToBookButton } from '@/components/call-to-book-button';
+import { HomeBanner } from '@/components/home-banner';
 import { ShipmentCard } from '@/components/shipment-card';
-import { AppButton, BrandLockup, Card, Screen, SectionTitle } from '@/components/ui';
+import { BrandLockup, Card, Screen, SectionTitle } from '@/components/ui';
 import { customerApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { callXgooSupport } from '@/lib/support';
 import { useAppTheme } from '@/lib/theme';
 
 export default function DashboardScreen() {
@@ -34,6 +34,10 @@ export default function DashboardScreen() {
     enabled: !!token,
     refetchInterval: 15_000,
   });
+  const banners = useQuery({
+    queryKey: ['app-banners'],
+    queryFn: () => customerApi.appBanners(),
+  });
   const unreadNotifications = (notifications.data || []).filter((item) => !item.readAt).length;
   const items = bookings.data || [];
   const inTransit = items.filter((item) =>
@@ -48,10 +52,11 @@ export default function DashboardScreen() {
     <Screen
       refreshControl={
         <RefreshControl
-          refreshing={bookings.isRefetching}
+          refreshing={bookings.isRefetching || banners.isRefetching}
           onRefresh={() => {
             void bookings.refetch();
             void notifications.refetch();
+            void banners.refetch();
           }}
           tintColor={colors.accent}
         />
@@ -87,28 +92,33 @@ export default function DashboardScreen() {
         <Text style={[styles.name, { color: colors.text }]}>{user?.name?.split(' ')[0] || 'Mover'} 👋</Text>
       </View>
 
-      <Card style={[styles.hero, { backgroundColor: colors.accent, borderColor: colors.accent }]}>
-        <View style={styles.heroCopy}>
-          <Text style={styles.heroEyebrow}>READY WHEN YOU ARE</Text>
-          <Text style={styles.heroTitle}>Where should your{'\n'}parcel move next?</Text>
-          <AppButton
-            title="Book a parcel"
-            icon={Plus}
-            variant="secondary"
-            style={styles.heroButton}
-            onPress={() => router.push('/(tabs)/book')}
-          />
-          <CallToBookButton compact label="Call us to book" />
-        </View>
-        <View style={styles.heroArt}>
-          <View style={styles.heroCircle}>
-            <Box size={45} color="#FF4907" />
+      <HomeBanner banners={banners.data?.banners || []} />
+
+      <SectionTitle>Quick actions</SectionTitle>
+      <View style={styles.quickActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Book a parcel"
+          onPress={() => router.push('/(tabs)/book')}
+          style={styles.quickAction}
+        >
+          <View style={[styles.quickIcon, { backgroundColor: colors.accent }]}>
+            <Package size={22} color="#FFFFFF" />
           </View>
-          <View style={styles.heroPin}>
-            <MapPin size={20} color="#FFFFFF" />
+          <Text style={[styles.quickLabel, { color: colors.text }]}>Book a Parcel</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Call us to book"
+          onPress={() => void callXgooSupport('book')}
+          style={styles.quickAction}
+        >
+          <View style={[styles.quickIcon, { backgroundColor: colors.accentSoft }]}>
+            <Phone size={22} color={colors.accent} />
           </View>
-        </View>
-      </Card>
+          <Text style={[styles.quickLabel, { color: colors.text }]}>Call us to book</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.stats}>
         <StatCard icon={Truck} value={inTransit} label="In transit" color={colors.info} />
@@ -197,38 +207,24 @@ const styles = StyleSheet.create({
   greeting: { marginTop: 27, marginBottom: 18 },
   hello: { fontSize: 13 },
   name: { fontSize: 28, fontWeight: '900', letterSpacing: -0.6, marginTop: 1 },
-  hero: {
-    minHeight: 190,
-    padding: 20,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    shadowOpacity: 0.2,
-    shadowColor: '#FF4907',
+  quickActions: { flexDirection: 'row', gap: 18, marginTop: -4, paddingHorizontal: 4 },
+  quickAction: {
+    width: 86,
+    alignItems: 'center',
+    gap: 8,
   },
-  heroCopy: { flex: 1.3, zIndex: 2, gap: 10 },
-  heroEyebrow: { color: '#FFE0D4', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
-  heroTitle: { color: '#FFFFFF', fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 8 },
-  heroButton: { height: 40, minHeight: 40, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14 },
-  heroArt: { flex: 0.7, justifyContent: 'center', alignItems: 'center' },
-  heroCircle: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: '#FFFFFF',
+  quickIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '-8deg' }],
   },
-  heroPin: {
-    position: 'absolute',
-    right: 2,
-    top: 26,
-    width: 37,
-    height: 37,
-    borderRadius: 14,
-    backgroundColor: '#1D1F23',
-    alignItems: 'center',
-    justifyContent: 'center',
+  quickLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   stats: { flexDirection: 'row', gap: 9, marginTop: 13 },
   statCard: { flex: 1, padding: 12, gap: 2, elevation: 0, shadowOpacity: 0 },
@@ -240,4 +236,3 @@ const styles = StyleSheet.create({
   firstTitle: { marginTop: 12, fontSize: 15, fontWeight: '700' },
   firstCopy: { marginTop: 6, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });
-

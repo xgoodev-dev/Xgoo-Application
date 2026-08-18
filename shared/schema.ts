@@ -24,6 +24,7 @@ export const offices = pgTable("offices", {
   documentSettings: jsonb("document_settings"),
   whatsappSettings: jsonb("whatsapp_settings"),
   pickupSettings: jsonb("pickup_settings"),
+  appBannerSettings: jsonb("app_banner_settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -172,6 +173,8 @@ export const courierPartners = pgTable("courier_partners", {
   awbRangeStart: varchar("awb_range_start", { length: 50 }),
   awbRangeEnd: varchar("awb_range_end", { length: 50 }),
   portalUrl: varchar("portal_url", { length: 500 }),
+  bookingMethod: varchar("booking_method", { length: 30 }).notNull().default("browser_automation"),
+  automationEnabled: boolean("automation_enabled").default(true),
   isActive: boolean("is_active").default(true),
   isDemo: boolean("is_demo").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -358,6 +361,72 @@ export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
   }),
   payments: many(payments),
   invoice: one(invoices),
+}));
+
+export const bookingJobs = pgTable("booking_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id, { onDelete: "cascade" }),
+  courierPartnerId: varchar("courier_partner_id").references(() => courierPartners.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 30 }).notNull().default("draft"),
+  bookingMethod: varchar("booking_method", { length: 30 }).notNull(),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  error: text("error"),
+  actionRequiredReason: text("action_required_reason"),
+  nextAction: varchar("next_action", { length: 40 }),
+  awbNumber: varchar("awb_number", { length: 100 }),
+  bookingReference: varchar("booking_reference", { length: 100 }),
+  labelUrl: varchar("label_url", { length: 500 }),
+  operatorUserId: varchar("operator_user_id"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_booking_jobs_shipment").on(table.shipmentId),
+  index("idx_booking_jobs_office").on(table.officeId),
+  index("idx_booking_jobs_status").on(table.status),
+]);
+
+export const bookingEvents = pgTable("booking_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id").notNull().references(() => bookingJobs.id, { onDelete: "cascade" }),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id, { onDelete: "cascade" }),
+  level: varchar("level", { length: 10 }).notNull().default("info"),
+  step: varchar("step", { length: 80 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_booking_events_job").on(table.jobId),
+  index("idx_booking_events_shipment").on(table.shipmentId),
+]);
+
+export const bookingJobsRelations = relations(bookingJobs, ({ one, many }) => ({
+  office: one(offices, {
+    fields: [bookingJobs.officeId],
+    references: [offices.id],
+  }),
+  shipment: one(shipments, {
+    fields: [bookingJobs.shipmentId],
+    references: [shipments.id],
+  }),
+  courierPartner: one(courierPartners, {
+    fields: [bookingJobs.courierPartnerId],
+    references: [courierPartners.id],
+  }),
+  events: many(bookingEvents),
+}));
+
+export const bookingEventsRelations = relations(bookingEvents, ({ one }) => ({
+  job: one(bookingJobs, {
+    fields: [bookingEvents.jobId],
+    references: [bookingJobs.id],
+  }),
+  shipment: one(shipments, {
+    fields: [bookingEvents.shipmentId],
+    references: [shipments.id],
+  }),
 }));
 
 // Payments table
@@ -769,6 +838,17 @@ export const insertCustomerNotificationSchema = createInsertSchema(customerNotif
   createdAt: true,
 });
 
+export const insertBookingJobSchema = createInsertSchema(bookingJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBookingEventSchema = createInsertSchema(bookingEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Office = typeof offices.$inferSelect;
 export type InsertOffice = z.infer<typeof insertOfficeSchema>;
@@ -827,6 +907,11 @@ export type InsertCustomerPushToken = z.infer<typeof insertCustomerPushTokenSche
 
 export type CustomerNotification = typeof customerNotifications.$inferSelect;
 export type InsertCustomerNotification = z.infer<typeof insertCustomerNotificationSchema>;
+
+export type BookingJob = typeof bookingJobs.$inferSelect;
+export type InsertBookingJob = z.infer<typeof insertBookingJobSchema>;
+export type BookingEvent = typeof bookingEvents.$inferSelect;
+export type InsertBookingEvent = z.infer<typeof insertBookingEventSchema>;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

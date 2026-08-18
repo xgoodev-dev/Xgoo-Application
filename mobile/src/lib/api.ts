@@ -6,6 +6,13 @@ export const API_URL = (
 
 export const OFFICE_SLUG = process.env.EXPO_PUBLIC_OFFICE_SLUG || 'xgoo';
 
+export function resolveMediaUrl(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `${API_URL}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
+}
+
 export type PickupSlot = {
   value: string;
   label: string;
@@ -16,6 +23,15 @@ export type PickupSettings = {
   slots: PickupSlot[];
   sameDayCutoffHour: number;
   cutoffNote: string;
+};
+
+export type AppBanner = {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  subtitle?: string;
+  linkUrl?: string;
+  active?: boolean;
 };
 
 export type CustomerUser = {
@@ -220,6 +236,8 @@ export const customerApi = {
     ),
   pickupSettings: () =>
     api<PickupSettings>(`/api/public/office/${OFFICE_SLUG}/pickup-settings`),
+  appBanners: () =>
+    api<{ banners: AppBanner[] }>(`/api/public/office/${OFFICE_SLUG}/app-banners`),
   addresses: (token: string) =>
     api<CustomerAddress[]>('/api/customer/addresses', {}, token),
   createAddress: (

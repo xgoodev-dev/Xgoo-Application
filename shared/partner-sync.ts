@@ -15,6 +15,10 @@ export const DEFAULT_PARTNER_PORTALS: Record<string, string> = {
   DEL: "https://one.delhivery.com/",
   DELHIVERY: "https://one.delhivery.com/",
   DL: "https://one.delhivery.com/",
+  WF: "https://xpresion.worldfirst.in/",
+  WFC: "https://xpresion.worldfirst.in/",
+  WORLDFIRST: "https://xpresion.worldfirst.in/",
+  "WORLD FIRST": "https://xpresion.worldfirst.in/",
   ICL: "https://www.indiancourier.net/",
   ST: "https://stcourier.com/",
   STC: "https://stcourier.com/",
@@ -55,10 +59,13 @@ export interface PartnerSyncPayload {
   numberOfPieces: number;
   contentDescription: string | null;
   declaredValue: string | null;
+  volumetricWeight: string | null;
   serviceType: string;
   awbNumber: string | null;
   externalAwb: string | null;
   syncStatus: PartnerSyncStatus;
+  autofillToken?: string;
+  xgooOrigin?: string;
 }
 
 export function normalizePartnerCode(code: string): string {
@@ -77,6 +84,9 @@ export function resolvePartnerPortalUrl(partner: CourierPartner | null | undefin
 
   const nameLower = (partner.name || "").toLowerCase();
   if (nameLower.includes("delhivery")) return DEFAULT_PARTNER_PORTALS.DEL;
+  if (nameLower.includes("world first") || nameLower.includes("worldfirst")) {
+    return DEFAULT_PARTNER_PORTALS.WF;
+  }
   if (nameLower.includes("indiancourier") || nameLower.includes("indian courier") || nameLower === "icl") {
     return DEFAULT_PARTNER_PORTALS.ICL;
   }
@@ -145,6 +155,7 @@ export function buildPartnerSyncPayload(
     numberOfPieces: shipment.numberOfPieces ?? 1,
     contentDescription: shipment.contentDescription ?? null,
     declaredValue: shipment.declaredValue != null ? String(shipment.declaredValue) : null,
+    volumetricWeight: shipment.volumetricWeight != null ? String(shipment.volumetricWeight) : null,
     serviceType: shipment.serviceType,
     awbNumber: shipment.awbNumber ?? null,
     externalAwb: shipment.externalAwb ?? null,

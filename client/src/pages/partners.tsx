@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Cable,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,9 +49,25 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { CourierPartner } from "@shared/schema";
+import { partnerPortalMismatch, portalHostname } from "@shared/partner-portal";
+import { resolvePartnerPortalUrl } from "@shared/partner-sync";
+import {
+  BOOKING_METHODS,
+  BOOKING_METHOD_LABELS,
+  defaultBookingMethodForPartner,
+  resolveBookingMethod,
+  type BookingMethod,
+} from "@shared/booking-engine";
 
 function normalizePortalUrlInput(value: string): string {
   const trimmed = value.trim();
@@ -85,6 +102,7 @@ const partnerSchema = z.object({
   awbRangeStart: z.string().optional(),
   awbRangeEnd: z.string().optional(),
   portalUrl: portalUrlSchema,
+  bookingMethod: z.enum(BOOKING_METHODS).default("browser_automation"),
   isActive: z.boolean().default(true),
 });
 
@@ -113,6 +131,7 @@ export default function PartnersPage() {
       marginPercent: "0",
       useTariffPricing: true,
       portalUrl: "",
+      bookingMethod: "browser_automation",
     },
   });
 
@@ -174,6 +193,27 @@ export default function PartnersPage() {
     },
   });
 
+  const testConnectionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/partners/${id}/test-connection`);
+      return res.json() as Promise<{ ok: boolean; message: string; method: BookingMethod }>;
+    },
+    onSuccess: (result) => {
+      toast({
+        title: result.ok ? "Connection ready" : "Connection not ready",
+        description: `${BOOKING_METHOD_LABELS[result.method]}. ${result.message}`,
+        variant: result.ok ? "default" : "destructive",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Test failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const openEditDialog = (partner: CourierPartner) => {
     setEditingPartner(partner);
     form.reset({
@@ -193,16 +233,29 @@ export default function PartnersPage() {
       awbRangeStart: partner.awbRangeStart || "",
       awbRangeEnd: partner.awbRangeEnd || "",
       portalUrl: partner.portalUrl || "",
+      bookingMethod: resolveBookingMethod(partner),
       isActive: partner.isActive ?? true,
     });
     setIsDialogOpen(true);
   };
 
   const onSubmit = (data: PartnerFormData) => {
+    const payload = {
+      ...data,
+      bookingMethod: data.bookingMethod || defaultBookingMethodForPartner(data.code, data.name),
+    };
+    const mismatch = partnerPortalMismatch(
+      { code: data.code, name: data.name },
+      data.portalUrl || null,
+    );
+    if (mismatch) {
+      toast({ title: "Wrong portal URL", description: mismatch, variant: "destructive" });
+      return;
+    }
     if (editingPartner) {
-      updateMutation.mutate({ id: editingPartner.id, data });
+      updateMutation.mutate({ id: editingPartner.id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
@@ -476,8 +529,41 @@ export default function PartnersPage() {
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        Used by Partner sync to open the courier booking site. Leave blank to use a
-                        default for known partner codes (DEL, ICL, etc.).
+                      <p className="text-xs text-muted-foreground">
+                        Must be this courier’s own booking login (for UPS: CampusShip or ups.com —
+                        not World First / Delhivery). Leave blank to use a known default. WorldShip
+                        is desktop software and cannot be opened here.
+                      </p>
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bookingMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Booking method</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-booking-method">
+                            <SelectValue placeholder="Select booking method" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {BOOKING_METHODS.map((method) => (
+                            <SelectItem key={method} value={method}>
+                              {BOOKING_METHOD_LABELS[method]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        API books through the courier (Delhivery only today — needs DELHIVERY_API_TOKEN
+                        in .env). Browser assist opens the partner site in your browser; it is not
+                        unattended/headless login. Manual waits for an operator AWB.
                       </p>
                       <FormMessage />
                     </FormItem>
@@ -574,6 +660,7 @@ export default function PartnersPage() {
                     <TableHead>Surface Rate</TableHead>
                     <TableHead>Air Rate</TableHead>
                     <TableHead>AWB</TableHead>
+                    <TableHead>Booking</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
@@ -610,6 +697,33 @@ export default function PartnersPage() {
                         {partner.awbPrefix || "-"}
                       </TableCell>
                       <TableCell>
+                        <div className="space-y-1">
+                          <Badge variant="outline" className="font-normal">
+                            {BOOKING_METHOD_LABELS[resolveBookingMethod(partner)]}
+                          </Badge>
+                          {(() => {
+                            const url = resolvePartnerPortalUrl(partner);
+                            const host = portalHostname(url);
+                            const mismatch = partnerPortalMismatch(partner, url);
+                            if (mismatch) {
+                              return (
+                                <div className="text-xs text-destructive max-w-[14rem]">{mismatch}</div>
+                              );
+                            }
+                            if (host) {
+                              return (
+                                <div className="text-xs text-muted-foreground truncate max-w-[14rem]" title={url ?? undefined}>
+                                  {host}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="text-xs text-muted-foreground">No portal URL</div>
+                            );
+                          })()}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <Badge
                           variant="secondary"
                           className={
@@ -632,6 +746,13 @@ export default function PartnersPage() {
                             <DropdownMenuItem onClick={() => openEditDialog(partner)}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => testConnectionMutation.mutate(partner.id)}
+                              disabled={testConnectionMutation.isPending}
+                            >
+                              <Cable className="mr-2 h-4 w-4" />
+                              Test connection
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive"

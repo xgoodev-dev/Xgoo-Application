@@ -17,6 +17,8 @@ import {
   customerAddresses,
   customerPushTokens,
   customerNotifications,
+  bookingJobs,
+  bookingEvents,
   type Office,
   type InsertOffice,
   type Branch,
@@ -53,6 +55,10 @@ import {
   type CustomerPushToken,
   type CustomerNotification,
   type InsertCustomerNotification,
+  type BookingJob,
+  type InsertBookingJob,
+  type BookingEvent,
+  type InsertBookingEvent,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -153,6 +159,12 @@ export interface IStorage {
       partnerSyncedAt?: Date | null;
     },
   ): Promise<Shipment | undefined>;
+
+  getLatestBookingJob(shipmentId: string): Promise<BookingJob | undefined>;
+  createBookingJob(job: InsertBookingJob): Promise<BookingJob>;
+  updateBookingJob(id: string, data: Partial<BookingJob>): Promise<BookingJob | undefined>;
+  addBookingEvent(event: InsertBookingEvent): Promise<BookingEvent>;
+  getBookingEvents(jobId: string): Promise<BookingEvent[]>;
 
   // Payment operations
   createPayment(payment: InsertPayment): Promise<Payment>;
@@ -795,6 +807,43 @@ export class DatabaseStorage implements IStorage {
       .where(eq(shipments.id, id))
       .returning();
     return updated;
+  }
+
+  async getLatestBookingJob(shipmentId: string): Promise<BookingJob | undefined> {
+    const [job] = await db
+      .select()
+      .from(bookingJobs)
+      .where(eq(bookingJobs.shipmentId, shipmentId))
+      .orderBy(desc(bookingJobs.createdAt))
+      .limit(1);
+    return job;
+  }
+
+  async createBookingJob(job: InsertBookingJob): Promise<BookingJob> {
+    const [created] = await db.insert(bookingJobs).values(job).returning();
+    return created;
+  }
+
+  async updateBookingJob(id: string, data: Partial<BookingJob>): Promise<BookingJob | undefined> {
+    const [updated] = await db
+      .update(bookingJobs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(bookingJobs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async addBookingEvent(event: InsertBookingEvent): Promise<BookingEvent> {
+    const [created] = await db.insert(bookingEvents).values(event).returning();
+    return created;
+  }
+
+  async getBookingEvents(jobId: string): Promise<BookingEvent[]> {
+    return db
+      .select()
+      .from(bookingEvents)
+      .where(eq(bookingEvents.jobId, jobId))
+      .orderBy(asc(bookingEvents.createdAt));
   }
 
   // Payment operations

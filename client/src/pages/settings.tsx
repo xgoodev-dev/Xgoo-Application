@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Users,
   Clock3,
+  Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ import { DemoDataSettings } from "@/components/settings/DemoDataSettings";
 import { WhatsAppBusinessSync } from "@/components/settings/WhatsAppBusinessSync";
 import { StaffManagement } from "@/components/settings/StaffManagement";
 import { PickupSlotSettings } from "@/components/settings/PickupSlotSettings";
+import { AppBannerSettings } from "@/components/settings/AppBannerSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const officeSchema = z.object({
@@ -119,12 +121,12 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground">
-          Manage your organization profile, pickup slots, branches, and WhatsApp Business automation
+          Manage your organization profile, app banners, pickup slots, branches, and WhatsApp Business automation
         </p>
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="general" className="gap-2">
             <Building2 className="h-4 w-4" />
             General
@@ -132,6 +134,10 @@ export default function SettingsPage() {
           <TabsTrigger value="whatsapp" className="gap-2">
             <MessageCircle className="h-4 w-4" />
             WhatsApp Business
+          </TabsTrigger>
+          <TabsTrigger value="banners" className="gap-2">
+            <Images className="h-4 w-4" />
+            App Banners
           </TabsTrigger>
           <TabsTrigger value="pickup" className="gap-2">
             <Clock3 className="h-4 w-4" />
@@ -369,6 +375,10 @@ export default function SettingsPage() {
 
         <TabsContent value="whatsapp" className="mt-0">
           <WhatsAppBusinessSync />
+        </TabsContent>
+
+        <TabsContent value="banners" className="mt-0">
+          <AppBannerSettings />
         </TabsContent>
 
         <TabsContent value="pickup" className="mt-0">

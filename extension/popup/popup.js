@@ -11,7 +11,16 @@ function setStatus(text, isError) {
 }
 
 async function refresh() {
-  const response = await chrome.runtime.sendMessage({ type: "XGOO_GET_STATUS" });
+  let response;
+  try {
+    response = await chrome.runtime.sendMessage({ type: "XGOO_GET_STATUS" });
+  } catch (error) {
+    infoEl.classList.add("hidden");
+    fillBtn.disabled = true;
+    clearBtn.disabled = true;
+    setStatus(error instanceof Error ? error.message : "Extension reloaded. Refresh this page.", true);
+    return;
+  }
 
   if (!response?.hasPayload) {
     infoEl.classList.add("hidden");
@@ -27,31 +36,41 @@ async function refresh() {
   partnerEl.textContent = p.partnerName || p.partnerCode || "—";
   fillBtn.disabled = false;
   clearBtn.disabled = false;
-  setStatus("Ready to autofill partner portal.");
+  setStatus("Ready to AI-match consignee, shipper, pieces, and content on the partner form.");
 }
 
 fillBtn.addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] =
+    (await chrome.tabs.query({ active: true, lastFocusedWindow: true })) ||
+    (await chrome.tabs.query({ active: true, currentWindow: true }));
   if (!tab?.id) {
     setStatus("No active tab.", true);
     return;
   }
 
-  chrome.tabs.sendMessage(tab.id, { type: "XGOO_FILL_CURRENT_TAB" }, (response) => {
-    if (chrome.runtime.lastError) {
-      setStatus("Open a supported courier portal tab first.", true);
-      return;
-    }
+  setStatus("Matching this form with XGoo shipment data…");
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "XGOO_FILL_TAB",
+      tabId: tab.id,
+      url: tab.url || "",
+    });
     if (response?.ok) {
-      setStatus(`Filled ${response.filled} field(s) on this tab.`);
+      setStatus(`Filled ${response.filled} field(s): consignee, shipper, package.`);
     } else {
       setStatus(response?.error || "Autofill failed.", true);
     }
-  });
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Autofill failed.", true);
+  }
 });
 
 clearBtn.addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ type: "XGOO_CLEAR_PAYLOAD" });
+  try {
+    await chrome.runtime.sendMessage({ type: "XGOO_CLEAR_PAYLOAD" });
+  } catch {
+    /* ignore */
+  }
   await refresh();
 });
 

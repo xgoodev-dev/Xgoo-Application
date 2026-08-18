@@ -20,9 +20,20 @@ import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
 import { shipmentPackageSchema } from "@shared/document-template";
 import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settings";
+import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
-import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "./integrations/delhivery";
+import { getDelhiveryConfigFromEnv } from "./integrations/delhivery";
+import {
+  BookingEngineError,
+  getBookingSnapshot,
+  resumeBooking,
+  startBooking,
+  testPartnerConnection,
+  validateBooking,
+} from "./booking/service";
+import { mapPartnerFormFields } from "./booking/map-partner-fields";
+import { BOOKING_METHODS, defaultBookingMethodForPartner } from "@shared/booking-engine";
 import {
   applyWelcomeTemplateDefaults,
   finalizeWhatsAppSettingsMediaUrls,
@@ -93,6 +104,7 @@ const officeCreateSchema = z.object({
   documentSettings: z.record(z.unknown()).optional(),
   whatsappSettings: z.record(z.unknown()).optional(),
   pickupSettings: pickupSettingsSchema.optional(),
+  appBannerSettings: appBannerSettingsSchema.optional(),
 });
 
 const officeUpdateSchema = z.object({
@@ -108,6 +120,7 @@ const officeUpdateSchema = z.object({
   documentSettings: z.record(z.unknown()).optional(),
   whatsappSettings: z.record(z.unknown()).optional(),
   pickupSettings: pickupSettingsSchema.optional(),
+  appBannerSettings: appBannerSettingsSchema.optional(),
 });
 
 const branchCreateSchema = z.object({
@@ -180,6 +193,8 @@ const partnerCreateSchema = z.object({
   awbRangeStart: z.string().optional(),
   awbRangeEnd: z.string().optional(),
   portalUrl: portalUrlSchema,
+  bookingMethod: z.enum(BOOKING_METHODS).optional(),
+  automationEnabled: z.boolean().optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -1865,6 +1880,8 @@ export async function registerRoutes(
         ...validated,
         officeId,
         portalUrl: validated.portalUrl || null,
+        bookingMethod:
+          validated.bookingMethod || defaultBookingMethodForPartner(validated.code, validated.name),
       });
       res.json(partner);
     } catch (error) {
@@ -2729,13 +2746,143 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/shipments/:id/booking", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await getBookingSnapshot(officeId, req.params.id);
+      res.json(snapshot);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error loading booking job:", error);
+      res.status(500).json({ message: "Failed to load booking job" });
+    }
+  });
+
+  app.get("/api/shipments/:id/booking/events", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await getBookingSnapshot(officeId, req.params.id);
+      res.json(snapshot.events);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error loading booking events:", error);
+      res.status(500).json({ message: "Failed to load booking events" });
+    }
+  });
+
+  app.post("/api/shipments/:id/booking/validate", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const result = await validateBooking(officeId, req.params.id);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error validating booking:", error);
+      res.status(500).json({ message: "Failed to validate booking" });
+    }
+  });
+
+  app.post("/api/shipments/:id/booking/start", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await startBooking({
+        officeId,
+        shipmentId: req.params.id,
+        operatorUserId: req.user.id,
+      });
+      res.json(snapshot);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error starting booking:", error);
+      res.status(500).json({ message: "Failed to start booking" });
+    }
+  });
+
+  app.post("/api/shipments/:id/booking/retry", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await startBooking({
+        officeId,
+        shipmentId: req.params.id,
+        operatorUserId: req.user.id,
+        retry: true,
+      });
+      res.json(snapshot);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error retrying booking:", error);
+      res.status(500).json({ message: "Failed to retry booking" });
+    }
+  });
+
+  app.post("/api/shipments/:id/booking/resume", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await resumeBooking({
+        officeId,
+        shipmentId: req.params.id,
+        operatorUserId: req.user.id,
+      });
+      res.json(snapshot);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      console.error("Error resuming booking:", error);
+      res.status(500).json({ message: "Failed to resume booking" });
+    }
+  });
+
+  app.post("/api/public/extension/map-fields", async (req, res) => {
+    try {
+      const result = await mapPartnerFormFields(req.body);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({
+          message: error.message,
+          code: error.code,
+          mappings: [],
+          usedAi: false,
+        });
+      }
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid mapping request", mappings: [], usedAi: false });
+      }
+      console.error("Extension map-fields error:", error);
+      res.status(500).json({ message: "Failed to map partner fields", mappings: [], usedAi: false });
+    }
+  });
+
+  app.post("/api/partners/:id/test-connection", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const partner = await storage.getPartner(req.params.id);
+      if (!partner || partner.officeId !== officeId) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      const result = await testPartnerConnection(partner);
+      res.json(result);
+    } catch (error) {
+      console.error("Error testing partner connection:", error);
+      res.status(500).json({ message: "Failed to test partner connection" });
+    }
+  });
+
   app.post("/api/shipments/:id/delhivery-sync", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.id;
-      const { id } = req.params;
-      const officeId = await getOrCreateOffice(userId);
-
-      const shipment = await storage.getShipment(id);
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
       if (!shipment || shipment.officeId !== officeId) {
         return res.status(404).json({ message: "Shipment not found" });
       }
@@ -2743,54 +2890,41 @@ export async function registerRoutes(
       const partner = shipment.courierPartnerId
         ? await storage.getPartner(shipment.courierPartnerId)
         : shipment.courierPartner;
-
       if (!partner || !isDelhiveryPartner(partner.code, partner.name)) {
         return res.status(400).json({ message: "This shipment is not assigned to Delhivery" });
       }
 
-      const config = getDelhiveryConfigFromEnv();
-      if (!config) {
-        return res.status(503).json({
-          message:
-            "Delhivery API not configured. Set DELHIVERY_API_TOKEN and DELHIVERY_PICKUP_LOCATION in .env",
+      const snapshot = await startBooking({
+        officeId,
+        shipmentId: req.params.id,
+        operatorUserId: req.user.id,
+      });
+
+      if (snapshot.issues.length > 0 && snapshot.job?.status !== "booked") {
+        return res.status(400).json({
+          message: snapshot.issues.map((issue) => issue.message).join(" "),
+          issues: snapshot.issues,
         });
       }
 
-      if (shipment.externalAwb?.trim()) {
-        return res.status(409).json({
-          message: "Already synced to Delhivery",
-          waybill: shipment.externalAwb,
-        });
+      const waybill = snapshot.job?.awbNumber || shipment.externalAwb;
+      if (snapshot.job?.status === "booked" && waybill) {
+        const updated = await storage.getShipment(req.params.id);
+        return res.json({ waybill, shipment: updated });
       }
 
-      const result = await createDelhiveryShipment(config, {
-        shipment,
-        pickupLocation: config.pickupLocation,
-      });
+      if (snapshot.job?.status === "booking_failed") {
+        return res.status(502).json({ message: snapshot.job.error || "Delhivery sync failed" });
+      }
 
-      await storage.updateShipmentPartnerSync(id, {
-        partnerSyncStatus: "synced",
-        externalAwb: result.waybill,
-        awbNumber: shipment.awbNumber?.trim() ? shipment.awbNumber : result.waybill,
-        partnerSyncError: null,
-        partnerSyncedAt: new Date(),
-      });
-
-      const updated = await storage.getShipment(id);
-      res.json({ waybill: result.waybill, shipment: updated });
+      const updated = await storage.getShipment(req.params.id);
+      res.json({ waybill: waybill || null, shipment: updated, booking: snapshot });
     } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
       const message = error instanceof Error ? error.message : "Delhivery sync failed";
       console.error("Delhivery sync error:", error);
-
-      try {
-        await storage.updateShipmentPartnerSync(req.params.id, {
-          partnerSyncStatus: "failed",
-          partnerSyncError: message,
-        });
-      } catch {
-        /* ignore */
-      }
-
       res.status(502).json({ message });
     }
   });
@@ -3226,6 +3360,24 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching pickup settings:", error);
       res.status(500).json({ message: "Failed to fetch pickup settings" });
+    }
+  });
+
+  app.get("/api/public/office/:slug/app-banners", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const office = await storage.getOfficeBySlug(slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      res.json({
+        banners: publishedAppBanners(
+          (office as { appBannerSettings?: unknown }).appBannerSettings,
+        ),
+      });
+    } catch (error) {
+      console.error("Error fetching app banners:", error);
+      res.status(500).json({ message: "Failed to fetch app banners" });
     }
   });
 
