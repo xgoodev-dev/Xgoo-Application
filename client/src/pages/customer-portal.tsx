@@ -282,7 +282,6 @@ const registerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(10, "Valid phone number required"),
   email: z.string().email("Valid email required").optional().or(z.literal("")),
-  password: z.string().min(6, "Password must be at least 6 characters"),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
@@ -291,7 +290,6 @@ const registerSchema = z.object({
 
 const loginSchema = z.object({
   phone: z.string().min(10, "Valid phone number required"),
-  password: z.string().min(1, "Password is required"),
 });
 
 function toFormString(val: unknown): string {
@@ -677,18 +675,49 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [otp, setOtp] = useState("");
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { phone: "", password: "" },
+    defaultValues: { phone: "" },
   });
 
-  async function handleLogin(data: z.infer<typeof loginSchema>) {
+  async function handleSendOtp(data: z.infer<typeof loginSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/public/office/${slug}/customer/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: data.phone, purpose: "login" }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      setStep("otp");
+      setOtp("");
+      toast({
+        title: "OTP sent",
+        description: result.debugOtp
+          ? `Dev code: ${result.debugOtp}`
+          : "Enter the 6-digit code sent to your WhatsApp.",
+      });
+    } catch (err: any) {
+      toast({ title: "Could not send OTP", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    if (otp.replace(/\D/g, "").length !== 6) {
+      toast({ title: "Enter the OTP", description: "Type the 6-digit WhatsApp code.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/public/office/${slug}/customer/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ phone: form.getValues("phone"), otp }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
@@ -704,14 +733,17 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   return (
     <CustomerAuthShell
       title="Sign In"
-      subtitle={`Book and track shipments with ${office.name}. Use your phone number and password.`}
+      subtitle={`Book and track shipments with ${office.name}. We will send an OTP to your WhatsApp.`}
       officeName={office.name}
     >
       <h2 className="sr-only" data-testid="text-auth-title">
         Welcome Back
       </h2>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
+        <form
+          onSubmit={form.handleSubmit(step === "phone" ? handleSendOtp : handleVerifyOtp)}
+          className="space-y-4"
+        >
           <FormField
             control={form.control}
             name="phone"
@@ -721,36 +753,33 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
                 <FormControl>
                   <Input
                     {...field}
-                    placeholder="Phone number"
+                    placeholder="Mobile number"
                     autoComplete="tel"
                     className={customerAuthFieldClass}
                     data-testid="input-login-phone"
+                    disabled={step === "otp"}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="sr-only">Password</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="password"
-                    placeholder="Password"
-                    autoComplete="current-password"
-                    className={customerAuthFieldClass}
-                    data-testid="input-login-password"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {step === "otp" && (
+            <FormItem>
+              <FormLabel className="sr-only">OTP</FormLabel>
+              <FormControl>
+                <Input
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit OTP (use 123456 for now)"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className={customerAuthFieldClass}
+                  data-testid="input-login-otp"
+                />
+              </FormControl>
+            </FormItem>
+          )}
           <p className="text-center text-sm text-stone-600 pt-2">
             Don&apos;t have an account?{" "}
             <button
@@ -762,6 +791,15 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               Sign up
             </button>
           </p>
+          {step === "otp" && (
+            <button
+              type="button"
+              onClick={() => setStep("phone")}
+              className="block w-full text-center text-sm font-semibold text-[#FF4907]"
+            >
+              Change number
+            </button>
+          )}
           <Button
             type="submit"
             className={customerAuthPrimaryButtonClass}
@@ -769,7 +807,7 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
             data-testid="button-login"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Log In
+            {step === "phone" ? "Send OTP" : "Verify and sign in"}
           </Button>
         </form>
       </Form>
@@ -802,18 +840,49 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [step, setStep] = useState<"details" | "otp">("details");
+  const [otp, setOtp] = useState("");
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", phone: "", email: "", password: "", address: "", city: "", state: "", pincode: "" },
+    defaultValues: { name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "" },
   });
 
-  async function handleRegister(data: z.infer<typeof registerSchema>) {
+  async function handleSendOtp(data: z.infer<typeof registerSchema>) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/public/office/${slug}/customer/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: data.phone, purpose: "register" }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message);
+      setStep("otp");
+      setOtp("");
+      toast({
+        title: "OTP sent",
+        description: result.debugOtp
+          ? `Dev code: ${result.debugOtp}`
+          : "Enter the 6-digit code sent to your WhatsApp.",
+      });
+    } catch (err: any) {
+      toast({ title: "Could not send OTP", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleRegister() {
+    if (otp.replace(/\D/g, "").length !== 6) {
+      toast({ title: "Enter the OTP", description: "Type the 6-digit WhatsApp code.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/public/office/${slug}/customer/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...form.getValues(), otp }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
@@ -829,14 +898,17 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   return (
     <CustomerAuthShell
       title="Create account"
-      subtitle={`Register once to book faster with ${office.name} and track every pickup.`}
+      subtitle={`Register once to book faster with ${office.name}. We will verify your mobile with an OTP.`}
       officeName={office.name}
     >
       <h2 className="sr-only" data-testid="text-auth-title">
         Create Account
       </h2>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-3">
+        <form
+          onSubmit={form.handleSubmit(step === "details" ? handleSendOtp : handleRegister)}
+          className="space-y-3"
+        >
           <FormField
             control={form.control}
             name="name"
@@ -897,26 +969,22 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               )}
             />
           </div>
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="sr-only">Password</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="password"
-                    placeholder="Password (min 6 characters) *"
-                    autoComplete="new-password"
-                    className={customerAuthFieldClass}
-                    data-testid="input-register-password"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {step === "otp" && (
+            <FormItem>
+              <FormLabel className="sr-only">OTP</FormLabel>
+              <FormControl>
+                <Input
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit OTP (use 123456 for now)"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className={customerAuthFieldClass}
+                  data-testid="input-register-otp"
+                />
+              </FormControl>
+            </FormItem>
+          )}
           <FormField
             control={form.control}
             name="address"
@@ -987,7 +1055,7 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
             data-testid="button-register"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Create Account
+            {step === "details" ? "Send OTP" : "Verify and create account"}
           </Button>
         </form>
       </Form>

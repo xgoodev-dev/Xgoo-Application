@@ -16,6 +16,7 @@ import {
   Users,
   Clock3,
   Images,
+  Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ import { WhatsAppBusinessSync } from "@/components/settings/WhatsAppBusinessSync
 import { StaffManagement } from "@/components/settings/StaffManagement";
 import { PickupSlotSettings } from "@/components/settings/PickupSlotSettings";
 import { AppBannerSettings } from "@/components/settings/AppBannerSettings";
+import { DelhiveryApiSettings } from "@/components/settings/DelhiveryApiSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const officeSchema = z.object({
@@ -142,6 +144,10 @@ export default function SettingsPage() {
           <TabsTrigger value="pickup" className="gap-2">
             <Clock3 className="h-4 w-4" />
             Pickup Slots
+          </TabsTrigger>
+          <TabsTrigger value="couriers" className="gap-2">
+            <Truck className="h-4 w-4" />
+            Courier APIs
           </TabsTrigger>
           <TabsTrigger value="staff" className="gap-2">
             <Users className="h-4 w-4" />
@@ -385,6 +391,9 @@ export default function SettingsPage() {
           <PickupSlotSettings />
         </TabsContent>
 
+        <TabsContent value="couriers" className="mt-0">
+          <DelhiveryApiSettings />
+        </TabsContent>
         <TabsContent value="staff" className="mt-0">
           <StaffManagement />
         </TabsContent>

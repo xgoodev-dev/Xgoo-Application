@@ -3,8 +3,8 @@ import { COURIER_PARTNER_BRANDS } from "./courier-partners";
 function PartnerLogo({ name, logo }: { name: string; logo: string }) {
   return (
     <div
-      className="flex h-[88px] min-w-[180px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-100 bg-white p-2 shadow-sm sm:h-[104px] sm:min-w-[220px] sm:p-3"
       title={name}
+      className="flex h-[72px] min-w-[148px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-100 bg-white p-2 shadow-sm sm:h-[104px] sm:min-w-[220px] sm:p-3"
     >
       <img
         src={logo}
@@ -21,7 +21,7 @@ export function CourierPartnersMarquee() {
   const track = [...COURIER_PARTNER_BRANDS, ...COURIER_PARTNER_BRANDS];
 
   return (
-    <section className="overflow-hidden border-y border-zinc-100 bg-zinc-50 py-14 sm:py-16">
+    <section className="overflow-hidden border-y border-zinc-100 bg-zinc-50 py-10 sm:py-16">
       <div className="mx-auto mb-10 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#FF4907]">
           Supported Courier Networks

@@ -6,7 +6,7 @@ export function LaunchingSoonRunner() {
 
   return (
     <div
-      className="bg-[#FF4907] text-white overflow-hidden py-2 text-sm font-medium tracking-wide"
+      className="bg-[#FF4907] text-white overflow-hidden py-2 text-xs font-medium tracking-wide sm:text-sm"
       role="status"
       aria-live="polite"
     >

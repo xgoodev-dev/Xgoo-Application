@@ -60,15 +60,21 @@ export function isBookingJobStatus(value: unknown): value is BookingJobStatus {
 }
 
 /**
- * Stored method wins. If unset, Delhivery defaults to API and everyone else to browser assist.
+ * Stored method wins, except Delhivery browser-assist rows now use the API connector.
+ * Manual / disabled / email remain available if an operator sets them.
  */
 export function resolveBookingMethod(partner: {
   bookingMethod?: string | null;
   code?: string | null;
   name?: string | null;
 }): BookingMethod {
+  if (isDelhiveryPartner(partner.code, partner.name)) {
+    if (partner.bookingMethod === "manual" || partner.bookingMethod === "disabled" || partner.bookingMethod === "email") {
+      return partner.bookingMethod;
+    }
+    return "api";
+  }
   if (isBookingMethod(partner.bookingMethod)) return partner.bookingMethod;
-  if (isDelhiveryPartner(partner.code, partner.name)) return "api";
   return "browser_automation";
 }
 

@@ -24,6 +24,7 @@ const statusColors: Record<string, string> = {
   picked_up: "bg-blue-100 text-blue-700 dark:bg-zinc-800 dark:text-blue-400",
   in_transit: "bg-purple-100 text-purple-700 dark:bg-zinc-800 dark:text-purple-300",
   delivered: "bg-green-100 text-green-700 dark:bg-zinc-800 dark:text-green-400",
+  cancelled: "bg-red-100 text-red-700 dark:bg-zinc-800 dark:text-red-400",
 };
 
 const statusLabels: Record<string, string> = {
@@ -31,6 +32,7 @@ const statusLabels: Record<string, string> = {
   picked_up: "Picked Up",
   in_transit: "In Transit",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 function formatCurrency(amount: string | number) {

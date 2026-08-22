@@ -277,6 +277,9 @@ export function buildCustomerTracking(
   } else if (shipment.status === "booked") {
     currentLocation = origin;
     currentStatusDetail = "Shipment is booked. Awaiting courier pickup from your location.";
+  } else if (shipment.status === "cancelled") {
+    currentLocation = origin;
+    currentStatusDetail = "This shipment was cancelled and will not be picked up.";
   } else if (isDelivered) {
     currentLocation = destination;
     currentStatusDetail = "Parcel has been delivered successfully.";

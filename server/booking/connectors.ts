@@ -2,7 +2,14 @@ import { isDelhiveryPartner } from "@shared/delhivery";
 import { partnerPortalMismatch } from "@shared/partner-portal";
 import { resolvePartnerPortalUrl } from "@shared/partner-sync";
 import type { CourierPartner } from "@shared/schema";
-import { createDelhiveryShipment, getDelhiveryConfigFromEnv } from "../integrations/delhivery";
+import {
+  checkDelhiveryPincode,
+  createDelhiveryShipment,
+  fetchDelhiveryPackingSlipUrl,
+  getDelhiveryConfigFromEnv,
+  pingDelhiveryApi,
+  requestDelhiveryPickup,
+} from "../integrations/delhivery";
 import type { ConnectorContext, ConnectorResult, CourierConnector } from "./connector";
 
 export const delhiveryApiConnector: CourierConnector = {
@@ -13,13 +20,11 @@ export const delhiveryApiConnector: CourierConnector = {
     if (!config) {
       return {
         ok: false,
-        message: "Delhivery API is not configured. Set DELHIVERY_API_TOKEN and DELHIVERY_PICKUP_LOCATION.",
+        message:
+          "Delhivery API is not configured. Set DELHIVERY_API_TOKEN and DELHIVERY_PICKUP_LOCATION from Delhivery One → Settings → API and MCP Setup (the API token, not the MCP JSON).",
       };
     }
-    return {
-      ok: true,
-      message: `Delhivery API ready (${config.baseUrl}, pickup ${config.pickupLocation}).`,
-    };
+    return pingDelhiveryApi(config);
   },
   async createShipment(ctx: ConnectorContext): Promise<ConnectorResult> {
     if (!isDelhiveryPartner(ctx.partner.code, ctx.partner.name)) {
@@ -37,21 +42,60 @@ export const delhiveryApiConnector: CourierConnector = {
       return {
         ok: false,
         status: "booking_failed",
-        error: "Delhivery API is not configured on the server.",
+        error:
+          "Delhivery API is not configured. Add DELHIVERY_API_TOKEN and DELHIVERY_PICKUP_LOCATION, then restart the server.",
       };
     }
 
-    await ctx.log("connecting", "Connecting to Delhivery API");
+    const destPin = (ctx.shipment.receiverPincode ?? "").trim();
+    await ctx.log("serviceability", `Checking Delhivery serviceability for ${destPin}`);
+    const pinCheck = await checkDelhiveryPincode(config, destPin);
+    if (!pinCheck.serviceable) {
+      return { ok: false, status: "booking_failed", error: pinCheck.message };
+    }
+
+    await ctx.log("connecting", `Creating Delhivery order at ${config.pickupLocation}`);
     const result = await createDelhiveryShipment(config, {
       shipment: ctx.shipment,
       pickupLocation: config.pickupLocation,
     });
     await ctx.log("booked", `Delhivery assigned waybill ${result.waybill}`);
+
+    let labelUrl: string | undefined;
+    try {
+      const slip = await fetchDelhiveryPackingSlipUrl(config, result.waybill);
+      if (slip) {
+        labelUrl = slip;
+        await ctx.log("label", "Delhivery packing slip is ready");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Packing slip unavailable";
+      await ctx.log("label", message, "warn");
+    }
+
+    if (!config.skipPickup) {
+      try {
+        const pickup = await requestDelhiveryPickup(config, ctx.shipment.numberOfPieces ?? 1);
+        await ctx.log(
+          "pickup",
+          pickup.pickupId
+            ? `Pickup requested (id ${pickup.pickupId})`
+            : "Pickup requested on Delhivery",
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Pickup request failed";
+        await ctx.log("pickup", `${message} AWB ${result.waybill} is still booked.`, "warn");
+      }
+    } else {
+      await ctx.log("pickup", "Pickup request skipped (DELHIVERY_SKIP_PICKUP).");
+    }
+
     return {
       ok: true,
       status: "booked",
       awb: result.waybill,
       bookingReference: result.waybill,
+      labelUrl,
     };
   },
 };

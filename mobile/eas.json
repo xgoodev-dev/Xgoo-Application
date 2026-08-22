@@ -8,19 +8,26 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.0.6:3000",
+        "EXPO_PUBLIC_API_URL": "https://www.xgoo.in",
         "EXPO_PUBLIC_OFFICE_SLUG": "demo-office"
       }
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.0.6:3000",
+        "EXPO_PUBLIC_API_URL": "https://www.xgoo.in",
         "EXPO_PUBLIC_OFFICE_SLUG": "demo-office"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://www.xgoo.in",
+        "EXPO_PUBLIC_OFFICE_SLUG": "demo-office"
+      }
     }
   },
   "submit": {

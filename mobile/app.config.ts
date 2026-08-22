@@ -7,6 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     android: {
       ...config.android,
+      usesCleartextTraffic: true,
       ...(apiKey
         ? {
             config: {

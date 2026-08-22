@@ -54,7 +54,7 @@ export function MarketingFooter() {
   const [, navigate] = useLocation();
 
   return (
-    <footer className="border-t border-white/10 py-12 sm:py-14" style={{ background: "#141414" }}>
+    <footer className="border-t border-white/10 pb-28 pt-12 sm:py-14" style={{ background: "#141414" }}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
           <div className="sm:col-span-2 lg:col-span-1">
@@ -74,7 +74,7 @@ export function MarketingFooter() {
               exceptional experiences.
             </p>
             <div className="mt-4 space-y-1 text-sm text-white/45">
-              <a href={`mailto:${XGOO_CONTACT.email}`} className="block hover:text-white">
+              <a href={`mailto:${XGOO_CONTACT.email}`} className="block break-all hover:text-white">
                 {XGOO_CONTACT.email}
               </a>
               <a

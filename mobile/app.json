@@ -2,7 +2,7 @@
   "expo": {
     "name": "XGoo",
     "slug": "xgoo",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/xgoo-logo.png",
     "scheme": "xgoo",
@@ -22,6 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.murthyenterprises.xgoo",
+      "usesCleartextTraffic": true,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
@@ -48,7 +49,16 @@
           "icon": "./assets/images/xgoo-logo.png",
           "color": "#FF4907"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/with-cleartext-traffic.js"
     ],
     "experiments": {
       "typedRoutes": true,

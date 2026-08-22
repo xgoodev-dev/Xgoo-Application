@@ -322,7 +322,7 @@ export const shipments = pgTable("shipments", {
   
   // Service details
   serviceType: varchar("service_type", { length: 20 }).notNull().default("surface"), // air, surface
-  status: varchar("status", { length: 30 }).notNull().default("booked"), // booked, picked_up, in_transit, delivered
+  status: varchar("status", { length: 30 }).notNull().default("booked"), // booked, picked_up, in_transit, delivered, cancelled
   
   // Billing
   baseAmount: decimal("base_amount", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -674,6 +674,19 @@ export const customerAddressesRelations = relations(customerAddresses, ({ one })
 }));
 
 // Customer Sessions table
+export const customerOtps = pgTable("customer_otps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  purpose: varchar("purpose", { length: 20 }).notNull(),
+  codeHash: varchar("code_hash", { length: 255 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_customer_otps_lookup").on(table.officeId, table.phone, table.purpose),
+]);
+
 export const customerSessions = pgTable("customer_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),

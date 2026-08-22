@@ -1,26 +1,58 @@
 import { router } from 'expo-router';
 import { ArrowLeft, ArrowRight } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme';
 
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const { register, requestOtp } = useAuth();
   const { colors } = useAppTheme();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<'details' | 'otp'>('details');
   const [loading, setLoading] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
-  const submit = async () => {
-    if (!name.trim() || phone.trim().length < 10 || password.length < 6) {
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  const sendCode = async () => {
+    if (!name.trim() || phone.trim().length < 10) {
       Alert.alert(
         'Complete your account',
-        'Add your name, a valid phone number, and a password of at least 6 characters.',
+        'Add your name and a valid 10-digit mobile number.',
       );
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await requestOtp(phone, 'register');
+      setStep('otp');
+      setOtp('');
+      setResendIn(45);
+      Alert.alert(
+        'OTP sent',
+        result.debugOtp
+          ? `Use this code: ${result.debugOtp}`
+          : "Until WhatsApp is configured, use 123456.",
+      );
+    } catch (error) {
+      Alert.alert('Could not send OTP', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submit = async () => {
+    if (otp.replace(/\D/g, '').length !== 6) {
+      Alert.alert('Enter the OTP', 'Type the 6-digit code from WhatsApp.');
       return;
     }
     setLoading(true);
@@ -29,7 +61,7 @@ export default function RegisterScreen() {
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim() || undefined,
-        password,
+        otp,
       });
       router.replace('/(tabs)');
     } catch (error) {
@@ -41,42 +73,63 @@ export default function RegisterScreen() {
 
   return (
     <Screen keyboard contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable
+        onPress={() => (step === 'otp' ? setStep('details') : router.back())}
+        style={styles.back}
+      >
         <ArrowLeft size={22} color={colors.text} />
       </Pressable>
       <BrandLockup compact />
       <View style={styles.copy}>
         <Text style={[styles.title, { color: colors.text }]}>Start moving</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Create your account for faster parcel bookings.
+          {step === 'details'
+            ? 'Create your account for faster parcel bookings. We will verify your mobile with an OTP.'
+            : `Enter the OTP sent to ${phone.trim()}.`}
         </Text>
       </View>
 
       <View style={styles.form}>
-        <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" />
-        <Field
-          label="Phone number"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          placeholder="10-digit mobile number"
-        />
-        <Field
-          label="Email (optional)"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          placeholder="you@example.com"
-        />
-        <Field
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="At least 6 characters"
-        />
-        <AppButton title="Create account" icon={ArrowRight} loading={loading} onPress={submit} />
+        {step === 'details' ? (
+          <>
+            <Field label="Full name" value={name} onChangeText={setName} placeholder="Your name" />
+            <Field
+              label="Mobile number"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="10-digit mobile number"
+            />
+            <Field
+              label="Email (optional)"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholder="you@example.com"
+            />
+            <AppButton title="Send OTP" icon={ArrowRight} loading={loading} onPress={sendCode} />
+          </>
+        ) : (
+          <>
+            <Field
+              label="OTP"
+              value={otp}
+              onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              autoComplete="one-time-code"
+              placeholder="6-digit code"
+              maxLength={6}
+              helperText="Until WhatsApp OTP is set up, use 123456"
+            />
+            <AppButton title="Verify and create account" icon={ArrowRight} loading={loading} onPress={submit} />
+            <Pressable disabled={resendIn > 0 || loading} onPress={() => void sendCode()}>
+              <Text style={{ color: resendIn > 0 ? colors.textMuted : colors.accent, fontWeight: '700', textAlign: 'center' }}>
+                {resendIn > 0 ? `Resend OTP in ${resendIn}s` : 'Resend OTP'}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <View style={styles.switchRow}>
@@ -98,4 +151,3 @@ const styles = StyleSheet.create({
   form: { gap: 15 },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
 });
-

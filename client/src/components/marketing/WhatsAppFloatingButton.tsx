@@ -50,7 +50,7 @@ export function WhatsAppFloatingButton() {
   const href = `https://wa.me/${phone}?text=${encodeURIComponent(prefill)}`;
 
   return (
-    <div className="fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-[60] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
       {open && (
         <div className="w-[min(100vw-2.5rem,320px)] overflow-hidden rounded-2xl border border-black/5 bg-white shadow-2xl shadow-black/20">
           <div className="flex items-start justify-between gap-3 bg-[#25D366] px-4 py-3 text-white">

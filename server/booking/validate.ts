@@ -1,6 +1,7 @@
 import type { CourierPartner, Shipment } from "@shared/schema";
 import type { BookingValidationIssue } from "@shared/booking-engine";
 import { resolveBookingMethod } from "@shared/booking-engine";
+import { isDelhiveryPartner } from "@shared/delhivery";
 import { getDelhiveryConfigFromEnv } from "../integrations/delhivery";
 
 function digits(value: string | null | undefined): string {
@@ -74,6 +75,23 @@ export function validateShipmentForBooking(
       message: "Receiver pincode must be 6 digits.",
       field: "receiverPincode",
     });
+  }
+
+  if (method === "api" && isDelhiveryPartner(partner.code, partner.name)) {
+    if (!receiverPin) {
+      issues.push({
+        code: "receiver_pincode",
+        message: "Delhivery booking needs a 6-digit destination pincode.",
+        field: "receiverPincode",
+      });
+    }
+    if (!senderPin) {
+      issues.push({
+        code: "sender_pincode",
+        message: "Delhivery booking needs a 6-digit pickup pincode.",
+        field: "senderPincode",
+      });
+    }
   }
 
   const weight = Number.parseFloat(String(shipment.weight ?? "0"));

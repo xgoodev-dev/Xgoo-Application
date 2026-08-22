@@ -59,7 +59,7 @@ export default function PrivacySecurityScreen() {
         <View style={styles.flex}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Your account is protected</Text>
           <Text style={[styles.copy, { color: colors.textMuted }]}>
-            Your session token is stored securely on this device. XGoo never displays your password.
+            Sign-in uses a one-time code on your mobile. Your session token is stored securely on this device.
           </Text>
         </View>
       </Card>

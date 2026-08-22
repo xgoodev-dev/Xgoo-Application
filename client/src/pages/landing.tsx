@@ -192,7 +192,7 @@ export default function LandingPage() {
       <MarketingHeader />
 
       {/* Hero — full-bleed photo + brand headline */}
-      <section className="relative isolate min-h-[100svh] pt-[7.5rem]">
+      <section className="relative isolate pt-[6.75rem] sm:min-h-[100svh] sm:pt-[7.5rem]">
         <div className="absolute inset-0 -z-10">
           <img
             src={LANDING_IMAGES.hero}
@@ -204,25 +204,25 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/25" />
         </div>
 
-        <div className="mx-auto flex min-h-[calc(100svh-7.5rem)] max-w-7xl flex-col justify-end px-4 pb-36 pt-10 sm:px-6 sm:pb-40 lg:px-8 lg:pb-44">
+        <div className="mx-auto flex max-w-7xl flex-col justify-end px-4 pb-10 pt-8 sm:min-h-[calc(100svh-7.5rem)] sm:px-6 sm:pb-40 sm:pt-10 lg:px-8 lg:pb-44">
           <div className="max-w-2xl">
-            <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 sm:mb-4 sm:text-sm sm:tracking-[0.2em]">
               {XGOO_BRAND_FOUNDATION.coreIdea.title}
             </p>
-            <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="text-[2rem] font-extrabold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
               {XGOO_BRAND_VOICE.heroHeadline}
               <span className="block" style={{ color: ORANGE }}>
                 {XGOO_BRAND_VOICE.heroAccent}
               </span>
             </h1>
-            <p className="mt-5 max-w-lg text-base leading-relaxed text-white/75 sm:text-lg">
+            <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/75 sm:mt-5 sm:text-lg">
               {XGOO_BRAND_VOICE.heroSupport}
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-7 flex w-full flex-col gap-3 sm:mt-8 sm:flex-row sm:items-center">
               <Button
                 size="lg"
                 onClick={() => navigate("/book")}
-                className="h-12 gap-2 border-0 px-7 text-base font-semibold text-white hover:opacity-95"
+                className="h-12 w-full gap-2 border-0 px-7 text-base font-semibold text-white hover:opacity-95 sm:w-auto"
                 style={{ background: ORANGE }}
               >
                 Book a Parcel
@@ -234,7 +234,7 @@ export default function LandingPage() {
                 onClick={() =>
                   document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })
                 }
-                className="h-12 border-white/40 bg-white/10 px-7 text-base font-semibold text-white backdrop-blur hover:bg-white/20 hover:text-white"
+                className="h-12 w-full border-white/40 bg-white/10 px-7 text-base font-semibold text-white backdrop-blur hover:bg-white/20 hover:text-white sm:w-auto"
               >
                 Discover More
               </Button>
@@ -242,8 +242,8 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Overlapping value strip */}
-        <div className="absolute inset-x-0 bottom-0 translate-y-1/2 px-4 sm:px-6 lg:px-8">
+        {/* In-flow on phones so cards don't cover About; overlapping strip from sm up */}
+        <div className="relative z-10 px-4 pb-8 sm:absolute sm:inset-x-0 sm:bottom-0 sm:translate-y-1/2 sm:px-6 sm:pb-0 lg:px-8">
           <div className="mx-auto grid max-w-7xl gap-3 sm:grid-cols-3 sm:gap-4">
             {heroHighlights.map((item) => (
               <div
@@ -268,13 +268,13 @@ export default function LandingPage() {
       </section>
 
       {/* About */}
-      <section id="about-preview" className="bg-white pb-20 pt-28 sm:pb-28 sm:pt-36">
+      <section id="about-preview" className="scroll-mt-[6.75rem] bg-white pb-20 pt-12 sm:scroll-mt-[8.5rem] sm:pb-28 sm:pt-36">
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
               {XGOO_BRAND_FOUNDATION.purpose.label}
             </p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+            <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
               {XGOO_BRAND_FOUNDATION.purpose.quote}
             </h2>
             <p className="mt-4 text-base leading-relaxed text-zinc-500">
@@ -317,7 +317,7 @@ export default function LandingPage() {
               />
             </div>
             <div
-              className="absolute -bottom-6 -left-4 rounded-md px-6 py-5 text-white shadow-xl sm:-left-6"
+              className="absolute bottom-3 left-3 rounded-md px-5 py-4 text-white shadow-xl sm:-bottom-6 sm:left-4 sm:px-6 sm:py-5 lg:-left-6"
               style={{ background: ORANGE }}
             >
               <p className="text-4xl font-extrabold leading-none sm:text-5xl">7+</p>
@@ -328,13 +328,13 @@ export default function LandingPage() {
       </section>
 
       {/* Services */}
-      <section id="features" className="border-y border-zinc-100 bg-zinc-50 py-20 sm:py-28">
+      <section id="features" className="scroll-mt-[6.75rem] border-y border-zinc-100 bg-zinc-50 py-20 sm:scroll-mt-[8.5rem] sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto mb-14 max-w-2xl text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
               {XGOO_BRAND_FOUNDATION.mission.label}
             </p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+            <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
               Quality services that simplify movement
             </h2>
             <p className="mt-4 text-zinc-500">{XGOO_BRAND_FOUNDATION.mission.quote}</p>
@@ -368,14 +368,14 @@ export default function LandingPage() {
       </section>
 
       {/* How it works / process feature */}
-      <section id="how-it-works" className="bg-white py-20 sm:py-28">
+      <section id="how-it-works" className="scroll-mt-[6.75rem] bg-white py-20 sm:scroll-mt-[8.5rem] sm:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
                 How it works
               </p>
-              <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+              <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
                 From booking to delivery in four clear steps
               </h2>
               <p className="mt-4 text-zinc-500">
@@ -426,12 +426,12 @@ export default function LandingPage() {
       <CourierPartnersMarquee />
 
       {/* Tracking strip */}
-      <section id="track" className="bg-white py-16 sm:py-20">
+      <section id="track" className="scroll-mt-[6.75rem] bg-white py-16 sm:scroll-mt-[8.5rem] sm:py-20">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
           <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
             Track shipment
           </p>
-          <h2 className="mt-3 text-3xl font-extrabold text-zinc-900">Where is your parcel?</h2>
+          <h2 className="mt-3 text-[1.7rem] font-extrabold text-zinc-900 sm:text-3xl">Where is your parcel?</h2>
           <p className="mt-3 text-zinc-500">Enter your booking or AWB number to get the latest status.</p>
           <div className="mt-8 text-left">
             <PublicTrackingSearch variant="hero" />
@@ -454,7 +454,7 @@ export default function LandingPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
               FAQ
             </p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+            <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
               Answers to your courier questions
             </h2>
             <Accordion type="single" collapsible defaultValue="item-0" className="mt-8 space-y-3">
@@ -464,8 +464,8 @@ export default function LandingPage() {
                   value={`item-${index}`}
                   className="overflow-hidden rounded-md border-0 bg-white shadow-sm data-[state=open]:shadow-md"
                 >
-                  <AccordionTrigger className="px-5 py-4 text-left text-base font-semibold text-zinc-900 hover:no-underline data-[state=open]:bg-[#FF4907] data-[state=open]:text-white [&[data-state=open]>svg]:text-white">
-                    {faq.q}
+                  <AccordionTrigger className="gap-3 px-4 py-4 text-left text-sm font-semibold text-zinc-900 hover:no-underline sm:px-5 sm:text-base data-[state=open]:bg-[#FF4907] data-[state=open]:text-white [&[data-state=open]>svg]:text-white">
+                    <span className="min-w-0 flex-1 text-left leading-snug">{faq.q}</span>
                   </AccordionTrigger>
                   <AccordionContent className="bg-white px-5 pb-4 pt-3 text-sm leading-relaxed text-zinc-500">
                     {faq.a}
@@ -484,7 +484,7 @@ export default function LandingPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
               Testimonials
             </p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
+            <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
               Customer experiences that speak for us
             </h2>
           </div>
@@ -548,18 +548,18 @@ export default function LandingPage() {
         </div>
         <div className="relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
           <Clock className="mx-auto mb-4 h-8 w-8" style={{ color: ORANGE }} />
-          <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
+          <h2 className="text-[1.7rem] font-extrabold text-white sm:text-4xl">
             Ready to move forward?
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-base text-white/60">
             {XGOO_BRAND_VOICE.beliefOneLiner} Book online, track every step, and experience movement
             without friction.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
             <Button
               size="lg"
               onClick={() => navigate("/book")}
-              className="h-12 gap-2 border-0 px-8 text-white"
+              className="h-12 w-full gap-2 border-0 px-8 text-white sm:w-auto"
               style={{ background: ORANGE }}
             >
               <Package className="h-5 w-5" />
@@ -569,7 +569,7 @@ export default function LandingPage() {
               size="lg"
               variant="outline"
               onClick={() => navigate("/contact")}
-              className="h-12 border-white/25 bg-transparent px-8 text-white hover:bg-white/10 hover:text-white"
+              className="h-12 w-full border-white/25 bg-transparent px-8 text-white hover:bg-white/10 hover:text-white sm:w-auto"
             >
               Contact us
             </Button>

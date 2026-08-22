@@ -62,6 +62,8 @@ const statusColors: Record<string, string> = {
     "bg-purple-100 text-purple-700 dark:bg-zinc-800 dark:text-purple-300 dark:border dark:border-zinc-700",
   delivered:
     "bg-green-100 text-green-700 dark:bg-zinc-800 dark:text-green-400 dark:border dark:border-zinc-700",
+  cancelled:
+    "bg-red-100 text-red-700 dark:bg-zinc-800 dark:text-red-400 dark:border dark:border-zinc-700",
 };
 
 const statusLabels: Record<string, string> = {
@@ -69,6 +71,7 @@ const statusLabels: Record<string, string> = {
   picked_up: "Picked Up",
   in_transit: "In Transit",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 const nextStatus: Record<string, string> = {
@@ -292,6 +295,7 @@ export default function ShipmentsPage() {
                 <SelectItem value="picked_up">Picked Up</SelectItem>
                 <SelectItem value="in_transit">In Transit</SelectItem>
                 <SelectItem value="delivered">Delivered</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>

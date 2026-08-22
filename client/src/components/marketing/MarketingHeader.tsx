@@ -85,25 +85,25 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   );
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50">
+    <header className="fixed top-0 left-0 right-0 z-50 pt-[env(safe-area-inset-top)]">
       <LaunchingSoonRunner />
       <nav className="border-b border-zinc-100 bg-white shadow-sm">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4 sm:h-20 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/")}
-            className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90 sm:gap-3"
+            className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-90 sm:gap-3"
           >
             <img
               src={xgooLogo}
               alt="XGoo"
-              className="h-12 w-12 shrink-0 rounded-xl sm:h-14 sm:w-14"
+              className="h-10 w-10 shrink-0 rounded-xl sm:h-14 sm:w-14"
             />
             <div className="min-w-0 text-left">
-              <span className="block truncate text-xl font-extrabold tracking-tight text-zinc-900 sm:text-2xl">
+              <span className="block truncate text-lg font-extrabold tracking-tight text-zinc-900 sm:text-2xl">
                 {XGOO_BRAND.productName}
               </span>
-              <span className="block truncate text-[11px] text-zinc-400 sm:text-sm">
+              <span className="block truncate text-[10px] text-zinc-400 sm:text-sm">
                 from {XGOO_BRAND.parentCompany}
               </span>
             </div>
@@ -125,7 +125,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
             <Button
               size="sm"
               onClick={() => navigate("/book")}
-              className="gap-1 rounded-none border-0 bg-[#FF4907] px-4 font-semibold text-white hover:bg-[#e03d00]"
+              className="gap-1 rounded-none border-0 bg-[#FF4907] px-3 font-semibold text-white hover:bg-[#e03d00] sm:px-4"
             >
               <span className="sm:hidden">Book</span>
               <span className="hidden sm:inline">Book a Parcel</span>
@@ -143,7 +143,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
                   <Menu className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[min(100vw-2rem,20rem)]">
+              <SheetContent side="right" className="w-full max-w-xs">
                 <SheetHeader>
                   <SheetTitle>Menu</SheetTitle>
                 </SheetHeader>

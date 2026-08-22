@@ -11,6 +11,8 @@ import { validateShipmentForBooking } from "./validate";
 import { isWorldFirstPartner, worldFirstWorkflowStatus } from "@shared/world-first";
 import type { BookingWorkflowStep } from "@shared/world-first";
 import { issueAutofillToken } from "./autofill-token";
+import { isDelhiveryPartner } from "@shared/delhivery";
+import { getDelhiveryConfigFromEnv, cancelDelhiveryShipment } from "../integrations/delhivery";
 
 export class BookingEngineError extends Error {
   constructor(
@@ -324,6 +326,67 @@ export async function resumeBooking(input: {
     operatorUserId: input.operatorUserId || job.operatorUserId,
     nextAction: "browser",
     actionRequiredReason: "Logged in. Open AWB Entry, Autofill, then paste the partner AWB in XGoo.",
+  });
+  return getBookingSnapshot(input.officeId, shipment.id);
+}
+
+export async function cancelPartnerBooking(input: {
+  officeId: string;
+  shipmentId: string;
+  operatorUserId: string;
+}): Promise<BookingSnapshot> {
+  const shipment = await requireShipment(input.officeId, input.shipmentId);
+  const partner = await requirePartner(shipment);
+  if (shipment.status === "cancelled") {
+    return getBookingSnapshot(input.officeId, shipment.id);
+  }
+  if (shipment.status === "delivered") {
+    throw new BookingEngineError("Delivered shipments cannot be cancelled.", 409, "not_cancellable");
+  }
+
+  const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+  if (!isDelhiveryPartner(partner.code, partner.name) || resolveBookingMethod(partner) !== "api") {
+    throw new BookingEngineError(
+      "Courier cancel from XGoo is only available for Delhivery API bookings.",
+      400,
+      "unsupported",
+    );
+  }
+  if (!waybill) {
+    throw new BookingEngineError("No Delhivery AWB to cancel. Book the shipment first.", 400, "no_awb");
+  }
+  const config = getDelhiveryConfigFromEnv();
+  if (!config) {
+    throw new BookingEngineError(
+      "Delhivery API is not configured. Add DELHIVERY_API_TOKEN, then restart the server.",
+      400,
+      "not_configured",
+    );
+  }
+
+  await cancelDelhiveryShipment(config, waybill);
+
+  await storage.updateShipmentStatus(shipment.id, "cancelled");
+  const job = await storage.getLatestBookingJob(shipment.id);
+  if (job) {
+    await storage.updateBookingJob(job.id, {
+      status: "cancelled",
+      error: null,
+      actionRequiredReason: null,
+      nextAction: "none",
+      completedAt: new Date(),
+      operatorUserId: input.operatorUserId || job.operatorUserId,
+    });
+    await storage.addBookingEvent({
+      jobId: job.id,
+      shipmentId: shipment.id,
+      level: "info",
+      step: "cancelled",
+      message: `Cancelled Delhivery AWB ${waybill}`,
+    });
+  }
+  await storage.updateShipmentPartnerSync(shipment.id, {
+    partnerSyncError: `Cancelled on Delhivery (${waybill})`,
   });
   return getBookingSnapshot(input.officeId, shipment.id);
 }

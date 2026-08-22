@@ -1,27 +1,58 @@
 import { router } from 'expo-router';
-import { ArrowLeft, Eye, EyeOff, LogIn } from 'lucide-react-native';
-import { useState } from 'react';
+import { ArrowLeft, LogIn } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme';
 
 export default function SignInScreen() {
-  const { signIn } = useAuth();
+  const { requestOtp, signIn } = useAuth();
   const { colors } = useAppTheme();
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [visible, setVisible] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
-  const submit = async () => {
-    if (phone.trim().length < 10 || !password) {
-      Alert.alert('Check your details', 'Enter your phone number and password.');
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  const sendCode = async () => {
+    if (phone.trim().length < 10) {
+      Alert.alert('Check your mobile number', 'Enter a valid 10-digit mobile number.');
       return;
     }
     setLoading(true);
     try {
-      await signIn(phone, password);
+      const result = await requestOtp(phone, 'login');
+      setStep('otp');
+      setOtp('');
+      setResendIn(45);
+      Alert.alert(
+        'OTP sent',
+        result.debugOtp
+          ? `Use this code: ${result.debugOtp}`
+          : "Until WhatsApp is configured, use 123456.",
+      );
+    } catch (error) {
+      Alert.alert('Could not send OTP', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submit = async () => {
+    if (otp.replace(/\D/g, '').length !== 6) {
+      Alert.alert('Enter the OTP', 'Type the 6-digit code from WhatsApp.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await signIn(phone, otp);
       router.replace('/(tabs)');
     } catch (error) {
       Alert.alert('Could not sign in', error instanceof Error ? error.message : 'Please try again.');
@@ -32,44 +63,55 @@ export default function SignInScreen() {
 
   return (
     <Screen keyboard contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} style={styles.back}>
+      <Pressable
+        onPress={() => (step === 'otp' ? setStep('phone') : router.back())}
+        style={styles.back}
+      >
         <ArrowLeft size={22} color={colors.text} />
       </Pressable>
       <BrandLockup compact />
       <View style={styles.copy}>
         <Text style={[styles.title, { color: colors.text }]}>Welcome back</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Sign in to book and track your parcels.
+          {step === 'phone'
+            ? 'Sign in with your mobile number. We will send an OTP on WhatsApp.'
+            : `Enter the OTP sent to ${phone.trim()}.`}
         </Text>
       </View>
 
       <View style={styles.form}>
-        <Field
-          label="Phone number"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          autoComplete="tel"
-          placeholder="10-digit mobile number"
-        />
-        <View>
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!visible}
-            autoComplete="password"
-            placeholder="Your password"
-          />
-          <Pressable style={styles.eye} onPress={() => setVisible((value) => !value)}>
-            {visible ? (
-              <EyeOff size={19} color={colors.textMuted} />
-            ) : (
-              <Eye size={19} color={colors.textMuted} />
-            )}
-          </Pressable>
-        </View>
-        <AppButton title="Sign in" icon={LogIn} loading={loading} onPress={submit} />
+        {step === 'phone' ? (
+          <>
+            <Field
+              label="Mobile number"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              placeholder="10-digit mobile number"
+            />
+            <AppButton title="Send OTP" icon={LogIn} loading={loading} onPress={sendCode} />
+          </>
+        ) : (
+          <>
+            <Field
+              label="OTP"
+              value={otp}
+              onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              autoComplete="one-time-code"
+              placeholder="6-digit code"
+              maxLength={6}
+              helperText="Until WhatsApp OTP is set up, use 123456"
+            />
+            <AppButton title="Verify and sign in" icon={LogIn} loading={loading} onPress={submit} />
+            <Pressable disabled={resendIn > 0 || loading} onPress={() => void sendCode()}>
+              <Text style={{ color: resendIn > 0 ? colors.textMuted : colors.accent, fontWeight: '700', textAlign: 'center' }}>
+                {resendIn > 0 ? `Resend OTP in ${resendIn}s` : 'Resend OTP'}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <View style={styles.switchRow}>
@@ -89,7 +131,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontWeight: '900', letterSpacing: -0.8 },
   subtitle: { fontSize: 14, marginTop: 8 },
   form: { gap: 17 },
-  eye: { position: 'absolute', right: 14, bottom: 15 },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 26 },
 });
-

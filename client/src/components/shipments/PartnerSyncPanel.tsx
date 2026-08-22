@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Circle,
   Clock,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ interface BookingSnapshot {
     actionRequiredReason?: string | null;
     nextAction?: string | null;
     awbNumber?: string | null;
+    labelUrl?: string | null;
   } | null;
   events: Array<{ id: string; step: string; message: string; createdAt: string }>;
   method: BookingMethod;
@@ -196,8 +198,51 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     },
     onError: (error: Error) => {
       setSyncError(error.message);
+      toast({ title: "Could not start booking", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/shipments/${shipment.id}/booking/cancel`);
+      return res.json() as Promise<BookingSnapshot>;
+    },
+    onSuccess: (snapshot) => {
+      invalidateBooking();
       toast({
-        title: "Booking failed",
+        title: "Cancelled on Delhivery",
+        description: snapshot.job?.awbNumber
+          ? `AWB ${snapshot.job.awbNumber} was cancelled. It should leave Manifested after a refresh.`
+          : "Delhivery cancellation was sent.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not cancel on Delhivery",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const trackMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", `/api/shipments/${shipment.id}/delhivery-track`);
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(err.message || "Tracking failed");
+      }
+      return res.json() as Promise<{
+        waybill: string;
+        status: string;
+        origin: string | null;
+        destination: string | null;
+        scans: Array<{ status: string; location: string | null; at: string | null }>;
+      }>;
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delhivery tracking failed",
         description: error.message,
         variant: "destructive",
       });
@@ -291,6 +336,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     syncMutation.isPending ||
     bookMutation.isPending ||
     resumeMutation.isPending ||
+    cancelMutation.isPending ||
     partnersLoading ||
     bookingLoading;
   const alreadySynced = !!(
@@ -298,6 +344,9 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     externalAwb.trim() ||
     jobStatus === "booked"
   );
+  const isCancelled = shipment.status === "cancelled" || jobStatus === "cancelled";
+  const delhiveryAwb = (shipment.externalAwb || booking?.job?.awbNumber || "").trim();
+  const canCancelDelhivery = isDelhivery && isApiBooking && !!delhiveryAwb && !isCancelled;
   const canRetry = jobStatus === "booking_failed" && (booking?.job?.attemptCount ?? 0) < (booking?.job?.maxAttempts ?? 3);
   const loginDone = booking?.events?.some((event) => event.step === "resume") ?? false;
   const waitingOnLogin =
@@ -370,7 +419,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => void runBooking(canRetry)}
-            disabled={actionDisabled || alreadySynced}
+            disabled={actionDisabled || alreadySynced || isCancelled}
             data-testid="button-book-shipment"
           >
             {bookMutation.isPending ? (
@@ -380,6 +429,53 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
             )}
             {alreadySynced ? "Booked" : canRetry ? "Retry booking" : "Book shipment"}
           </Button>
+          {canCancelDelhivery ? (
+            <Button
+              variant="outline"
+              className="text-red-700 hover:text-red-800 dark:text-red-400"
+              disabled={actionDisabled}
+              data-testid="button-cancel-delhivery"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Cancel Delhivery AWB ${delhiveryAwb}? This removes it from Manifested if pickup has not happened.`,
+                  )
+                ) {
+                  return;
+                }
+                cancelMutation.mutate();
+              }}
+            >
+              {cancelMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Ban className="mr-2 h-4 w-4" />
+              )}
+              Cancel on Delhivery
+            </Button>
+          ) : null}
+          {isDelhivery && isApiBooking && (shipment.externalAwb || booking?.job?.awbNumber) ? (
+            <Button
+              variant="outline"
+              onClick={() => trackMutation.mutate()}
+              disabled={trackMutation.isPending}
+            >
+              {trackMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Clock className="mr-2 h-4 w-4" />
+              )}
+              Track on Delhivery
+            </Button>
+          ) : null}
+          {booking?.job?.labelUrl ? (
+            <Button variant="outline" asChild>
+              <a href={booking.job.labelUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Packing slip
+              </a>
+            </Button>
+          ) : null}
           {waitingOnLogin ? (
             <Button
               variant="secondary"
@@ -478,6 +574,27 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           </div>
         ) : null}
 
+        {trackMutation.data ? (
+          <div className="rounded-none border p-3 text-sm">
+            <p className="font-medium">
+              Delhivery · {trackMutation.data.waybill} · {trackMutation.data.status}
+            </p>
+            <p className="text-muted-foreground mt-1">
+              {trackMutation.data.origin || "—"} → {trackMutation.data.destination || "—"}
+            </p>
+            {trackMutation.data.scans.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {trackMutation.data.scans.slice(-5).reverse().map((scan, index) => (
+                  <li key={`${scan.at}-${index}`}>
+                    {scan.at ? new Date(scan.at).toLocaleString("en-IN") : "—"} · {scan.status}
+                    {scan.location ? ` · ${scan.location}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         {booking?.events?.length ? (
           <div className="space-y-1 border p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground mb-2">Booking activity</p>
@@ -493,9 +610,11 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              Add <code className="text-xs">DELHIVERY_API_TOKEN</code> and{" "}
+              Add <code className="text-xs">DELHIVERY_API_TOKEN</code> (API token from Delhivery One
+              → Settings → API and MCP Setup) and{" "}
               <code className="text-xs">DELHIVERY_PICKUP_LOCATION</code> to{" "}
-              <code className="text-xs">.env</code>, then restart the server for API sync.
+              <code className="text-xs">.env</code>, then restart the server. The MCP JSON on that
+              page is for Cursor only and cannot create bookings.
             </p>
           </div>
         )}
@@ -624,7 +743,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
 
         <p className="text-xs text-muted-foreground">
           {isApiBooking
-            ? "API booking uses the courier connector (Delhivery today). Other methods stay the same in this screen when they are added."
+            ? "API booking creates the Delhivery AWB from this screen, then requests pickup. MCP in Cursor is separate and read-only."
             : needsBrowserAssist
               ? extensionInstalled
                 ? isWorldFirst

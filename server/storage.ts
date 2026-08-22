@@ -994,8 +994,17 @@ export class DatabaseStorage implements IStorage {
 
   // Customer User operations
   async getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined> {
+    const digits = phone.replace(/\D/g, "");
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
     const [user] = await db.select().from(customerUsers).where(
-      and(eq(customerUsers.officeId, officeId), eq(customerUsers.phone, phone))
+      and(
+        eq(customerUsers.officeId, officeId),
+        or(
+          eq(customerUsers.phone, phone),
+          eq(customerUsers.phone, last10),
+          eq(customerUsers.phone, digits),
+        ),
+      )
     );
     return user;
   }
@@ -1897,6 +1906,7 @@ export class DatabaseStorage implements IStorage {
         ratePerKgSurface: "25",
         baseRateAir: "90",
         ratePerKgAir: "55",
+        bookingMethod: "api",
         awbPrefix: "DL",
         isActive: true,
         isDemo: true,

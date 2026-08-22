@@ -561,9 +561,10 @@ export default function PartnersPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        API books through the courier (Delhivery only today — needs DELHIVERY_API_TOKEN
-                        in .env). Browser assist opens the partner site in your browser; it is not
-                        unattended/headless login. Manual waits for an operator AWB.
+                        API books the shipment on Delhivery from XGoo (needs DELHIVERY_API_TOKEN and
+                        the registered warehouse name in .env). The Delhivery One MCP JSON is for
+                        Cursor only and cannot create bookings. Browser assist opens the partner
+                        site; it is not unattended login. Manual waits for an operator AWB.
                       </p>
                       <FormMessage />
                     </FormItem>

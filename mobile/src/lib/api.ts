@@ -1,15 +1,13 @@
 import { Platform } from 'react-native';
+import { getApiUrl, OFFICE_SLUG, normalizeMobilePhone } from '@/lib/server';
 
-export const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'
-).replace(/\/$/, '');
-
-export const OFFICE_SLUG = process.env.EXPO_PUBLIC_OFFICE_SLUG || 'xgoo';
+export { getApiUrl, OFFICE_SLUG, normalizeMobilePhone } from '@/lib/server';
 
 export function resolveMediaUrl(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) return trimmed;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const API_URL = getApiUrl();
   return `${API_URL}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
 }
 
@@ -151,7 +149,16 @@ export async function api<T>(
   }
   if (token) headers.set('x-customer-token', token);
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const API_URL = getApiUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new ApiError(
+      `Cannot reach XGoo at ${API_URL}. Check your internet connection and try again.`,
+      0,
+    );
+  }
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = Array.isArray(payload?.errors)
@@ -163,20 +170,37 @@ export async function api<T>(
 }
 
 export const customerApi = {
-  login: (phone: string, password: string) =>
+  sendOtp: (phone: string, purpose: 'login' | 'register') =>
+    api<{
+      success: boolean;
+      phone: string;
+      expiresInSec: number;
+      channel: string;
+      debugOtp?: string;
+    }>(`/api/public/office/${OFFICE_SLUG}/customer/otp/send`, {
+      method: 'POST',
+      body: JSON.stringify({ phone: normalizeMobilePhone(phone), purpose }),
+    }),
+  login: (phone: string, otp: string) =>
     api<{ user: CustomerUser; token: string }>(
       `/api/public/office/${OFFICE_SLUG}/customer/login`,
-      { method: 'POST', body: JSON.stringify({ phone, password }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ phone: normalizeMobilePhone(phone), otp }),
+      },
     ),
   register: (input: {
     name: string;
     phone: string;
     email?: string;
-    password: string;
+    otp: string;
   }) =>
     api<{ user: CustomerUser; token: string }>(
       `/api/public/office/${OFFICE_SLUG}/customer/register`,
-      { method: 'POST', body: JSON.stringify(input) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...input, phone: normalizeMobilePhone(input.phone) }),
+      },
     ),
   me: (token: string) => api<CustomerUser>('/api/customer/me', {}, token),
   updateMe: (token: string, input: Partial<CustomerUser>) =>

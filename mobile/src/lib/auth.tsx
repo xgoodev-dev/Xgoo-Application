@@ -22,12 +22,16 @@ type AuthContextValue = {
   token: string | null;
   user: CustomerUser | null;
   loading: boolean;
-  signIn: (phone: string, password: string) => Promise<void>;
+  requestOtp: (
+    phone: string,
+    purpose: 'login' | 'register',
+  ) => Promise<{ debugOtp?: string }>;
+  signIn: (phone: string, otp: string) => Promise<void>;
   register: (input: {
     name: string;
     phone: string;
     email?: string;
-    password: string;
+    otp: string;
   }) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -97,9 +101,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       .catch((error) => console.warn('Push notification registration failed', error));
   }, [token]);
 
+  const requestOtp = useCallback(
+    async (phone: string, purpose: 'login' | 'register') => {
+      const result = await customerApi.sendOtp(phone, purpose);
+      return { debugOtp: result.debugOtp };
+    },
+    [],
+  );
+
   const signIn = useCallback(
-    async (phone: string, password: string) => {
-      const session = await customerApi.login(phone.trim(), password);
+    async (phone: string, otp: string) => {
+      const session = await customerApi.login(phone.trim(), otp);
       await establishSession(session);
     },
     [establishSession],
@@ -110,7 +122,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       name: string;
       phone: string;
       email?: string;
-      password: string;
+      otp: string;
     }) => {
       const session = await customerApi.register(input);
       await establishSession(session);
@@ -144,13 +156,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       token,
       user,
       loading,
+      requestOtp,
       signIn,
       register,
       signOut,
       refreshUser,
       updateUser,
     }),
-    [loading, refreshUser, register, signIn, signOut, token, updateUser, user],
+    [loading, refreshUser, register, requestOtp, signIn, signOut, token, updateUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

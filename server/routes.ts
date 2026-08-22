@@ -23,12 +23,13 @@ import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settin
 import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
-import { getDelhiveryConfigFromEnv } from "./integrations/delhivery";
+import { getDelhiveryConfigFromEnv, trackDelhiveryShipment, delhiveryConfigPublicStatus } from "./integrations/delhivery";
 import {
   BookingEngineError,
   getBookingSnapshot,
   resumeBooking,
   startBooking,
+  cancelPartnerBooking,
   testPartnerConnection,
   validateBooking,
 } from "./booking/service";
@@ -85,6 +86,13 @@ import {
   handleWhatsAppWebhookGet,
   handleWhatsAppWebhookPost,
 } from "./integrations/whatsapp-webhook";
+import {
+  consumeCustomerOtp,
+  createOtpCustomerUser,
+  issueCustomerSession,
+  normalizeCustomerPhone,
+  sendCustomerOtp,
+} from "./customer-otp";
 
 const SUPER_ADMIN_EMAIL = (
   process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
@@ -231,7 +239,7 @@ const shipmentCreateSchema = z.object({
 });
 
 const statusUpdateSchema = z.object({
-  status: z.enum(["booked", "picked_up", "in_transit", "delivered"]),
+  status: z.enum(["booked", "picked_up", "in_transit", "delivered", "cancelled"]),
 });
 
 const partnerSyncUpdateSchema = z.object({
@@ -2738,12 +2746,37 @@ export async function registerRoutes(
   });
 
   app.get("/api/integrations/delhivery/status", isAuthenticated, async (_req: any, res) => {
-    const config = getDelhiveryConfigFromEnv();
-    res.json({
-      configured: !!config,
-      baseUrl: config?.baseUrl ?? null,
-      pickupLocation: config?.pickupLocation ?? null,
-    });
+    res.json(delhiveryConfigPublicStatus());
+  });
+
+  app.get("/api/shipments/:id/delhivery-track", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const partner = shipment.courierPartnerId
+        ? await storage.getPartner(shipment.courierPartnerId)
+        : shipment.courierPartner;
+      if (!partner || !isDelhiveryPartner(partner.code, partner.name)) {
+        return res.status(400).json({ message: "This shipment is not assigned to Delhivery" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "Book on Delhivery first, then track with the AWB." });
+      }
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "Delhivery API is not configured on the server." });
+      }
+      const tracking = await trackDelhiveryShipment(config, waybill);
+      res.json(tracking);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delhivery tracking failed";
+      console.error("Delhivery tracking error:", error);
+      res.status(502).json({ message });
+    }
   });
 
   app.get("/api/shipments/:id/booking", isAuthenticated, async (req: any, res) => {
@@ -2822,6 +2855,25 @@ export async function registerRoutes(
       }
       console.error("Error retrying booking:", error);
       res.status(500).json({ message: "Failed to retry booking" });
+    }
+  });
+
+  app.post("/api/shipments/:id/booking/cancel", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const snapshot = await cancelPartnerBooking({
+        officeId,
+        shipmentId: req.params.id,
+        operatorUserId: req.user.id,
+      });
+      res.json(snapshot);
+    } catch (error) {
+      if (error instanceof BookingEngineError) {
+        return res.status(error.httpStatus).json({ message: error.message, code: error.code });
+      }
+      const message = error instanceof Error ? error.message : "Failed to cancel booking";
+      console.error("Error cancelling booking:", error);
+      res.status(502).json({ message });
     }
   });
 
@@ -3573,7 +3625,8 @@ export async function registerRoutes(
     name: z.string().min(1, "Name is required"),
     phone: z.string().min(10, "Valid phone number required"),
     email: z.string().email().optional().or(z.literal("")),
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    password: z.string().min(6, "Password must be at least 6 characters").optional(),
+    otp: z.string().optional(),
     address: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
@@ -3582,8 +3635,26 @@ export async function registerRoutes(
 
   const customerLoginSchema = z.object({
     phone: z.string().min(10, "Valid phone number required"),
-    password: z.string().min(1, "Password is required"),
+    password: z.string().min(1).optional(),
+    otp: z.string().optional(),
   });
+
+  const customerOtpSendSchema = z.object({
+    phone: z.string().min(10, "Valid phone number required"),
+    purpose: z.enum(["login", "register"]),
+  });
+
+  const otpError = (res: Response, error: unknown) => {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Validation error", errors: error.errors });
+    }
+    const status = typeof (error as { status?: number })?.status === "number"
+      ? (error as { status: number }).status
+      : 500;
+    return res.status(status).json({
+      message: error instanceof Error ? error.message : "OTP request failed",
+    });
+  };
 
   const customerUpdateSchema = z.object({
     name: z.string().min(1).optional(),
@@ -3597,6 +3668,34 @@ export async function registerRoutes(
     defaultPickupLng: z.string().optional().nullable(),
   });
 
+  app.post("/api/public/office/:slug/customer/otp/send", async (req, res) => {
+    try {
+      const office = await storage.getOfficeBySlug(req.params.slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      const validated = customerOtpSendSchema.parse(req.body);
+      const result = await sendCustomerOtp({
+        office,
+        phone: validated.phone,
+        purpose: validated.purpose,
+      });
+      res.json({
+        success: true,
+        phone: result.phone,
+        expiresInSec: result.expiresInSec,
+        channel: result.channel,
+        ...(result.debugOtp ? { debugOtp: result.debugOtp } : {}),
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError || (error as { status?: number })?.status) {
+        return otpError(res, error);
+      }
+      console.error("Error sending customer OTP:", error);
+      return otpError(res, error);
+    }
+  });
+
   // Customer Register
   app.post("/api/public/office/:slug/customer/register", async (req, res) => {
     try {
@@ -3607,8 +3706,20 @@ export async function registerRoutes(
       }
 
       const validated = customerRegisterSchema.parse(req.body);
+      const phone = normalizeCustomerPhone(validated.phone);
 
-      const existing = await storage.getCustomerUserByPhone(office.id, validated.phone);
+      if (validated.otp) {
+        await consumeCustomerOtp({
+          officeId: office.id,
+          phone,
+          purpose: "register",
+          otp: validated.otp,
+        });
+      } else if (!validated.password) {
+        return res.status(400).json({ message: "Verify the OTP sent to your mobile number." });
+      }
+
+      const existing = await storage.getCustomerUserByPhone(office.id, phone);
       if (existing) {
         return res.status(400).json({ message: "An account with this phone number already exists. Please login instead." });
       }
@@ -3620,32 +3731,34 @@ export async function registerRoutes(
         }
       }
 
-      const passwordHash = await bcrypt.hash(validated.password, 10);
-      const customerUser = await storage.createCustomerUser({
-        officeId: office.id,
-        name: validated.name,
-        phone: validated.phone,
-        email: validated.email || null,
-        passwordHash,
-        address: validated.address || null,
-        city: validated.city || null,
-        state: validated.state || null,
-        pincode: validated.pincode || null,
-      });
+      const customerUser = validated.otp
+        ? await createOtpCustomerUser({
+            officeId: office.id,
+            name: validated.name,
+            phone,
+            email: validated.email || null,
+            address: validated.address || null,
+            city: validated.city || null,
+            state: validated.state || null,
+            pincode: validated.pincode || null,
+          })
+        : await storage.createCustomerUser({
+            officeId: office.id,
+            name: validated.name,
+            phone,
+            email: validated.email || null,
+            passwordHash: await bcrypt.hash(validated.password!, 10),
+            address: validated.address || null,
+            city: validated.city || null,
+            state: validated.state || null,
+            pincode: validated.pincode || null,
+          });
 
-      const token = randomUUID();
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      await storage.createCustomerSession({
-        customerUserId: customerUser.id,
-        token,
-        expiresAt,
-      });
-
-      const { passwordHash: _, ...safeUser } = customerUser;
-      res.json({ user: safeUser, token });
+      const session = await issueCustomerSession(customerUser);
+      res.json(session);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      if (error instanceof z.ZodError || (error as { status?: number })?.status) {
+        return otpError(res, error);
       }
       console.error("Error registering customer:", error);
       res.status(500).json({ message: "Failed to register" });
@@ -3662,29 +3775,37 @@ export async function registerRoutes(
       }
 
       const validated = customerLoginSchema.parse(req.body);
-      const customerUser = await storage.getCustomerUserByPhone(office.id, validated.phone);
+      const phone = normalizeCustomerPhone(validated.phone);
+      const customerUser =
+        (await storage.getCustomerUserByPhone(office.id, phone)) ||
+        (phone !== validated.phone.trim()
+          ? await storage.getCustomerUserByPhone(office.id, validated.phone.trim())
+          : undefined);
       if (!customerUser) {
-        return res.status(401).json({ message: "Invalid phone number or password" });
+        return res.status(401).json({ message: "No account found for this mobile number" });
       }
 
-      const isValid = await bcrypt.compare(validated.password, customerUser.passwordHash);
-      if (!isValid) {
-        return res.status(401).json({ message: "Invalid phone number or password" });
+      if (validated.otp) {
+        await consumeCustomerOtp({
+          officeId: office.id,
+          phone,
+          purpose: "login",
+          otp: validated.otp,
+        });
+      } else if (validated.password) {
+        const isValid = await bcrypt.compare(validated.password, customerUser.passwordHash);
+        if (!isValid) {
+          return res.status(401).json({ message: "Invalid phone number or password" });
+        }
+      } else {
+        return res.status(400).json({ message: "Enter the OTP sent to your mobile number." });
       }
 
-      const token = randomUUID();
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      await storage.createCustomerSession({
-        customerUserId: customerUser.id,
-        token,
-        expiresAt,
-      });
-
-      const { passwordHash: _, ...safeUser } = customerUser;
-      res.json({ user: safeUser, token });
+      const session = await issueCustomerSession(customerUser);
+      res.json(session);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      if (error instanceof z.ZodError || (error as { status?: number })?.status) {
+        return otpError(res, error);
       }
       console.error("Error logging in customer:", error);
       res.status(500).json({ message: "Failed to login" });

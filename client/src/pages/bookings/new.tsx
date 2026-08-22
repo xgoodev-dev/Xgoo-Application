@@ -58,6 +58,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { AddressMapField } from "@/components/bookings/AddressMapField";
 import type { Customer, CourierPartner } from "@shared/schema";
 import type { PricingQuoteResult } from "@shared/pricing";
+import { isDelhiveryPartner } from "@shared/delhivery";
+import { resolveBookingMethod } from "@shared/booking-engine";
 
 const bookingSchema = z.object({
   customerId: z.string().optional(),
@@ -89,6 +91,21 @@ const bookingSchema = z.object({
 });
 
 type BookingFormData = z.infer<typeof bookingSchema>;
+
+type DelhiveryStatus = {
+  configured: boolean;
+  pickupLocation: string | null;
+  environment: string;
+};
+
+function shouldBookOnCreate(
+  partner: CourierPartner | undefined,
+  delhiveryStatus: DelhiveryStatus | undefined,
+): boolean {
+  if (!partner || resolveBookingMethod(partner) !== "api") return false;
+  if (isDelhiveryPartner(partner.code, partner.name)) return !!delhiveryStatus?.configured;
+  return true;
+}
 
 type ExtraPackageRow = {
   id: string;
@@ -189,6 +206,9 @@ export default function NewBookingPage() {
 
   const { data: partners } = useQuery<CourierPartner[]>({
     queryKey: ["/api/partners"],
+  });
+  const { data: delhiveryStatus } = useQuery<DelhiveryStatus>({
+    queryKey: ["/api/integrations/delhivery/status"],
   });
 
   const form = useForm<BookingFormData>({
@@ -529,6 +549,7 @@ export default function NewBookingPage() {
   };
 
   const selectedPartner = partners?.find((p) => p.id === selectedPartnerId);
+  const bookOnCreate = shouldBookOnCreate(selectedPartner, delhiveryStatus);
 
   const { data: priceQuote, isFetching: isPricing } = useQuery<PricingQuoteResult>({
     queryKey: [
@@ -987,17 +1008,55 @@ export default function NewBookingPage() {
         })),
         ...(sourceBookingRequestId ? { bookingRequestId: sourceBookingRequestId } : {}),
       };
-      return apiRequest("POST", "/api/shipments", payload);
+      const createRes = await apiRequest("POST", "/api/shipments", payload);
+      const shipment = (await createRes.json()) as { id: string };
+      const partner = partners?.find((p) => p.id === data.courierPartnerId);
+      if (!shouldBookOnCreate(partner, delhiveryStatus)) {
+        return { shipment, autoBook: false as const, job: null };
+      }
+      try {
+        const bookRes = await apiRequest("POST", `/api/shipments/${shipment.id}/booking/start`);
+        const snapshot = (await bookRes.json()) as {
+          job: { status: string; awbNumber?: string | null; error?: string | null } | null;
+        };
+        return { shipment, autoBook: true as const, job: snapshot.job };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Courier booking failed";
+        return {
+          shipment,
+          autoBook: true as const,
+          job: { status: "booking_failed", awbNumber: null, error: message },
+        };
+      }
     },
-    onSuccess: async (res) => {
-      const shipment = (await res.json()) as { id: string };
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/booking-requests"] });
+      const { shipment, autoBook, job } = result;
+      if (autoBook && job?.status === "booked") {
+        toast({
+          title: "Booked on Delhivery",
+          description: job.awbNumber
+            ? `AWB ${job.awbNumber}. Print the customer bill to hand over.`
+            : "Shipment created and booked. Print the customer bill to hand over.",
+        });
+        setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
+        return;
+      }
+      if (autoBook) {
+        toast({
+          title: "Shipment saved — Delhivery booking failed",
+          description: job?.error || "Open the shipment to retry booking.",
+          variant: "destructive",
+        });
+        setLocation(`/shipments/${shipment.id}`);
+        return;
+      }
       toast({
         title: "Booking Created",
         description: "Print the customer bill to hand over immediately.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/booking-requests"] });
       setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
     },
     onError: (error: Error) => {
@@ -2176,23 +2235,40 @@ export default function NewBookingPage() {
             </CardContent>
           </Card>
 
-          <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => setLocation("/shipments")} data-testid="button-cancel">
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createBookingMutation.isPending} data-testid="button-create-booking">
-              {createBookingMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Package className="mr-2 h-4 w-4" />
-                  Create Booking
-                </>
-              )}
-            </Button>
+          <div className="flex flex-col items-end gap-2">
+            {bookOnCreate ? (
+              <p className="text-xs text-muted-foreground">
+                Delhivery API is connected. This creates the XGoo bill and books the AWB in one step.
+              </p>
+            ) : selectedPartner && isDelhiveryPartner(selectedPartner.code, selectedPartner.name) ? (
+              <p className="text-xs text-muted-foreground">
+                Delhivery API is not configured, so this only saves the XGoo shipment. Book later from
+                the shipment page, or add the token in Settings → Courier APIs.
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-4">
+              <Button type="button" variant="outline" onClick={() => setLocation("/shipments")} data-testid="button-cancel">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createBookingMutation.isPending} data-testid="button-create-booking">
+                {createBookingMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {bookOnCreate ? "Creating and booking..." : "Creating..."}
+                  </>
+                ) : bookOnCreate ? (
+                  <>
+                    <Truck className="mr-2 h-4 w-4" />
+                    Create and book on Delhivery
+                  </>
+                ) : (
+                  <>
+                    <Package className="mr-2 h-4 w-4" />
+                    Create Booking
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </Form>
