@@ -164,6 +164,9 @@ const customerCreateSchema = z.object({
   gstNumber: z.string().optional(),
   customerType: z.enum(["walk_in", "business"]).default("walk_in"),
   paymentType: z.enum(["prepaid", "credit"]).default("prepaid"),
+  serviceOpted: z.string().optional().or(z.literal("")),
+  leadFrom: z.string().optional().or(z.literal("")),
+  serviceRequestMethod: z.string().optional().or(z.literal("")),
   creditLimit: z.string().optional(),
 });
 

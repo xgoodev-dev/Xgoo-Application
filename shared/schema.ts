@@ -135,6 +135,9 @@ export const customers = pgTable("customers", {
   gstNumber: varchar("gst_number", { length: 20 }),
   customerType: varchar("customer_type", { length: 20 }).notNull().default("walk_in"), // walk_in, business
   paymentType: varchar("payment_type", { length: 20 }).notNull().default("prepaid"), // prepaid, credit
+  serviceOpted: varchar("service_opted", { length: 50 }),
+  leadFrom: varchar("lead_from", { length: 50 }),
+  serviceRequestMethod: varchar("service_request_method", { length: 50 }),
   creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }).default("0"),
   creditBalance: decimal("credit_balance", { precision: 12, scale: 2 }).default("0"),
   isDemo: boolean("is_demo").default(false),

@@ -63,6 +63,24 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, inArray, ne } from "drizzle-orm";
+
+let customerIntakeColumnsReady: Promise<void> | null = null;
+
+function ensureCustomerIntakeColumns() {
+  if (!customerIntakeColumnsReady) {
+    customerIntakeColumnsReady = db.execute(sql`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_opted varchar(50);
+    `).then(async () => {
+      await db.execute(sql`
+        ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_from varchar(50);
+      `);
+      await db.execute(sql`
+        ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_request_method varchar(50);
+      `);
+    });
+  }
+  return customerIntakeColumnsReady;
+}
 import { randomUUID } from "crypto";
 import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
 import { buildQuote, type PricingQuoteInput, type PricingQuoteResult } from "@shared/pricing";
@@ -383,6 +401,7 @@ export class DatabaseStorage implements IStorage {
 
   // Customer operations
   async getCustomersByOffice(officeId: string): Promise<Customer[]> {
+    await ensureCustomerIntakeColumns();
     return db.select().from(customers).where(eq(customers.officeId, officeId)).orderBy(desc(customers.createdAt));
   }
 
@@ -392,11 +411,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCustomer(customer: InsertCustomer): Promise<Customer> {
+    await ensureCustomerIntakeColumns();
     const [created] = await db.insert(customers).values(customer).returning();
     return created;
   }
 
   async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
+    await ensureCustomerIntakeColumns();
     const [updated] = await db
       .update(customers)
       .set({ ...customer, updatedAt: new Date() })

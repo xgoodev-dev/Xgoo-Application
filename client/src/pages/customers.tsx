@@ -58,6 +58,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
+import {
+  CUSTOMER_LEAD_SOURCES,
+  CUSTOMER_REQUEST_METHODS,
+  CUSTOMER_SERVICE_OPTED,
+  labelForCustomerOption,
+} from "@shared/customer-intake";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -70,6 +76,9 @@ const customerSchema = z.object({
   gstNumber: z.string().optional(),
   customerType: z.enum(["walk_in", "business"]),
   paymentType: z.enum(["prepaid", "credit"]),
+  serviceOpted: z.string().optional(),
+  leadFrom: z.string().optional(),
+  serviceRequestMethod: z.string().optional(),
   creditLimit: z.string().optional(),
 });
 
@@ -91,6 +100,9 @@ export default function CustomersPage() {
     defaultValues: {
       customerType: "walk_in",
       paymentType: "prepaid",
+      serviceOpted: "",
+      leadFrom: "",
+      serviceRequestMethod: "",
       creditLimit: "0",
     },
   });
@@ -164,6 +176,9 @@ export default function CustomersPage() {
       gstNumber: customer.gstNumber || "",
       customerType: customer.customerType as "walk_in" | "business",
       paymentType: customer.paymentType as "prepaid" | "credit",
+      serviceOpted: customer.serviceOpted || "",
+      leadFrom: customer.leadFrom || "",
+      serviceRequestMethod: customer.serviceRequestMethod || "",
       creditLimit: customer.creditLimit || "0",
     });
     setIsDialogOpen(true);
@@ -362,6 +377,77 @@ export default function CustomersPage() {
                     )}
                   />
                 </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <FormField
+                    control={form.control}
+                    name="serviceOpted"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Service Opted</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-service-opted">
+                              <SelectValue placeholder="Select service" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CUSTOMER_SERVICE_OPTED.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="leadFrom"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Lead From</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-lead-from">
+                              <SelectValue placeholder="How they found us" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CUSTOMER_LEAD_SOURCES.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="serviceRequestMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Service Request Method</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-request-method">
+                              <SelectValue placeholder="How they requested" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {CUSTOMER_REQUEST_METHODS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 {form.watch("paymentType") === "credit" && (
                   <FormField
                     control={form.control}
@@ -443,6 +529,7 @@ export default function CustomersPage() {
                     <TableHead>Contact</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Lead / Request</TableHead>
                     <TableHead>Payment</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
@@ -482,6 +569,19 @@ export default function CustomersPage() {
                         <Badge variant="secondary">
                           {customer.customerType === "business" ? "Business" : "Walk-in"}
                         </Badge>
+                        {customer.serviceOpted && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {labelForCustomerOption(CUSTOMER_SERVICE_OPTED, customer.serviceOpted)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {labelForCustomerOption(CUSTOMER_LEAD_SOURCES, customer.leadFrom)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {labelForCustomerOption(CUSTOMER_REQUEST_METHODS, customer.serviceRequestMethod)}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
