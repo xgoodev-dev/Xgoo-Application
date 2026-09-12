@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Package, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,19 +53,23 @@ export function PublicTrackingSearch({
   variant = "default",
   officeSlug,
   id,
+  initialQuery = "",
+  autoSearch = false,
 }: {
   variant?: "hero" | "default" | "panel";
   officeSlug?: string;
   id?: string;
+  initialQuery?: string;
+  autoSearch?: boolean;
 }) {
-  const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState(initialQuery);
   const [result, setResult] = useState<PublicTrackResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleTrack() {
-    const query = trackingNumber.trim();
+  async function handleTrack(nextQuery?: string) {
+    const query = (nextQuery ?? trackingNumber).trim();
     if (!query) return;
 
     setIsSearching(true);
@@ -95,6 +99,13 @@ export function PublicTrackingSearch({
       setIsSearching(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoSearch || !initialQuery.trim()) return;
+    void handleTrack(initialQuery);
+    // Search once when WhatsApp / deep-link provides a tracking id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSearch, initialQuery]);
 
   const isHero = variant === "hero";
   const isPanel = variant === "panel";
@@ -128,7 +139,7 @@ export function PublicTrackingSearch({
         </div>
         <Button
           variant={isHero ? "outline" : "default"}
-          onClick={handleTrack}
+          onClick={() => void handleTrack()}
           disabled={isSearching || !trackingNumber.trim()}
           className={
             isPanel

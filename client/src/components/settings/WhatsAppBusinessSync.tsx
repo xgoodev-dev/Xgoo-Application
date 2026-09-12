@@ -474,7 +474,7 @@ export function WhatsAppBusinessSync() {
         undefined,
         meta?.buttonParamExamples,
         isWelcomeTemplateName(effectiveTestTemplate)
-          ? [watched.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "xgoo"]
+          ? [watched.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "open"]
           : ["xgoo"],
       ),
     );
@@ -615,7 +615,7 @@ export function WhatsAppBusinessSync() {
         meta?.buttonParamCount ?? 0,
         testButtonParams.some((p) => p.trim()) ? testButtonParams : undefined,
         meta?.buttonParamExamples,
-        [values.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "xgoo"],
+        [values.welcomeTemplateConfig?.trackShipmentSuffix?.trim() || "open"],
       );
       if (
         (meta?.headerMediaRequired ||
@@ -860,8 +860,10 @@ export function WhatsAppBusinessSync() {
                     <div>
                       <h3 className="text-sm font-semibold">Webhook activity (debug)</h3>
                       <p className="text-xs text-muted-foreground">
-                        Live log from your server when Meta calls the webhook. Send Hi from WhatsApp,
-                        then check for <code className="text-[10px]">inbound_text</code> and{" "}
+                        Live log from your server when Meta calls the webhook. Send Hi, Hello, or
+                        Menu from WhatsApp, then check for{" "}
+                        <code className="text-[10px]">inbound_text</code> or{" "}
+                        <code className="text-[10px]">inbound_first_open</code> and{" "}
                         <code className="text-[10px]">welcome_sent</code>. Empty here usually means
                         Meta is not hitting this server (wrong URL, not deployed, or messages field
                         not subscribed).
@@ -1037,7 +1039,7 @@ export function WhatsAppBusinessSync() {
                   />
 
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
-                    <p className="font-medium">Auto welcome on Hi / Hello</p>
+                    <p className="font-medium">Auto welcome on first chat, Hi, Hello, Menu</p>
                     <p className="mt-1">
                       Enable <strong>Welcome Message → Auto-send</strong> below and configure Meta
                       webhook to{" "}
@@ -1046,9 +1048,9 @@ export function WhatsAppBusinessSync() {
                           ? `${window.location.origin}/api/whatsapp/webhook`
                           : "https://YOUR-DOMAIN/api/whatsapp/webhook"}
                       </code>{" "}
-                      (use your production HTTPS URL). When a customer messages from your website
-                      wa.me link or types Hi/Hello, XGoo sends your selected welcome template
-                      automatically (once per 24h per number).
+                      (use your production HTTPS URL). When a customer opens WhatsApp the first
+                      time, or types Hi / Hello / Menu (and similar greetings), XGoo sends your
+                      selected welcome template automatically (once per 24h per number).
                     </p>
                   </div>
 
@@ -1102,14 +1104,17 @@ export function WhatsAppBusinessSync() {
                           <FormControl>
                             <Input
                               {...field}
-                              placeholder="track/AWB123 or booking ref for {{1}}"
+                              placeholder="open"
                               data-testid="input-welcome-track-suffix"
                             />
                           </FormControl>
                           <FormDescription>
-                            Dynamic part appended to your track URL (template button {"{{1}}"}).
-                            Used as default when sending welcome messages; override per test send
-                            below.
+                            Set the Meta button URL to{" "}
+                            <code className="text-xs">https://www.xgoo.in/track/{"{{1}}"}</code>.
+                            Use <code className="text-xs">open</code> to land on the track page, or a
+                            booking/AWB number so Track Shipment opens that shipment in XGoo Go or
+                            on the website. Welcome replies use the customer&apos;s latest request
+                            number when one exists.
                           </FormDescription>
                         </FormItem>
                       )}
@@ -1878,11 +1883,14 @@ function AutomationRuleRow({
               render={({ field }) => (
                 <FormItem className="sm:col-span-2 flex flex-row items-center justify-between rounded-lg border p-3">
                   <div>
-                    <FormLabel className="text-xs">Reply when customer sends Hi / Hello</FormLabel>
+                    <FormLabel className="text-xs">
+                      Reply on first-time open and Hi / Hello / Menu
+                    </FormLabel>
                     <FormDescription className="text-xs">
                       Requires Meta webhook on your public HTTPS domain. Sends your selected welcome
-                      template when customers open WhatsApp from your site or greet your business
-                      line. Check Webhook activity for the exact template name queued.
+                      template when a customer opens the chat for the first time, or types Hi,
+                      Hello, Menu, Help, or similar greetings. Check Webhook activity for the
+                      exact template name queued.
                     </FormDescription>
                   </div>
                   <FormControl>

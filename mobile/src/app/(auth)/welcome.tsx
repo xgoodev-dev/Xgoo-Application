@@ -4,6 +4,7 @@ import { ArrowRight, Box, MapPin, PackageCheck, Truck } from 'lucide-react-nativ
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Card, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
+import { XGOO_GO } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
 export default function WelcomeScreen() {
@@ -36,7 +37,8 @@ export default function WelcomeScreen() {
           Move parcels.{'\n'}Move possibilities.
         </Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Book pickups, compare delivery options, and track every movement from one simple app.
+          {XGOO_GO.name} — {XGOO_GO.meaning.toLowerCase()}. Book pickups, compare delivery options,
+          and track every movement from one simple app.
         </Text>
       </View>
 

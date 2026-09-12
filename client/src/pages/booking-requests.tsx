@@ -75,24 +75,24 @@ const statusLabels: Record<string, string> = {
 };
 
 const sourceLabels: Record<string, string> = {
-  mobile_android: "Android App",
-  mobile_ios: "iOS App",
-  mobile_app: "Mobile App (Legacy)",
+  mobile_android: "XGoo Go (Android)",
+  mobile_ios: "XGoo Go (iOS)",
+  mobile_app: "XGoo Go",
   whatsapp: "WhatsApp",
-  in_store: "In Store",
+  in_store: "XGoo Hub (in store)",
   phone: "Phone",
   partner_api: "Partner API",
-  customer_portal: "Web Customer Portal",
+  customer_portal: "XGoo Go / Pro",
   website: "Website",
-  staff_portal: "Staff Portal",
+  staff_portal: "XGoo Hub",
   api: "API",
   legacy: "Legacy",
-  b2b_daily: "B2B Daily",
+  b2b_daily: "XGoo Pro",
 };
 
 function bookingSourceLabel(request: BookingRequest) {
   if (request.source === "legacy" && request.customerUserId) {
-    return "Customer App / Portal";
+    return "XGoo Go / Pro";
   }
   return sourceLabels[request.source] || "Unknown";
 }
@@ -253,13 +253,13 @@ export default function BookingRequestsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sources</SelectItem>
-                  <SelectItem value="mobile_android">Android App</SelectItem>
-                  <SelectItem value="mobile_ios">iOS App</SelectItem>
+                  <SelectItem value="mobile_android">XGoo Go (Android)</SelectItem>
+                  <SelectItem value="mobile_ios">XGoo Go (iOS)</SelectItem>
                   <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="in_store">In Store</SelectItem>
+                  <SelectItem value="in_store">XGoo Hub (in store)</SelectItem>
                   <SelectItem value="website">Website</SelectItem>
-                  <SelectItem value="customer_portal">Web Customer Portal</SelectItem>
-                  <SelectItem value="b2b_daily">B2B Daily</SelectItem>
+                  <SelectItem value="customer_portal">XGoo Go / Pro</SelectItem>
+                  <SelectItem value="b2b_daily">XGoo Pro</SelectItem>
                   <SelectItem value="phone">Phone</SelectItem>
                   <SelectItem value="partner_api">Partner API</SelectItem>
                 </SelectContent>

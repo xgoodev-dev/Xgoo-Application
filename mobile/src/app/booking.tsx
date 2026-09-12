@@ -254,7 +254,7 @@ export default function BookingScreen() {
       if (!permission.granted) {
         Alert.alert(
           'Location permission needed',
-          'Open phone Settings → Apps → XGoo → Permissions and allow location while using the app.',
+          'Open phone Settings → Apps → XGoo Go → Permissions and allow location while using the app.',
         );
         return;
       }
@@ -812,7 +812,7 @@ export default function BookingScreen() {
           <Card style={[styles.notice, { backgroundColor: colors.accentSoft }]}>
             <Clock3 size={19} color={colors.accent} />
             <Text style={[styles.noticeText, { color: colors.text }]}>
-              This submits a booking request. XGoo will confirm serviceability, final price, and pickup.
+              This submits a booking request. XGoo Go will confirm serviceability, final price, and pickup.
             </Text>
           </Card>
         </View>

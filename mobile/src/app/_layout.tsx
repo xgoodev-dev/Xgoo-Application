@@ -45,6 +45,7 @@ function AppNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="booking" options={{ gestureEnabled: false }} />
         <Stack.Screen name="shipment/[id]" />
+        <Stack.Screen name="track/[ref]" />
         <Stack.Screen name="addresses" />
         <Stack.Screen name="personal-information" />
         <Stack.Screen name="privacy-security" />

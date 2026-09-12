@@ -1,6 +1,6 @@
 import { Mail, MessageCircle, Phone } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { XGOO_CONTACT } from "@/components/marketing/site-info";
+import { XGOO_CONTACT, XGOO_MODULES } from "@/components/marketing/site-info";
 
 export function GoHelpSupport({
   onBack,
@@ -9,7 +9,7 @@ export function GoHelpSupport({
   onBack: () => void;
   module?: "go" | "pro";
 }) {
-  const product = module === "pro" ? "XGoo Pro" : "XGoo Go";
+  const product = module === "pro" ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name;
   const options = [
     {
       title: "Chat on WhatsApp",
@@ -37,7 +37,7 @@ export function GoHelpSupport({
         ← Back
       </button>
       <h2 className="text-xl font-bold text-zinc-900">Help and support</h2>
-      <p className="mt-1 text-sm text-zinc-500">Contact XGoo about a booking, pickup, delivery, or account.</p>
+      <p className="mt-1 text-sm text-zinc-500">Contact {product} about a booking, pickup, delivery, or account.</p>
       <Card className="mt-5 border-zinc-100 bg-[#FF4907]/5 p-4 shadow-none">
         <p className="font-semibold text-zinc-900">How can we help?</p>
         <p className="mt-1 text-sm text-zinc-600">

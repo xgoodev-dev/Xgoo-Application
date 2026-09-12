@@ -52,6 +52,13 @@ export const SEO_PAGES = {
     description: `Contact XGoo at ${XGOO_CONTACT.email}, phone ${XGOO_CONTACT.phone}, or WhatsApp ${XGOO_CONTACT.whatsappDisplay}. ${XGOO_CONTACT.hours}. ${XGOO_CONTACT.address}.`,
     keywords: ["contact XGoo", "courier support", "WhatsApp courier"],
   },
+  track: {
+    path: "/track",
+    title: "Track Shipment | XGoo Go",
+    description:
+      "Track an XGoo shipment with your request number, booking number, or AWB. Open XGoo Go if the app is installed, or track on the website.",
+    keywords: ["track shipment", "track courier", "AWB tracking", "XGoo Go"],
+  },
   book: {
     path: "/book",
     title: "Book a Parcel Online | XGoo Courier",

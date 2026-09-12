@@ -19,7 +19,7 @@ export class RootErrorBoundary extends Component<PropsWithChildren, State> {
 
     return (
       <View style={styles.wrap}>
-        <Text style={styles.title}>XGoo could not open</Text>
+        <Text style={styles.title}>XGoo Go could not open</Text>
         <Text style={styles.copy}>
           The last screen hit an error. Close Expo Go fully, then reopen the project.
         </Text>

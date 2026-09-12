@@ -90,7 +90,7 @@ export function StaffManagement() {
         <CardHeader>
           <CardTitle>Staff access</CardTitle>
           <CardDescription>
-            Only the XGoo Super Admin can manage staff members and branch assignments.
+            Only the XGoo Command Super Admin can manage XGoo Hub staff and branch assignments.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -104,7 +104,7 @@ export function StaffManagement() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              XGoo Staff
+              XGoo Hub staff
             </CardTitle>
             <CardDescription>
               Add staff to this organization and assign their operating branch.

@@ -155,7 +155,7 @@ export async function api<T>(
     response = await fetch(`${API_URL}${path}`, { ...options, headers });
   } catch {
     throw new ApiError(
-      `Cannot reach XGoo at ${API_URL}. Check your internet connection and try again.`,
+      `Cannot reach XGoo Go at ${API_URL}. Check your internet connection and try again.`,
       0,
     );
   }

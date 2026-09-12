@@ -41,6 +41,7 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { apiRequest } from "@/lib/queryClient";
 import type { ShipmentWithRelations, BookingRequest } from "@shared/schema";
 
@@ -275,7 +276,9 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">Welcome back! Here's your office overview.</p>
+        <p className="text-muted-foreground text-sm">
+          Welcome back! Here's your {XGOO_MODULES.hub.name} overview.
+        </p>
       </div>
 
       {/* App-icon quick actions — top */}
@@ -588,7 +591,7 @@ export default function DashboardPage() {
                 <Inbox className="h-5 w-5 text-amber-700 dark:text-amber-400" />
               </div>
               <div>
-                <p className="font-semibold">Customer Booking Requests</p>
+                <p className="font-semibold">XGoo Go / Pro booking requests</p>
                 <p className="text-sm text-muted-foreground">
                   {stats?.pendingBookingRequests || 0} pending
                   {(stats?.todayBookingRequests ?? 0) > 0 && ` · ${stats?.todayBookingRequests} today`}

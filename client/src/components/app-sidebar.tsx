@@ -18,7 +18,7 @@ import {
   Calculator,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
-import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -118,13 +118,21 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild tooltip="XGoo — Home">
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              tooltip={staffAccess?.isSuperAdmin ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
+            >
               <Link href="/" data-testid="link-home">
                 <img src={xgooLogo} alt="XGoo" className="size-8 shrink-0 object-contain" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{XGOO_BRAND.productName}</span>
+                  <span className="truncate font-semibold">
+                    {staffAccess?.isSuperAdmin ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {XGOO_BRAND.parentCompany}
+                    {staffAccess?.isSuperAdmin
+                      ? XGOO_MODULES.command.meaning
+                      : XGOO_MODULES.hub.meaning}
                   </span>
                 </div>
               </Link>
@@ -175,21 +183,21 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Booking Portal</SidebarGroupLabel>
+          <SidebarGroupLabel>{XGOO_MODULES.go.name} / {XGOO_MODULES.pro.shortName}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={copyPortalLink}
-                  tooltip={portalCopied ? "Link Copied!" : "Copy Portal Link"}
+                  tooltip={portalCopied ? "Link Copied!" : `Copy ${XGOO_MODULES.go.name} / ${XGOO_MODULES.pro.shortName} link`}
                   data-testid="button-sidebar-copy-portal"
                 >
                   {portalCopied ? <Check className="size-4 shrink-0" /> : <Copy className="size-4 shrink-0" />}
-                  <span>{portalCopied ? "Link Copied!" : "Copy Portal Link"}</span>
+                  <span>{portalCopied ? "Link Copied!" : `Copy ${XGOO_MODULES.go.shortName} / ${XGOO_MODULES.pro.shortName} link`}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Open Portal">
+                <SidebarMenuButton asChild tooltip={`Open ${XGOO_MODULES.go.name}`}>
                   <a
                     href={portalUrl}
                     target="_blank"
@@ -197,7 +205,7 @@ export function AppSidebar() {
                     data-testid="link-open-portal"
                   >
                     <Link2 className="size-4 shrink-0" />
-                    <span>Open Portal</span>
+                    <span>Open {XGOO_MODULES.go.name}</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>

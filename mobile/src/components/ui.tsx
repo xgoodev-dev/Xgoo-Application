@@ -30,6 +30,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { XGOO_GO } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
 type KeyboardScrollContextValue = {
@@ -42,7 +43,7 @@ export function LogoMark({ size = 38 }: { size?: number }) {
   return (
     <Image
       source={require('../../assets/images/xgoo-logo.png')}
-      accessibilityLabel="XGoo"
+      accessibilityLabel={XGOO_GO.name}
       resizeMode="contain"
       style={{ width: size, height: size, borderRadius: Math.max(6, size * 0.2) }}
     />
@@ -56,10 +57,10 @@ export function BrandLockup({ compact = false }: { compact?: boolean }) {
       <LogoMark size={compact ? 28 : 38} />
       <View>
         <Text style={[styles.brandName, { color: colors.text }, compact && { fontSize: 18 }]}>
-          XGoo
+          {XGOO_GO.name}
         </Text>
         {!compact && (
-          <Text style={[styles.brandTag, { color: colors.textMuted }]}>Courier Services</Text>
+          <Text style={[styles.brandTag, { color: colors.textMuted }]}>{XGOO_GO.meaning}</Text>
         )}
       </View>
     </View>

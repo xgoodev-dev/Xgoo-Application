@@ -58,7 +58,7 @@ export default function NotificationsScreen() {
       if (!pushToken) {
         Alert.alert(
           'Notifications are disabled',
-          'Enable notifications for XGoo in your phone settings.',
+          'Enable notifications for XGoo Go in your phone settings.',
         );
         return;
       }

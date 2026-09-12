@@ -37,6 +37,7 @@ import PricingPage from "@/pages/pricing";
 import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
 import CustomerPortalPage from "@/pages/customer-portal";
+import TrackPage from "@/pages/track";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
 import CourierRoutePage from "@/pages/courier-route";
@@ -168,6 +169,8 @@ function Router() {
       <Route path="/auth-page" component={AuthPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
+      <Route path="/track" component={TrackPage} />
+      <Route path="/track/:ref" component={TrackPage} />
       <Route path="/international-courier" component={InternationalCourierPage} />
       <Route path="/domestic-courier" component={DomesticCourierPage} />
       <Route path={/^\/courier-from-hyderabad-to-[a-z0-9-]+$/} component={CourierRoutePage} />

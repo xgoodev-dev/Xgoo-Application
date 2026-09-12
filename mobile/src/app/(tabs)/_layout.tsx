@@ -1,14 +1,18 @@
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs, useLocalSearchParams, usePathname } from 'expo-router';
 import { CircleUserRound, House, PackagePlus, Search, Truck } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth';
+import { setPendingDeepLink } from '@/lib/pending-deep-link';
 import { useAppTheme } from '@/lib/theme';
 
 export default function TabsLayout() {
   const { token, loading } = useAuth();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
+
+  const pathname = usePathname();
+  const params = useLocalSearchParams<{ q?: string; ref?: string }>();
 
   if (loading) {
     return (
@@ -17,7 +21,15 @@ export default function TabsLayout() {
       </View>
     );
   }
-  if (!token) return <Redirect href="/(auth)/welcome" />;
+  if (!token) {
+    const query = typeof params.q === 'string' ? params.q : typeof params.ref === 'string' ? params.ref : '';
+    if (pathname.includes('track') || pathname.includes('shipment')) {
+      setPendingDeepLink(query ? `/(tabs)/track?q=${encodeURIComponent(query)}` : '/(tabs)/track');
+    } else if (pathname.includes('shipments')) {
+      setPendingDeepLink('/(tabs)/shipments');
+    }
+    return <Redirect href="/(auth)/welcome" />;
+  }
 
   return (
     <Tabs

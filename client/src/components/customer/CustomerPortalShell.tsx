@@ -14,7 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
@@ -121,16 +121,17 @@ function SidebarNav({
   );
 }
 
-function SidebarBrand() {
+function SidebarBrand({ isBusiness }: { isBusiness?: boolean }) {
+  const product = isBusiness ? XGOO_MODULES.pro : XGOO_MODULES.go;
   return (
     <div className="flex items-center gap-2.5 px-5 py-6">
-      <img src={xgooLogo} alt="XGoo" className="h-9 w-9 object-contain shrink-0" />
+      <img src={xgooLogo} alt={product.name} className="h-9 w-9 object-contain shrink-0" />
       <div className="min-w-0">
         <span className="block text-xl font-bold leading-none tracking-tight text-white">
-          {XGOO_BRAND.productName}
+          {product.name}
         </span>
         <span className="mt-1 block text-[10px] text-zinc-500">
-          from {XGOO_BRAND.parentCompany}
+          {product.meaning}
         </span>
       </div>
     </div>
@@ -249,7 +250,7 @@ function SidebarBody({
 }: Omit<CustomerPortalShellProps, "children"> & { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col" style={{ backgroundColor: SIDEBAR_BG }}>
-      <SidebarBrand />
+      <SidebarBrand isBusiness={isBusiness} />
       <SidebarNav
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -370,12 +371,12 @@ export function CustomerPortalShell({
           <div className="flex items-center gap-2">
             <img src={xgooLogo} alt="" className="h-7 w-7 object-contain" />
             <span className="text-base font-bold tracking-tight text-zinc-900">
-              {XGOO_BRAND.productName}
+              {isBusiness ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
             </span>
           </div>
           <div className="ml-auto flex items-center gap-1.5 text-xs text-zinc-500">
             <Package className="h-3.5 w-3.5" style={{ color: ACCENT }} />
-            Portal
+            {isBusiness ? XGOO_MODULES.pro.shortName : XGOO_MODULES.go.shortName}
           </div>
         </header>
 

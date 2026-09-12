@@ -33,7 +33,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <PageHeader title="Profile" subtitle="Your XGoo customer account." />
+      <PageHeader title="Profile" subtitle="Your XGoo Go account." />
       <Card style={styles.profile}>
         <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
           <Text style={styles.avatarText}>
@@ -114,7 +114,7 @@ export default function ProfileScreen() {
         style={styles.logout}
         onPress={logout}
       />
-      <Text style={[styles.version, { color: colors.textMuted }]}>XGoo Mobile · Version 1.0.0</Text>
+      <Text style={[styles.version, { color: colors.textMuted }]}>XGoo Go · Version 1.0.0</Text>
       <TechPartnerCredit style={styles.credit} />
     </Screen>
   );

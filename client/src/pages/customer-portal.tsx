@@ -954,7 +954,7 @@ function LoginForm({
 
   return (
     <CustomerAuthShell
-      title="Sign In"
+      title={`Sign in to ${kind === "individual" ? XGOO_MODULES.go.name : XGOO_MODULES.pro.name}`}
       subtitle={
         kind === "individual"
           ? `${XGOO_MODULES.go.meaning}. Sign in with your mobile number and OTP.`
@@ -1157,7 +1157,7 @@ function RegisterForm({
 
   return (
     <CustomerAuthShell
-      title="Create account"
+      title={`Create ${kind === "individual" ? XGOO_MODULES.go.name : XGOO_MODULES.pro.name} account`}
       subtitle={
         kind === "individual"
           ? `${XGOO_MODULES.go.meaning}. Create an account with your mobile number and OTP, or book a pickup first.`

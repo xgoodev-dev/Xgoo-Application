@@ -1,33 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Search, Truck } from 'lucide-react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ShipmentCard } from '@/components/shipment-card';
 import { EmptyState, PageHeader, Screen } from '@/components/ui';
 import { customerApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { isGenericTrackRef } from '@/lib/track-links';
 import { useAppTheme } from '@/lib/theme';
 
 export default function TrackScreen() {
   const { token } = useAuth();
   const { colors } = useAppTheme();
-  const [query, setQuery] = useState('');
+  const params = useLocalSearchParams<{ q?: string; ref?: string }>();
+  const incoming = typeof params.q === 'string' ? params.q : typeof params.ref === 'string' ? params.ref : '';
+  const [query, setQuery] = useState(isGenericTrackRef(incoming) ? '' : incoming);
   const bookings = useQuery({
     queryKey: ['customer-bookings', token],
     queryFn: () => customerApi.bookings(token!),
     enabled: !!token,
   });
 
-  const exact = (bookings.data || []).filter((item) => {
-    const value = query.trim().replace(/^#/, '').toLowerCase();
-    if (!value) return false;
-    return item.requestNumber.toLowerCase().includes(value);
-  });
+  const searchValue = query.trim().replace(/^#/, '').toLowerCase();
+  const matches = useMemo(() => {
+    return (bookings.data || []).filter((item) => {
+      if (!searchValue) return false;
+      return item.requestNumber.toLowerCase().includes(searchValue);
+    });
+  }, [bookings.data, searchValue]);
+
+  const currentShipments = useMemo(() => {
+    return (bookings.data || []).filter((item) => {
+      const status = item.status;
+      return status !== 'delivered' && status !== 'rejected' && status !== 'cancelled';
+    });
+  }, [bookings.data]);
 
   return (
     <Screen keyboard>
-      <PageHeader title="Track a parcel" subtitle="Enter your booking request number." />
+      <PageHeader title="Track a parcel" subtitle="Enter a request number, or open a current shipment." />
       <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[styles.icon, { backgroundColor: colors.accentSoft }]}>
           <Truck size={30} color={colors.accent} />
@@ -49,17 +61,30 @@ export default function TrackScreen() {
         </View>
       </View>
 
-      <View style={styles.results}>
-        {exact.map((booking) => (
-          <ShipmentCard
-            key={booking.id}
-            booking={booking}
-            onPress={() => router.push(`/shipment/${booking.id}`)}
-          />
-        ))}
-      </View>
+      {searchValue ? (
+        <View style={styles.results}>
+          {matches.map((booking) => (
+            <ShipmentCard
+              key={booking.id}
+              booking={booking}
+              onPress={() => router.push(`/shipment/${booking.id}`)}
+            />
+          ))}
+        </View>
+      ) : currentShipments.length > 0 ? (
+        <View style={styles.results}>
+          <Text style={[styles.section, { color: colors.textMuted }]}>CURRENT SHIPMENTS</Text>
+          {currentShipments.map((booking) => (
+            <ShipmentCard
+              key={booking.id}
+              booking={booking}
+              onPress={() => router.push(`/shipment/${booking.id}`)}
+            />
+          ))}
+        </View>
+      ) : null}
 
-      {query.trim() && exact.length === 0 && !bookings.isLoading ? (
+      {searchValue && matches.length === 0 && !bookings.isLoading ? (
         <EmptyState
           icon={Search}
           title="No matching parcel"
@@ -67,7 +92,7 @@ export default function TrackScreen() {
         />
       ) : null}
 
-      {!query.trim() ? (
+      {!searchValue && currentShipments.length === 0 ? (
         <View style={styles.tip}>
           <Text style={[styles.tipTitle, { color: colors.text }]}>Tracking tip</Text>
           <Text style={[styles.tipCopy, { color: colors.textMuted }]}>
@@ -97,8 +122,8 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, height: 52, fontSize: 15, fontWeight: '600' },
   results: { gap: 12, marginTop: 18 },
+  section: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
   tip: { marginTop: 26, paddingHorizontal: 8 },
   tipTitle: { fontSize: 13, fontWeight: '700' },
   tipCopy: { fontSize: 12, lineHeight: 18, marginTop: 5 },
 });
-

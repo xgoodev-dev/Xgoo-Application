@@ -13,7 +13,30 @@ type WebhookMessage = {
   from?: string;
   type?: string;
   text?: { body?: string };
+  button?: { text?: string; payload?: string };
+  interactive?: {
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
+  };
 };
+
+function extractInboundCustomerIntent(message: WebhookMessage): {
+  text: string;
+  forceWelcome: boolean;
+} | null {
+  if (message.type === "request_welcome") {
+    return { text: "hi", forceWelcome: true };
+  }
+  const text =
+    message.text?.body?.trim() ||
+    message.button?.text?.trim() ||
+    message.button?.payload?.trim() ||
+    message.interactive?.button_reply?.title?.trim() ||
+    message.interactive?.list_reply?.title?.trim() ||
+    "";
+  if (!text) return null;
+  return { text, forceWelcome: false };
+}
 
 type WebhookChange = {
   field?: string;
@@ -187,7 +210,8 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
         const inboundMessages = value.messages || [];
 
         for (const message of inboundMessages) {
-          if (message.type !== "text" || !message.text?.body || !message.from) {
+          const intent = extractInboundCustomerIntent(message);
+          if (!intent || !message.from) {
             recordWhatsAppWebhookDebug({
               level: "info",
               event: "skipped_non_text",
@@ -198,14 +222,16 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
             continue;
           }
 
-          const preview = message.text.body.slice(0, 80);
+          const preview = intent.text.slice(0, 80);
           recordWhatsAppWebhookDebug({
             level: "info",
-            event: "inbound_text",
+            event: intent.forceWelcome ? "inbound_first_open" : "inbound_text",
             phoneNumberId,
             from: message.from,
             messagePreview: preview,
-            detail: `Processing "${preview}"`,
+            detail: intent.forceWelcome
+              ? "First-time chat open — sending welcome template"
+              : `Processing "${preview}"`,
           });
 
           const contactName = value.contacts?.find((c) => c.wa_id === message.from)?.profile?.name;
@@ -214,7 +240,7 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
             settings,
             office.id,
             message.from,
-            message.text.body,
+            intent.text,
             contactName,
             {
               findByRequestNumber: async (requestNumber) => {
@@ -232,6 +258,7 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
               },
               findRecentByPhone: (phone) => findRecentBookingsByPhone(office.id, phone),
             },
+            { forceWelcome: intent.forceWelcome },
           )
             .then(() => {
               recordWhatsAppWebhookDebug({

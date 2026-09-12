@@ -1,6 +1,6 @@
 import { Alert, Linking } from 'react-native';
 
-/** Customer-facing support contacts for the XGoo mobile app. */
+/** Customer-facing support contacts for XGoo Go. */
 export const XGOO_SUPPORT = {
   phoneDisplay: '+91 93471 38235',
   phoneTel: 'tel:+919347138235',
@@ -24,7 +24,7 @@ export async function callXgooSupport(purpose: 'book' | 'support' = 'support') {
   } catch {
     Alert.alert(
       purpose === 'book' ? 'Unable to start call' : 'Unable to call support',
-      `Please dial ${XGOO_SUPPORT.phoneDisplay} to reach XGoo.`,
+      `Please dial ${XGOO_SUPPORT.phoneDisplay} to reach XGoo Go.`,
     );
   }
 }

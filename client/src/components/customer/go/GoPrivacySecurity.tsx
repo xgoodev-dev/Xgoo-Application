@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { useToast } from "@/hooks/use-toast";
 
 export function GoPrivacySecurity({
@@ -46,7 +47,10 @@ export function GoPrivacySecurity({
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast({ title: "Password changed", description: "Your XGoo account password has been updated." });
+      toast({
+        title: "Password changed",
+        description: `Your ${module === "pro" ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name} account password has been updated.`,
+      });
     } catch (error) {
       toast({
         title: "Could not change password",
@@ -72,8 +76,8 @@ export function GoPrivacySecurity({
           <p className="font-semibold text-zinc-900">Your account is protected</p>
           <p className="mt-1 text-sm text-zinc-500">
             {module === "pro"
-              ? "XGoo Pro sign-in uses Google, email, or phone. The same credentials work on the website."
-              : "XGoo Go sign-in uses a one-time code on your mobile. The same phone number and OTP work on the website and the mobile app."}
+              ? `${XGOO_MODULES.pro.name} sign-in uses Google, email, or phone. The same credentials work on the website.`
+              : `${XGOO_MODULES.go.name} sign-in uses a one-time code on your mobile. The same phone number and OTP work on the website and the mobile app.`}
           </p>
         </div>
       </Card>

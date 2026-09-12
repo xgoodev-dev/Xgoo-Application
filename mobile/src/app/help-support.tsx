@@ -9,7 +9,7 @@ const supportOptions = [
   {
     icon: MessageCircle,
     title: 'Chat on WhatsApp',
-    subtitle: 'Message the XGoo support team',
+    subtitle: 'Message the XGoo Go support team',
     url: 'https://wa.me/15559529213',
   },
   {
@@ -22,7 +22,7 @@ const supportOptions = [
     icon: Mail,
     title: 'Email support',
     subtitle: 'connect@xgoo.in',
-    url: 'mailto:connect@xgoo.in?subject=XGoo%20Mobile%20Support',
+    url: 'mailto:connect@xgoo.in?subject=XGoo%20Go%20Support',
   },
   {
     icon: ExternalLink,
@@ -62,12 +62,12 @@ export default function HelpSupportScreen() {
         <View style={styles.flex}>
           <Text style={[styles.heroTitle, { color: colors.text }]}>How can we help?</Text>
           <Text style={[styles.copy, { color: colors.textMuted }]}>
-            Contact XGoo about a booking, pickup, delivery, account, or payment.
+            Contact XGoo Go about a booking, pickup, delivery, account, or payment.
           </Text>
         </View>
       </Card>
 
-      <Text style={[styles.section, { color: colors.textMuted }]}>CONTACT XGOO</Text>
+      <Text style={[styles.section, { color: colors.textMuted }]}>CONTACT XGOO GO</Text>
       <View style={styles.options}>
         {supportOptions.map(({ icon: Icon, title, subtitle, url }) => (
           <Card key={title} onPress={() => void open(url)} style={styles.option}>
@@ -87,17 +87,17 @@ export default function HelpSupportScreen() {
       <Card style={styles.faq}>
         <Faq
           question="Where can I find my booking number?"
-          answer="Open Shipments. Every submitted request displays its XGoo request number."
+          answer="Open Shipments. Every submitted request displays its XGoo Go request number."
         />
         <Divider />
         <Faq
           question="When is my pickup confirmed?"
-          answer="Your request appears as Pending until XGoo confirms serviceability, price, and pickup timing."
+          answer="Your request appears as Pending until XGoo Go confirms serviceability, price, and pickup timing."
         />
         <Divider />
         <Faq
           question="How do I track a parcel?"
-          answer="Open Track and enter the request number, booking number, or AWB supplied by XGoo."
+          answer="Open Track and enter the request number, booking number, or AWB supplied by XGoo Go."
         />
       </Card>
       <TechPartnerCredit style={styles.credit} />

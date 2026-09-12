@@ -904,7 +904,7 @@ export async function registerRoutes(
         displayName:
           [req.user.user_metadata?.firstName, req.user.user_metadata?.lastName]
             .filter(Boolean)
-            .join(" ") || "XGoo Super Admin",
+            .join(" ") || "XGoo Command Super Admin",
         role: "super_admin",
         status: "active",
         branchId: null,
@@ -3666,10 +3666,10 @@ export async function registerRoutes(
         accountExists: Boolean(existingCustomer),
         message:
           existingCustomer?.accountType === "business"
-            ? "Your pickup request is in. Sign in to your business account to track it."
+            ? "Your pickup request is in. Sign in to XGoo Pro to track it."
             : existingCustomer
               ? "Your pickup request is in. Sign in with this mobile number and OTP to track it."
-              : "Your pickup request is in. We created your XGoo account — sign in with this mobile number and OTP.",
+              : "Your pickup request is in. We created your XGoo Go account — sign in with this mobile number and OTP.",
         ...bookingWhatsAppExtras(
           (office as { whatsappSettings?: unknown }).whatsappSettings,
           request.requestNumber,
@@ -3913,16 +3913,16 @@ export async function registerRoutes(
           otp: validated.otp,
         });
       } else if (!validated.password) {
-        return res.status(400).json({ message: "Enter a password to create a business account." });
+        return res.status(400).json({ message: "Enter a password to create an XGoo Pro account." });
       } else if (!validated.email) {
-        return res.status(400).json({ message: "Business accounts need a work email." });
+        return res.status(400).json({ message: "XGoo Pro accounts need a work email." });
       }
 
       const existing = await storage.getCustomerUserByPhone(office.id, phone);
       if (existing) {
         return res.status(400).json({
           message: existing.accountType === "individual"
-            ? "An individual account already exists for this mobile number. Sign in with OTP."
+            ? "An XGoo Go account already exists for this mobile number. Sign in with OTP."
             : "An account with this phone number already exists. Please login instead.",
         });
       }
@@ -3991,7 +3991,7 @@ export async function registerRoutes(
       if (!customerUser) {
         return res.status(401).json({
           message: email
-            ? "No business account found for this email"
+            ? "No XGoo Pro account found for this email"
             : "No account found for this mobile number",
         });
       }
@@ -4016,7 +4016,7 @@ export async function registerRoutes(
       } else if (validated.password) {
         if (accountType === "individual") {
           return res.status(400).json({
-            message: "Individual accounts sign in with the OTP sent to your mobile number.",
+            message: "XGoo Go accounts sign in with the OTP sent to your mobile number.",
           });
         }
         const isValid = await bcrypt.compare(validated.password, customerUser.passwordHash);
@@ -4381,7 +4381,7 @@ export async function registerRoutes(
 
   function requireBusinessCustomer(req: any, res: Response): boolean {
     if (req.customerUser?.accountType !== "business") {
-      res.status(403).json({ message: "This area is for business accounts." });
+      res.status(403).json({ message: "This area is for XGoo Pro accounts." });
       return false;
     }
     return true;

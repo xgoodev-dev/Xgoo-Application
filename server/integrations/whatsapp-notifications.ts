@@ -158,6 +158,7 @@ export async function sendInboundWelcomeMessage(
   settings: WhatsAppSettings,
   toPhone: string,
   customerName?: string,
+  trackingRef?: string,
 ): Promise<boolean> {
   const rule = settings.automation.welcome;
   if (!rule?.enabled) {
@@ -183,7 +184,7 @@ export async function sendInboundWelcomeMessage(
       level: "warn",
       event: "welcome_skipped",
       from: toPhone,
-      detail: "Reply on Hi/Hello is turned off in Welcome automation settings",
+      detail: "Reply on first-time open / Hi / Hello / Menu is turned off in Welcome automation settings",
     });
     return false;
   }
@@ -240,7 +241,8 @@ export async function sendInboundWelcomeMessage(
   const welcomeDefaults = applyWelcomeTemplateDefaults(settings, templateName, {
     bodyParams: [displayName],
     customerName: displayName,
-    trackingRef: settings.welcomeTemplateConfig?.trackShipmentSuffix || "xgoo",
+    trackingRef:
+      trackingRef?.trim() || settings.welcomeTemplateConfig?.trackShipmentSuffix || "open",
   });
   const components = buildAutomationTemplateComponents(settings, meta, templateName, {
     bodyParams: welcomeDefaults.bodyParams,
@@ -292,12 +294,18 @@ export async function handleInboundWhatsAppMessage(
     findByRequestNumber: (requestNumber: string) => Promise<BookingRequest | undefined>;
     findRecentByPhone: (phone: string) => Promise<BookingRequest[]>;
   },
+  options?: { forceWelcome?: boolean },
 ): Promise<void> {
   const trimmed = messageText.trim();
   const requestNumberMatch = trimmed.match(/\b(BR[\w-]+)\b/i);
 
-  if (isInboundGreetingMessage(trimmed)) {
-    await sendInboundWelcomeMessage(settings, fromPhone, customerName);
+  if (options?.forceWelcome || isInboundGreetingMessage(trimmed)) {
+    let trackingRef: string | undefined;
+    if (lookup) {
+      const recent = await lookup.findRecentByPhone(fromPhone);
+      trackingRef = recent[0]?.requestNumber;
+    }
+    await sendInboundWelcomeMessage(settings, fromPhone, customerName, trackingRef);
     return;
   }
 
@@ -324,7 +332,7 @@ export async function handleInboundWhatsAppMessage(
   if (!config) return;
   await sendWhatsAppTextMessage(config, {
     to: normalizeWhatsAppPhone(fromPhone),
-    text: "Hi! Welcome to XGoo. Reply with your booking number (e.g. BR-12345) or say Hi to see our welcome menu.",
+    text: "Hi! Welcome to XGoo Go. Reply with your booking number (e.g. BR-12345) or send Hi, Hello, or Menu to see our welcome options.",
   });
 }
 

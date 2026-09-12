@@ -111,7 +111,7 @@ export async function registerForPushNotifications() {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('booking-updates', {
         name: 'Booking updates',
-        description: 'Booking, pickup, and shipment status updates from XGoo',
+        description: 'Booking, pickup, and shipment status updates from XGoo Go',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 150, 250],
         lightColor: '#FF4907',

@@ -30,7 +30,7 @@ export default function PrivacySecurityScreen() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Password changed', 'Your XGoo account password has been updated.');
+      Alert.alert('Password changed', 'Your XGoo Go account password has been updated.');
     } catch (error) {
       Alert.alert('Could not change password', error instanceof Error ? error.message : 'Try again.');
     } finally {
@@ -103,7 +103,7 @@ export default function PrivacySecurityScreen() {
         <View style={styles.flex}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy policy</Text>
           <Text style={[styles.copy, { color: colors.textMuted }]}>
-            Read how XGoo collects, protects, and uses customer information.
+            Read how XGoo Go collects, protects, and uses customer information.
           </Text>
         </View>
         <ExternalLink size={18} color={colors.textMuted} />

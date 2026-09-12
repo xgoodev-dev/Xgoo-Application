@@ -217,8 +217,8 @@ export function DirectPickupForm({
         </p>
         <p className="mt-3 text-sm leading-relaxed text-zinc-500">
           {result.accountCreated
-            ? "Your XGoo account is ready. Sign in with this mobile number and OTP to track the request."
-            : "Sign in with this mobile number and OTP to open your account and track the request."}
+            ? "Your XGoo Go account is ready. Sign in with this mobile number and OTP to track the request."
+            : "Sign in with this mobile number and OTP to open your XGoo Go account and track the request."}
         </p>
         <Button asChild className="mt-5 h-11 w-full border-0 text-white" style={{ background: ORANGE }}>
           <Link href="/book?mode=login&account=go">Sign in to XGoo Go</Link>

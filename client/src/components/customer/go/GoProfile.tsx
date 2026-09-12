@@ -112,7 +112,7 @@ export function GoProfile({
   return (
     <div className="mx-auto max-w-3xl px-4 py-5 md:px-6">
       <h2 className="text-xl font-bold text-zinc-900">Profile</h2>
-      <p className="mt-1 text-sm text-zinc-500">Your {product.name} customer account.</p>
+      <p className="mt-1 text-sm text-zinc-500">Your {product.name} account.</p>
       <Card className="mt-5 flex items-center gap-4 border-zinc-100 p-4 shadow-none">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FF4907] text-lg font-extrabold text-white">
           {initialsFromName(userName)}

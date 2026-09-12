@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "XGoo",
+    "name": "XGoo Go",
     "slug": "xgoo",
     "version": "1.0.4",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
       "icon": "./assets/images/xgoo-logo.png",
       "bundleIdentifier": "com.murthyenterprises.xgoo",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "XGoo uses your location to set the parcel pickup point."
+        "NSLocationWhenInUseUsageDescription": "XGoo Go uses your location to set the parcel pickup point."
       }
     },
     "android": {
@@ -26,6 +26,17 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "www.xgoo.in", "pathPrefix": "/track" },
+            { "scheme": "https", "host": "xgoo.in", "pathPrefix": "/track" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {

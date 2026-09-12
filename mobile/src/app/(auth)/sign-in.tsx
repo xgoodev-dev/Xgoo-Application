@@ -5,6 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAuth } from '@/lib/auth';
+import { consumePendingDeepLink } from '@/lib/pending-deep-link';
 import { useAppTheme } from '@/lib/theme';
 
 export default function SignInScreen() {
@@ -54,7 +55,7 @@ export default function SignInScreen() {
     setLoading(true);
     try {
       await signIn(phone, otp);
-      router.replace('/(tabs)');
+      router.replace(consumePendingDeepLink() || '/(tabs)');
     } catch (error) {
       Alert.alert('Could not sign in', error instanceof Error ? error.message : 'Please try again.');
     } finally {
@@ -116,7 +117,7 @@ export default function SignInScreen() {
       </View>
 
       <View style={styles.switchRow}>
-        <Text style={{ color: colors.textMuted }}>New to XGoo? </Text>
+        <Text style={{ color: colors.textMuted }}>New to XGoo Go? </Text>
         <Pressable onPress={() => router.replace('/(auth)/register')}>
           <Text style={{ color: colors.accent, fontWeight: '700' }}>Create account</Text>
         </Pressable>

@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { BrandLockup } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { consumePendingDeepLink } from '@/lib/pending-deep-link';
 import { useAppTheme } from '@/lib/theme';
 
 export default function EntryScreen() {
@@ -9,7 +10,7 @@ export default function EntryScreen() {
   const { colors } = useAppTheme();
 
   if (!loading) {
-    return <Redirect href={token ? '/(tabs)' : '/(auth)/welcome'} />;
+    return <Redirect href={token ? consumePendingDeepLink() || '/(tabs)' : '/(auth)/welcome'} />;
   }
 
   return (

@@ -5,6 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAuth } from '@/lib/auth';
+import { consumePendingDeepLink } from '@/lib/pending-deep-link';
 import { useAppTheme } from '@/lib/theme';
 
 export default function RegisterScreen() {
@@ -64,7 +65,7 @@ export default function RegisterScreen() {
         email: email.trim() || undefined,
         otp,
       });
-      router.replace('/(tabs)');
+      router.replace(consumePendingDeepLink() || '/(tabs)');
     } catch (error) {
       Alert.alert('Could not create account', error instanceof Error ? error.message : 'Try again.');
     } finally {
@@ -85,7 +86,7 @@ export default function RegisterScreen() {
         <Text style={[styles.title, { color: colors.text }]}>Start moving</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
           {step === 'details'
-            ? 'Create your account for faster parcel bookings. We will verify your mobile with an OTP.'
+            ? 'Create your XGoo Go account for faster parcel bookings. We will verify your mobile with an OTP.'
             : `Enter the OTP sent to ${phone.trim()}.`}
         </Text>
       </View>

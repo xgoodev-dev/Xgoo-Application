@@ -83,7 +83,7 @@ export const whatsAppAutomationRuleSchema = z.object({
   enabled: z.boolean().default(false),
   templateName: z.string().default(""),
   languageCode: z.string().default("en"),
-  /** When enabled on the welcome rule, reply to Hi/Hello via webhook (requires Meta webhook). */
+  /** When enabled on the welcome rule, reply to first-time opens and Hi/Hello/Menu via webhook. */
   replyOnInboundGreeting: z.boolean().default(true),
 });
 
@@ -664,7 +664,7 @@ export function applyWelcomeTemplateDefaults(
   const buttonParams = [...(input.buttonParams || [])];
   if (!buttonParams[0]?.trim()) {
     buttonParams[0] =
-      input.trackingRef?.trim() || cfg.trackShipmentSuffix?.trim() || "xgoo";
+      input.trackingRef?.trim() || cfg.trackShipmentSuffix?.trim() || "open";
   }
   return { bodyParams, buttonParams };
 }
@@ -686,11 +686,40 @@ export function finalizeWhatsAppSettingsMediaUrls(
   return { ...merged, defaultHeaderMediaUrl };
 }
 
-/** True when inbound text is Hi, Hello, etc. — triggers auto welcome reply. */
+const WELCOME_TRIGGER_PHRASES = new Set([
+  "hi",
+  "hii",
+  "hiii",
+  "hello",
+  "helo",
+  "hellow",
+  "hey",
+  "heyy",
+  "hola",
+  "hlw",
+  "hlo",
+  "hy",
+  "menu",
+  "menue",
+  "help",
+  "start",
+  "get started",
+  "namaste",
+  "namaskar",
+  "good morning",
+  "good afternoon",
+  "good evening",
+  "gm",
+]);
+
+/** True when inbound text is Hi, Hello, Menu, etc. — triggers auto welcome reply. */
 export function isInboundGreetingMessage(text: string): boolean {
-  const normalized = text.trim().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
-  if (!normalized) return false;
-  return /^(hi|hello|hey|hola|namaste|start|get started|good morning|good afternoon|good evening)(\s|$)/i.test(
+  const raw = text.trim();
+  if (!raw) return false;
+  const normalized = raw.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalized) return true;
+  if (WELCOME_TRIGGER_PHRASES.has(normalized)) return true;
+  return /^(hi+|hello|helo|hey+|hola|hlw|hlo|hy|menu|help|start|get started|namaste|namaskar|good morning|good afternoon|good evening)(\b|$)/i.test(
     normalized,
   );
 }
