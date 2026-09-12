@@ -1,9 +1,10 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
+import { ServicesHero } from "@/components/marketing/ServicesHero";
 import { PageSeo } from "@/components/seo/PageSeo";
+import heroImage from "@/assets/landing/purpose-deliveries.jpg";
 import {
   XGOO_BRAND_FOUNDATION,
   XGOO_BRAND_VOICE,
@@ -107,30 +108,20 @@ export default function AboutPage() {
           ]),
         ]}
       />
-      <section className="relative overflow-hidden border-b bg-zinc-50">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-50"
-          style={{
-            backgroundImage: "radial-gradient(circle, #e5e7eb 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-          }}
-        />
-        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <Badge variant="secondary" className="mb-4 text-xs font-semibold uppercase tracking-widest">
-            {XGOO_BRAND_FOUNDATION.documentTitle}
-          </Badge>
-          <h1 className="max-w-4xl text-3xl font-extrabold leading-[1.1] tracking-tight text-zinc-900 sm:text-5xl lg:text-6xl">
+      <ServicesHero
+        image={heroImage}
+        imageAlt="Parcels prepared for movement with XGoo"
+        crumbs={[{ name: "Home", path: "/" }, { name: "About" }]}
+        eyebrow={XGOO_BRAND_FOUNDATION.documentTitle}
+        title={
+          <>
             {XGOO_BRAND_FOUNDATION.coreIdea.title} is the foundation of{" "}
             <span style={{ color: "#FF4907" }}>XGoo</span>
-          </h1>
-          <p className="mt-6 max-w-3xl text-lg leading-relaxed text-zinc-500 sm:text-xl">
-            {XGOO_BRAND_VOICE.beliefOneLiner}
-          </p>
-          <p className="mt-4 max-w-3xl text-base leading-relaxed text-zinc-500">
-            {XGOO_BRAND_FOUNDATION.coreIdea.paragraphs[1]}
-          </p>
-        </div>
-      </section>
+          </>
+        }
+        support={XGOO_BRAND_VOICE.beliefOneLiner}
+        showPickup={false}
+      />
 
       <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -158,7 +149,7 @@ export default function AboutPage() {
           </div>
           <div className="space-y-6">
             {philosophyItems.map((item) => (
-              <Card key={item.id} id={item.id} className="scroll-mt-32 border border-zinc-100 bg-white">
+              <Card key={item.id} id={item.id} className="scroll-mt-32 border border-zinc-200 bg-white text-zinc-900">
                 <CardContent className="p-6 sm:p-8">
                   <div className="flex flex-col gap-5 sm:flex-row sm:gap-6">
                     <div
@@ -201,7 +192,7 @@ export default function AboutPage() {
           </div>
           <div className="grid gap-5 sm:grid-cols-2">
             {principles.map((principle) => (
-              <Card key={principle.number} className="border border-zinc-100 transition-shadow hover:shadow-md">
+              <Card key={principle.number} className="border border-zinc-200 bg-white text-zinc-900 transition-shadow hover:shadow-md">
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
                     <div
@@ -240,7 +231,7 @@ export default function AboutPage() {
                 Because when movement becomes better, progress becomes possible.
               </p>
             </div>
-            <Card className="border border-zinc-100 shadow-sm">
+            <Card className="border border-zinc-200 bg-white text-zinc-900 shadow-sm">
               <CardContent className="p-8">
                 <div
                   className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl"
@@ -301,7 +292,15 @@ export default function AboutPage() {
             Move with purpose
           </h2>
           <p className="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-white/60">
-            {XGOO_BRAND_FOUNDATION.mission.quote}
+            {XGOO_BRAND_FOUNDATION.mission.quote} Book a parcel, or start with{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/international-courier")}
+              className="underline decoration-white/30 underline-offset-4 hover:text-white"
+            >
+              international courier from Hyderabad
+            </button>
+            .
           </p>
           <div className="flex flex-col justify-center gap-3 sm:flex-row">
             <Button

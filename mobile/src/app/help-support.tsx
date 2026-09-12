@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, CircleHelp, Mail, MessageCircle, Phone, ExternalLink } from 'lucide-react-native';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, Screen } from '@/components/ui';
+import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAppTheme } from '@/lib/theme';
 
 const supportOptions = [
@@ -99,6 +100,7 @@ export default function HelpSupportScreen() {
           answer="Open Track and enter the request number, booking number, or AWB supplied by XGoo."
         />
       </Card>
+      <TechPartnerCredit style={styles.credit} />
     </Screen>
   );
 }
@@ -138,5 +140,6 @@ const styles = StyleSheet.create({
   faqItem: { paddingVertical: 13 },
   faqQuestion: { fontSize: 13, fontWeight: '700' },
   divider: { height: StyleSheet.hairlineWidth },
+  credit: { marginTop: 28, marginBottom: 8 },
 });
 

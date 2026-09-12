@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { RootErrorBoundary } from '@/components/root-error-boundary';
 import { AuthProvider } from '@/lib/auth';
 import {
   addNotificationResponseReceivedListener,
@@ -12,16 +13,21 @@ import { AppThemeProvider, useAppTheme } from '@/lib/theme';
 function AppNavigator() {
   const { isDark, colors } = useAppTheme();
   useEffect(() => {
-    ensureNotificationHandler();
-    const subscription = addNotificationResponseReceivedListener((response) => {
-      const shipmentId = response.notification.request.content.data?.shipmentId;
-      if (typeof shipmentId === 'string' && shipmentId) {
-        router.push(`/shipment/${shipmentId}`);
-      } else {
-        router.push('/notifications');
-      }
-    });
-    return () => subscription.remove();
+    try {
+      ensureNotificationHandler();
+      const subscription = addNotificationResponseReceivedListener((response) => {
+        const shipmentId = response.notification.request.content.data?.shipmentId;
+        if (typeof shipmentId === 'string' && shipmentId) {
+          router.push(`/shipment/${shipmentId}`);
+        } else {
+          router.push('/notifications');
+        }
+      });
+      return () => subscription.remove();
+    } catch (error) {
+      console.warn('Notification listeners skipped', error);
+      return undefined;
+    }
   }, []);
 
   return (
@@ -31,7 +37,7 @@ function AppNavigator() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
-          animation: 'slide_from_right',
+          animation: 'none',
         }}
       >
         <Stack.Screen name="index" />
@@ -61,12 +67,14 @@ export default function RootLayout() {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppThemeProvider>
-        <AuthProvider>
-          <AppNavigator />
-        </AuthProvider>
-      </AppThemeProvider>
-    </QueryClientProvider>
+    <RootErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AppThemeProvider>
+          <AuthProvider>
+            <AppNavigator />
+          </AuthProvider>
+        </AppThemeProvider>
+      </QueryClientProvider>
+    </RootErrorBoundary>
   );
 }

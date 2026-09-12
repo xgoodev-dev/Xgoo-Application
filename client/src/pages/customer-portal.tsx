@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { useParams, useLocation } from "wouter";
+import { Link, useParams, useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -35,7 +35,8 @@ import {
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
-import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
+import { XGOO_BRAND, XGOO_MODULES, XGOO_OPS_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { SEO_PAGES } from "@/lib/seo";
 import { trackMetaLead } from "@/lib/meta-pixel";
@@ -70,8 +71,21 @@ import {
   customerAuthFieldClass,
   customerAuthPrimaryButtonClass,
   customerAuthSecondaryButtonClass,
+  customerAuthGoogleButtonClass,
 } from "@/components/customer/CustomerAuthShell";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
+import { GoHome } from "@/components/customer/go/GoHome";
+import { GoProfile, type GoProfileView } from "@/components/customer/go/GoProfile";
+import {
+  BusinessOnboarding,
+  DestinationsPanel,
+  SchedulePanel,
+  TodayDispatch,
+} from "@/components/customer/business/BusinessWorkspace";
+import { ProHome } from "@/components/customer/business/ProHome";
+import { businessApi } from "@/components/customer/business/business-api";
+import { isBusinessProfileReady } from "@shared/business-courier";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   TrackingLoadsWorkspace,
   loadProgressFromStatus,
@@ -92,6 +106,9 @@ import {
   pickupSlotLabel,
   type PickupSettings,
 } from "@shared/pickup-settings";
+import { FcGoogle } from "react-icons/fc";
+import { supabase } from "@/lib/supabase";
+import { CUSTOMER_GOOGLE_OAUTH_KEY } from "@/lib/customer-google-oauth";
 import { cn } from "@/lib/utils";
 
 interface OfficeInfo {
@@ -113,8 +130,9 @@ interface CustomerUserInfo {
   id: string;
   officeId: string;
   name: string;
-  phone: string;
+  phone?: string | null;
   email?: string | null;
+  accountType?: "individual" | "business" | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -208,6 +226,27 @@ function guestModeStorageKey(slug: string) {
   return `xgoo_guest_mode_${slug}`;
 }
 
+function wantsCustomerAuthScreen(search = "") {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  return (
+    params.get("mode") === "login" ||
+    params.get("mode") === "register" ||
+    params.get("oauth") === "1" ||
+    params.has("code")
+  );
+}
+
+function clearCustomerOAuthParams() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("oauth");
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_description");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, "", next);
+}
+
 function loadGuestBookings(slug: string): GuestBookingRef[] {
   try {
     const raw = localStorage.getItem(guestBookingsStorageKey(slug));
@@ -282,6 +321,8 @@ const registerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(10, "Valid phone number required"),
   email: z.string().email("Valid email required").optional().or(z.literal("")),
+  password: z.string().min(6, "Password must be at least 6 characters").optional().or(z.literal("")),
+  otp: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
@@ -289,7 +330,9 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  phone: z.string().min(10, "Valid phone number required"),
+  identifier: z.string().min(1, "Enter your mobile number or email"),
+  password: z.string().optional(),
+  otp: z.string().optional(),
 });
 
 function toFormString(val: unknown): string {
@@ -608,22 +651,32 @@ function PickupMapComponent({ onLocationSelect, initialLat, initialLng, autoDete
 function CustomerBookingFooter() {
   return (
     <footer className="border-t bg-muted/30 mt-auto">
-      <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
-        <ProductAttribution />
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
-          <a href="/terms" className="hover:text-foreground hover:underline">
-            Terms
-          </a>
-          <a href="/privacy" className="hover:text-foreground hover:underline">
-            Privacy
-          </a>
-          <a href="/return-policy" className="hover:text-foreground hover:underline">
-            Returns
-          </a>
-          <a href="/auth-page" className="text-primary hover:underline font-medium" data-testid="link-staff-login">
-            Staff Login
-          </a>
+      <div className="mx-auto max-w-3xl px-4 py-4 flex flex-col items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex w-full flex-col items-center justify-between gap-3 sm:flex-row">
+          <ProductAttribution />
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
+            <a href="/terms" className="hover:text-foreground hover:underline">
+              Terms
+            </a>
+            <a href="/privacy" className="hover:text-foreground hover:underline">
+              Privacy
+            </a>
+            <a href="/return-policy" className="hover:text-foreground hover:underline">
+              Returns
+            </a>
+            {XGOO_OPS_MODULES.map((module) => (
+              <a
+                key={module.id}
+                href={module.path}
+                className="hover:text-foreground hover:underline"
+                data-testid={`link-footer-${module.id}`}
+              >
+                {module.name}
+              </a>
+            ))}
+          </div>
         </div>
+        <TechPartnerCredit />
       </div>
     </footer>
   );
@@ -666,61 +719,230 @@ function CustomerBookingHeader({ showBack = false }: { showBack?: boolean }) {
   );
 }
 
-function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
+function AccountKindTabs({
+  value,
+  onChange,
+}: {
+  value: "individual" | "business";
+  onChange: (value: "individual" | "business") => void;
+}) {
+  return (
+    <div className="mb-6 grid grid-cols-2 border border-stone-200">
+      {([
+        { id: "individual" as const, label: XGOO_MODULES.go.name },
+        { id: "business" as const, label: XGOO_MODULES.pro.name },
+      ]).map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={cn(
+            "h-11 text-sm font-semibold",
+            value === tab.id ? "bg-[#FF4907] text-white" : "bg-white text-stone-600 hover:bg-stone-50",
+          )}
+          data-testid={`button-auth-kind-${tab.id}`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function explicitAccountKind(search = ""): "individual" | "business" | null {
+  const account = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("account");
+  if (account === "business" || account === "pro") return "business";
+  if (account === "individual" || account === "go") return "individual";
+  return null;
+}
+
+function accountKindFromSearch(search = ""): "individual" | "business" {
+  return explicitAccountKind(search) ?? "individual";
+}
+
+function persistCustomerModule(kind: "individual" | "business") {
+  const url = new URL(window.location.href);
+  url.searchParams.set("account", kind === "business" ? "pro" : "go");
+  url.searchParams.delete("mode");
+  url.searchParams.delete("oauth");
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_description");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function isBusinessAccount(user?: CustomerUserInfo | null) {
+  return user?.accountType === "business";
+}
+
+async function sendCustomerOtpRequest(slug: string, phone: string, purpose: "login" | "register") {
+  const res = await fetch(`/api/public/office/${slug}/customer/otp/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, purpose }),
+  });
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.message || "Could not send OTP");
+  return result as { debugOtp?: string; expiresInSec?: number };
+}
+
+function CustomerGoogleSignIn({
+  slug,
+  disabled,
+  buttonLabel = "Continue with Google",
+  dividerLabel = "or continue with email or phone",
+}: {
+  slug: string;
+  disabled?: boolean;
+  buttonLabel?: string;
+  dividerLabel?: string;
+}) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function handleGoogle() {
+    setBusy(true);
+    try {
+      sessionStorage.setItem(CUSTOMER_GOOGLE_OAUTH_KEY, slug);
+      const path = window.location.pathname.startsWith("/book") ? window.location.pathname : "/book";
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${path}?oauth=1&account=pro`,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+      if (error) {
+        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+        toast({ title: "Google sign-in failed", description: error.message, variant: "destructive" });
+      }
+    } catch (error: unknown) {
+      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+      toast({
+        title: "Google sign-in failed",
+        description: error instanceof Error ? error.message : "Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled || busy}
+        onClick={handleGoogle}
+        className={customerAuthGoogleButtonClass}
+        data-testid="button-google-auth"
+      >
+        {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <FcGoogle className="h-5 w-5" />}
+        {buttonLabel}
+      </Button>
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-stone-200" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-white px-3 text-stone-400">{dividerLabel}</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function GuestContinue({
+  onContinueAsGuest,
+  testId,
+}: {
+  onContinueAsGuest?: () => void;
+  testId: string;
+}) {
+  if (!onContinueAsGuest) return null;
+  return (
+    <div className="mt-4">
+      <Button
+        type="button"
+        variant="outline"
+        className={customerAuthSecondaryButtonClass}
+        onClick={onContinueAsGuest}
+        data-testid={testId}
+      >
+        Continue as guest
+      </Button>
+      <p className="mt-2 text-center text-xs text-stone-400">
+        Guests can book a pickup once. After booking, sign in with mobile OTP to track it.
+      </p>
+    </div>
+  );
+}
+
+function LoginForm({
+  slug,
+  office,
+  kind,
+  onKindChange,
+  onLogin,
+  onToggle,
+  onContinueAsGuest,
+}: {
   slug: string;
   office: OfficeInfo;
+  kind: "individual" | "business";
+  onKindChange: (value: "individual" | "business") => void;
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onToggle: () => void;
   onContinueAsGuest?: () => void;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [otp, setOtp] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { phone: "" },
+    defaultValues: { identifier: "", password: "", otp: "" },
   });
 
-  async function handleSendOtp(data: z.infer<typeof loginSchema>) {
-    setIsSubmitting(true);
+  async function handleSendOtp() {
+    const phone = form.getValues("identifier");
+    setOtpSending(true);
     try {
-      const res = await fetch(`/api/public/office/${slug}/customer/otp/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: data.phone, purpose: "login" }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message);
-      setStep("otp");
-      setOtp("");
+      const result = await sendCustomerOtpRequest(slug, phone, "login");
       toast({
         title: "OTP sent",
         description: result.debugOtp
-          ? `Dev code: ${result.debugOtp}`
-          : "Enter the 6-digit code sent to your WhatsApp.",
+          ? `Use ${result.debugOtp} to sign in (test mode).`
+          : "Enter the code sent to your mobile number.",
       });
     } catch (err: any) {
       toast({ title: "Could not send OTP", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setOtpSending(false);
     }
   }
 
-  async function handleVerifyOtp() {
-    if (otp.replace(/\D/g, "").length !== 6) {
-      toast({ title: "Enter the OTP", description: "Type the 6-digit WhatsApp code.", variant: "destructive" });
-      return;
-    }
+  async function handleLogin(data: z.infer<typeof loginSchema>) {
     setIsSubmitting(true);
     try {
+      const identifier = data.identifier.trim();
+      const payload = {
+        accountType: kind,
+        ...(identifier.includes("@")
+          ? { email: identifier, password: data.password }
+          : kind === "individual"
+            ? { phone: identifier, otp: data.otp }
+            : { phone: identifier, password: data.password }),
+      };
       const res = await fetch(`/api/public/office/${slug}/customer/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: form.getValues("phone"), otp }),
+        body: JSON.stringify(payload),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
+      persistCustomerModule(kind);
       onLogin(result.user, result.token);
       toast({ title: "Welcome back!", description: `Logged in as ${result.user.name}` });
     } catch (err: any) {
@@ -733,52 +955,100 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   return (
     <CustomerAuthShell
       title="Sign In"
-      subtitle={`Book and track shipments with ${office.name}. We will send an OTP to your WhatsApp.`}
+      subtitle={
+        kind === "individual"
+          ? `${XGOO_MODULES.go.meaning}. Sign in with your mobile number and OTP.`
+          : `${XGOO_MODULES.pro.meaning}. Sign in with Google, email, or phone.`
+      }
       officeName={office.name}
     >
       <h2 className="sr-only" data-testid="text-auth-title">
         Welcome Back
       </h2>
+      <AccountKindTabs value={kind} onChange={onKindChange} />
+      {kind === "business" ? (
+        <CustomerGoogleSignIn
+          slug={slug}
+          disabled={isSubmitting}
+          buttonLabel="Sign in with Google"
+          dividerLabel="or sign in with email or phone"
+        />
+      ) : null}
       <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(step === "phone" ? handleSendOtp : handleVerifyOtp)}
-          className="space-y-4"
-        >
+        <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
           <FormField
             control={form.control}
-            name="phone"
+            name="identifier"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="sr-only">Phone Number</FormLabel>
+                <FormLabel className="sr-only">{kind === "individual" ? "Mobile number" : "Email or phone"}</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
-                    placeholder="Mobile number"
-                    autoComplete="tel"
+                    placeholder={kind === "individual" ? "Mobile number" : "Email or phone number"}
+                    autoComplete={kind === "individual" ? "tel" : "username"}
                     className={customerAuthFieldClass}
                     data-testid="input-login-phone"
-                    disabled={step === "otp"}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          {step === "otp" && (
-            <FormItem>
-              <FormLabel className="sr-only">OTP</FormLabel>
-              <FormControl>
-                <Input
-                  value={otp}
-                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="6-digit OTP (use 123456 for now)"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  className={customerAuthFieldClass}
-                  data-testid="input-login-otp"
-                />
-              </FormControl>
-            </FormItem>
+          {kind === "individual" ? (
+            <div className="flex gap-2">
+              <FormField
+                control={form.control}
+                name="otp"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel className="sr-only">OTP</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="6-digit OTP"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        className={customerAuthFieldClass}
+                        data-testid="input-login-otp"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="h-[52px] rounded-none"
+                disabled={otpSending}
+                onClick={handleSendOtp}
+                data-testid="button-send-login-otp"
+              >
+                {otpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send OTP"}
+              </Button>
+            </div>
+          ) : (
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="sr-only">Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Password"
+                      autoComplete="current-password"
+                      className={customerAuthFieldClass}
+                      data-testid="input-login-password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           )}
           <p className="text-center text-sm text-stone-600 pt-2">
             Don&apos;t have an account?{" "}
@@ -791,15 +1061,6 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               Sign up
             </button>
           </p>
-          {step === "otp" && (
-            <button
-              type="button"
-              onClick={() => setStep("phone")}
-              className="block w-full text-center text-sm font-semibold text-[#FF4907]"
-            >
-              Change number
-            </button>
-          )}
           <Button
             type="submit"
             className={customerAuthPrimaryButtonClass}
@@ -807,74 +1068,68 @@ function LoginForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
             data-testid="button-login"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            {step === "phone" ? "Send OTP" : "Verify and sign in"}
+            {kind === "individual" ? "Verify OTP" : "Log In"}
           </Button>
         </form>
       </Form>
-      {onContinueAsGuest && (
-        <div className="mt-4">
-          <Button
-            type="button"
-            variant="outline"
-            className={customerAuthSecondaryButtonClass}
-            onClick={onContinueAsGuest}
-            data-testid="button-continue-as-guest"
-          >
-            Continue as guest
-          </Button>
-          <p className="mt-2 text-center text-xs text-stone-400">
-            Guests can book once. Sign in to save addresses and track history.
-          </p>
-        </div>
-      )}
+      <GuestContinue
+        onContinueAsGuest={kind === "individual" ? onContinueAsGuest : undefined}
+        testId="button-continue-as-guest"
+      />
     </CustomerAuthShell>
   );
 }
 
-function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
+function RegisterForm({
+  slug,
+  office,
+  kind,
+  onKindChange,
+  onLogin,
+  onToggle,
+  onContinueAsGuest,
+}: {
   slug: string;
   office: OfficeInfo;
+  kind: "individual" | "business";
+  onKindChange: (value: "individual" | "business") => void;
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onToggle: () => void;
   onContinueAsGuest?: () => void;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState<"details" | "otp">("details");
-  const [otp, setOtp] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "" },
+    defaultValues: { name: "", phone: "", email: "", password: "", otp: "", address: "", city: "", state: "", pincode: "" },
   });
 
-  async function handleSendOtp(data: z.infer<typeof registerSchema>) {
-    setIsSubmitting(true);
+  async function handleSendOtp() {
+    const phone = form.getValues("phone");
+    setOtpSending(true);
     try {
-      const res = await fetch(`/api/public/office/${slug}/customer/otp/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: data.phone, purpose: "register" }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message);
-      setStep("otp");
-      setOtp("");
+      const result = await sendCustomerOtpRequest(slug, phone, "register");
       toast({
         title: "OTP sent",
         description: result.debugOtp
-          ? `Dev code: ${result.debugOtp}`
-          : "Enter the 6-digit code sent to your WhatsApp.",
+          ? `Use ${result.debugOtp} to create your account (test mode).`
+          : "Enter the code sent to your mobile number.",
       });
     } catch (err: any) {
       toast({ title: "Could not send OTP", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setOtpSending(false);
     }
   }
 
-  async function handleRegister() {
-    if (otp.replace(/\D/g, "").length !== 6) {
-      toast({ title: "Enter the OTP", description: "Type the 6-digit WhatsApp code.", variant: "destructive" });
+  async function handleRegister(data: z.infer<typeof registerSchema>) {
+    if (kind === "individual" && !data.otp?.trim()) {
+      toast({ title: "OTP required", description: "Send and enter the OTP from your mobile number.", variant: "destructive" });
+      return;
+    }
+    if (kind === "business" && (!data.email || !data.password || data.password.length < 6)) {
+      toast({ title: "XGoo Pro details needed", description: "Enter a work email and a password of at least 6 characters.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -882,10 +1137,15 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
       const res = await fetch(`/api/public/office/${slug}/customer/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form.getValues(), otp }),
+        body: JSON.stringify({
+          ...data,
+          accountType: kind,
+          ...(kind === "individual" ? { password: undefined } : { otp: undefined }),
+        }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
+      persistCustomerModule(kind);
       onLogin(result.user, result.token);
       toast({ title: "Account Created!", description: `Welcome, ${result.user.name}` });
     } catch (err: any) {
@@ -898,17 +1158,27 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
   return (
     <CustomerAuthShell
       title="Create account"
-      subtitle={`Register once to book faster with ${office.name}. We will verify your mobile with an OTP.`}
+      subtitle={
+        kind === "individual"
+          ? `${XGOO_MODULES.go.meaning}. Create an account with your mobile number and OTP, or book a pickup first.`
+          : `${XGOO_MODULES.pro.meaning}. Sign up with Google, work email, or phone.`
+      }
       officeName={office.name}
     >
       <h2 className="sr-only" data-testid="text-auth-title">
         Create Account
       </h2>
+      <AccountKindTabs value={kind} onChange={onKindChange} />
+      {kind === "business" ? (
+        <CustomerGoogleSignIn
+          slug={slug}
+          disabled={isSubmitting}
+          buttonLabel="Sign up with Google"
+          dividerLabel="or sign up with email or phone"
+        />
+      ) : null}
       <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(step === "details" ? handleSendOtp : handleRegister)}
-          className="space-y-3"
-        >
+        <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-3">
           <FormField
             control={form.control}
             name="name"
@@ -958,7 +1228,7 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
                     <Input
                       {...field}
                       type="email"
-                      placeholder="Email (optional)"
+                      placeholder={kind === "business" ? "Work email *" : "Email (optional)"}
                       autoComplete="email"
                       className={customerAuthFieldClass}
                       data-testid="input-register-email"
@@ -969,21 +1239,60 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
               )}
             />
           </div>
-          {step === "otp" && (
-            <FormItem>
-              <FormLabel className="sr-only">OTP</FormLabel>
-              <FormControl>
-                <Input
-                  value={otp}
-                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="6-digit OTP (use 123456 for now)"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  className={customerAuthFieldClass}
-                  data-testid="input-register-otp"
-                />
-              </FormControl>
-            </FormItem>
+          {kind === "individual" ? (
+            <div className="flex gap-2">
+              <FormField
+                control={form.control}
+                name="otp"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel className="sr-only">OTP</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="6-digit OTP"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        className={customerAuthFieldClass}
+                        data-testid="input-register-otp"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="h-[52px] rounded-none"
+                disabled={otpSending}
+                onClick={handleSendOtp}
+                data-testid="button-send-register-otp"
+              >
+                {otpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send OTP"}
+              </Button>
+            </div>
+          ) : (
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="sr-only">Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Password (min 6 characters) *"
+                      autoComplete="new-password"
+                      className={customerAuthFieldClass}
+                      data-testid="input-register-password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           )}
           <FormField
             control={form.control}
@@ -1055,23 +1364,14 @@ function RegisterForm({ slug, office, onLogin, onToggle, onContinueAsGuest }: {
             data-testid="button-register"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            {step === "details" ? "Send OTP" : "Verify and create account"}
+            Create Account
           </Button>
         </form>
       </Form>
-      {onContinueAsGuest && (
-        <div className="mt-4">
-          <Button
-            type="button"
-            variant="outline"
-            className={customerAuthSecondaryButtonClass}
-            onClick={onContinueAsGuest}
-            data-testid="button-continue-as-guest-register"
-          >
-            Continue as guest
-          </Button>
-        </div>
-      )}
+      <GuestContinue
+        onContinueAsGuest={kind === "individual" ? onContinueAsGuest : undefined}
+        testId="button-continue-as-guest-register"
+      />
     </CustomerAuthShell>
   );
 }
@@ -1087,12 +1387,43 @@ function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
     const m = new URLSearchParams(window.location.search).get("mode");
     return m === "register" ? "register" : "login";
   });
+  const [kind, setKind] = useState<"individual" | "business">(() => {
+    if (typeof window === "undefined") return "individual";
+    return accountKindFromSearch(window.location.search);
+  });
   const toggle = useCallback(() => setMode((m) => (m === "login" ? "register" : "login")), []);
+  const handleKindChange = useCallback((value: "individual" | "business") => {
+    setKind(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("mode", mode);
+    url.searchParams.set("account", value === "business" ? "pro" : "go");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [mode]);
 
   if (mode === "register") {
-    return <RegisterForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} onContinueAsGuest={onContinueAsGuest} />;
+    return (
+      <RegisterForm
+        slug={slug}
+        office={office}
+        kind={kind}
+        onKindChange={handleKindChange}
+        onLogin={onLogin}
+        onToggle={toggle}
+        onContinueAsGuest={onContinueAsGuest}
+      />
+    );
   }
-  return <LoginForm slug={slug} office={office} onLogin={onLogin} onToggle={toggle} onContinueAsGuest={onContinueAsGuest} />;
+  return (
+    <LoginForm
+      slug={slug}
+      office={office}
+      kind={kind}
+      onKindChange={handleKindChange}
+      onLogin={onLogin}
+      onToggle={toggle}
+      onContinueAsGuest={onContinueAsGuest}
+    />
+  );
 }
 
 function BookingTab({
@@ -1140,7 +1471,10 @@ function BookingTab({
     return null;
   });
   const [destinationPoint, setDestinationPoint] = useState<ShipmentMapPoint | null>(null);
-  const [addressScope, setAddressScope] = useState<AddressScope>("domestic");
+  const [addressScope, setAddressScope] = useState<AddressScope>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("scope") === "international" ? "international" : "domestic";
+  });
   const [bookStep, setBookStep] = useState<BookFlowStep>("pickup");
   const [returnToReview, setReturnToReview] = useState(false);
   const [confirmReady, setConfirmReady] = useState(false);
@@ -1719,7 +2053,12 @@ function BookingTab({
         });
         trackMetaLead({ content_category: slug || "public" });
         setPackagePhotos([]);
-        toast({ title: "Booking Submitted!", description: `Save request #${result.requestNumber} to track status.` });
+        toast({
+          title: "Booking Submitted!",
+          description: result.accountCreated
+            ? `Request #${result.requestNumber} is in. Your account is ready — sign in with this mobile number and OTP.`
+            : `Request #${result.requestNumber} is in. Sign in with your mobile number and OTP to track it.`,
+        });
         return;
       }
       const res = await fetch("/api/customer/bookings", {
@@ -2722,9 +3061,17 @@ function bookingToLoadItem(b: BookingRequestInfo): LoadItem {
 function MyBookingsTab({
   token,
   onBookShipment,
+  focusId,
+  onFocusConsumed,
+  addLabel,
+  emptyHint,
 }: {
   token: string;
   onBookShipment: () => void;
+  focusId?: string | null;
+  onFocusConsumed?: () => void;
+  addLabel?: string;
+  emptyHint?: string;
 }) {
   const [bookings, setBookings] = useState<BookingRequestInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2783,16 +3130,26 @@ function MyBookingsTab({
     [token],
   );
 
-  async function viewDetail(id: string) {
-    setSelectedBooking(id);
-    setIsLoadingDetail(true);
-    setBookingDetail(null);
-    try {
-      const detail = await loadBookingDetail(id);
-      if (detail) setBookingDetail(detail);
-    } catch {}
-    setIsLoadingDetail(false);
-  }
+  const viewDetail = useCallback(
+    async (id: string) => {
+      setSelectedBooking(id);
+      setIsLoadingDetail(true);
+      setBookingDetail(null);
+      try {
+        const detail = await loadBookingDetail(id);
+        if (detail) setBookingDetail(detail);
+      } catch {
+        // ignore
+      }
+      setIsLoadingDetail(false);
+    },
+    [loadBookingDetail],
+  );
+
+  useEffect(() => {
+    if (!focusId) return;
+    void viewDetail(focusId).finally(() => onFocusConsumed?.());
+  }, [focusId, viewDetail, onFocusConsumed]);
 
   useEffect(() => {
     if (!selectedBooking) return;
@@ -2836,6 +3193,8 @@ function MyBookingsTab({
       onAddLoad={onBookShipment}
       detail={detail}
       detailLoading={isLoadingDetail}
+      addLabel={addLabel}
+      emptyHint={emptyHint}
       onCloseDetail={() => {
         setSelectedBooking(null);
         setBookingDetail(null);
@@ -3165,11 +3524,20 @@ function TrackTab({ slug }: { slug: string }) {
   );
 }
 
-function AccountTab({ token, user, onUserUpdate, onLogout }: {
+function AccountTab({
+  token,
+  user,
+  onUserUpdate,
+  onLogout,
+  showAddresses = true,
+  showLogout = true,
+}: {
   token: string;
   user: CustomerUserInfo;
   onUserUpdate: (user: CustomerUserInfo) => void;
   onLogout: () => void;
+  showAddresses?: boolean;
+  showLogout?: boolean;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -3243,20 +3611,24 @@ function AccountTab({ token, user, onUserUpdate, onLogout }: {
               </Button>
             </form>
           </Form>
+          {showLogout ? (
           <div className="mt-6 pt-6 border-t">
             <Button variant="outline" className="w-full" onClick={onLogout} data-testid="button-logout">
               <LogOut className="h-4 w-4 mr-2" /> Sign Out
             </Button>
           </div>
+          ) : null}
         </CardContent>
       </Card>
-      <SavedAddressesManager token={token} />
+      {showAddresses ? <SavedAddressesManager token={token} /> : null}
     </div>
   );
 }
 
 export default function CustomerPortalPage() {
   const params = useParams<{ slug?: string }>();
+  const search = useSearch();
+  const { toast } = useToast();
   const routeSlug = params.slug || "";
   const [slug, setSlug] = useState(routeSlug);
   const [office, setOffice] = useState<OfficeInfo | null>(null);
@@ -3264,14 +3636,59 @@ export default function CustomerPortalPage() {
   const [isLoadingOffice, setIsLoadingOffice] = useState(true);
   const [officeError, setOfficeError] = useState(false);
   const auth = useCustomerAuth(slug);
-  const [activeTab, setActiveTab] = useState("bookings");
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("book");
+  const [goProfileView, setGoProfileView] = useState<GoProfileView>("menu");
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
+  const [pickupCustomerId, setPickupCustomerId] = useState<string | null>(null);
+  const businessLanded = useRef(false);
+  const goLanded = useRef(false);
+  const isBusiness = Boolean(
+    auth.isAuthenticated &&
+      isBusinessAccount(auth.user) &&
+      (explicitAccountKind(search) ?? explicitAccountKind(typeof window === "undefined" ? "" : window.location.search)) !== "individual",
+  );
+  const businessProfileQuery = useQuery({
+    queryKey: ["/api/customer/business/profile"],
+    queryFn: () => businessApi(auth.token!).profile(),
+    enabled: Boolean(isBusiness && auth.token),
+  });
+  const needsBusinessOnboarding = Boolean(
+    isBusiness &&
+      businessProfileQuery.data &&
+      !isBusinessProfileReady(businessProfileQuery.data as { companyName?: string; storeType?: string; pickupAddress?: string; pickupTimeSlot?: string }),
+  );
   const [guestMode, setGuestMode] = useState(false);
   const [guestBookingsTick, setGuestBookingsTick] = useState(0);
+  const [googleExchanging, setGoogleExchanging] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const oauthParams = new URLSearchParams(window.location.search);
+    return !!sessionStorage.getItem(CUSTOMER_GOOGLE_OAUTH_KEY) && (oauthParams.get("oauth") === "1" || oauthParams.has("code"));
+  });
+  const googleExchanged = useRef(false);
+
+  const handlePortalLogin = useCallback((user: CustomerUserInfo, token: string) => {
+    auth.login(user, token);
+    setActiveTab("home");
+  }, [auth.login]);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated || auth.isLoading) return;
+    const intended = explicitAccountKind(search) ?? explicitAccountKind(window.location.search);
+    if (intended === "business" && !isBusinessAccount(auth.user)) {
+      void auth.logout();
+    }
+  }, [auth.isAuthenticated, auth.isLoading, auth.logout, auth.user, search]);
 
   useEffect(() => {
     if (!slug) return;
+    if (wantsCustomerAuthScreen(search) || wantsCustomerAuthScreen(window.location.search)) {
+      localStorage.removeItem(guestModeStorageKey(slug));
+      setGuestMode(false);
+      return;
+    }
     setGuestMode(localStorage.getItem(guestModeStorageKey(slug)) === "1");
-  }, [slug]);
+  }, [slug, search]);
 
   useEffect(() => {
     if (auth.isAuthenticated && slug) {
@@ -3279,6 +3696,92 @@ export default function CustomerPortalPage() {
       setGuestMode(false);
     }
   }, [auth.isAuthenticated, slug]);
+
+  useEffect(() => {
+    if (!slug || auth.isAuthenticated || googleExchanged.current) return;
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const windowParams = new URLSearchParams(window.location.search);
+    const oauthError = params.get("error") || windowParams.get("error");
+    if (oauthError) {
+      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+      setGoogleExchanging(false);
+      toast({
+        title: "Google sign-in cancelled",
+        description: params.get("error_description") || windowParams.get("error_description") || "Try again to continue with Google.",
+        variant: "destructive",
+      });
+      clearCustomerOAuthParams();
+      return;
+    }
+
+    const flag = sessionStorage.getItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+    const isOauthReturn =
+      params.get("oauth") === "1" ||
+      params.has("code") ||
+      windowParams.get("oauth") === "1" ||
+      windowParams.has("code");
+    if (!flag || (flag !== slug && flag !== "1") || !isOauthReturn) {
+      return;
+    }
+
+    let cancelled = false;
+    setGoogleExchanging(true);
+
+    const exchange = async (accessToken: string) => {
+      if (cancelled || googleExchanged.current) return;
+      googleExchanged.current = true;
+      try {
+        const res = await fetch(`/api/public/office/${slug}/customer/google`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(result.message || "Google sign-in failed");
+        }
+        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+        await supabase.auth.signOut();
+        persistCustomerModule("business");
+        handlePortalLogin(result.user, result.token);
+        clearCustomerOAuthParams();
+        toast({ title: "Welcome!", description: `Signed in as ${result.user.name}` });
+      } catch (error: unknown) {
+        googleExchanged.current = false;
+        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+        toast({
+          title: "Google sign-in failed",
+          description: error instanceof Error ? error.message : "Try again.",
+          variant: "destructive",
+        });
+        clearCustomerOAuthParams();
+      } finally {
+        if (!cancelled) setGoogleExchanging(false);
+      }
+    };
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.access_token) void exchange(data.session.access_token);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) void exchange(session.access_token);
+    });
+    const timeout = window.setTimeout(() => {
+      if (cancelled || googleExchanged.current) return;
+      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
+      setGoogleExchanging(false);
+      toast({
+        title: "Google sign-in timed out",
+        description: "Try Continue with Google again.",
+        variant: "destructive",
+      });
+      clearCustomerOAuthParams();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      sub.subscription.unsubscribe();
+    };
+  }, [slug, search, auth.isAuthenticated, handlePortalLogin, toast]);
 
   const enterGuestMode = useCallback(() => {
     if (!slug) return;
@@ -3294,16 +3797,33 @@ export default function CustomerPortalPage() {
   }, [slug]);
 
   useEffect(() => {
-    if (guestMode && !auth.isAuthenticated && activeTab === "account") {
+    if (guestMode && !auth.isAuthenticated && (activeTab === "account" || activeTab === "home")) {
       setActiveTab("book");
     }
   }, [guestMode, auth.isAuthenticated, activeTab]);
 
   useEffect(() => {
-    if (auth.isAuthenticated && activeTab === "track") {
-      setActiveTab("bookings");
+    if (!auth.isAuthenticated) {
+      businessLanded.current = false;
+      goLanded.current = false;
+      return;
     }
-  }, [auth.isAuthenticated, activeTab]);
+    if (isBusiness) {
+      if (!businessLanded.current) {
+        businessLanded.current = true;
+        setActiveTab("home");
+        return;
+      }
+      if (activeTab === "today" || activeTab === "book") setActiveTab("pickup");
+      if (activeTab === "destinations") setActiveTab("customers");
+      if (activeTab === "track") setActiveTab("bookings");
+      return;
+    }
+    if (!goLanded.current) {
+      goLanded.current = true;
+      setActiveTab("home");
+    }
+  }, [auth.isAuthenticated, isBusiness, activeTab]);
 
   // Prevent document scroll while the portal shell is open (map/form scroll internally).
   useEffect(() => {
@@ -3384,12 +3904,12 @@ export default function CustomerPortalPage() {
       .catch(() => {});
   }, [slug, office]);
 
-  if (isLoadingOffice || auth.isLoading) {
+  if (isLoadingOffice || auth.isLoading || googleExchanging) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{googleExchanging ? "Signing in with Google..." : "Loading..."}</p>
         </div>
       </div>
     );
@@ -3420,20 +3940,215 @@ export default function CustomerPortalPage() {
     <div className={portalOpen ? "h-dvh max-h-dvh overflow-hidden bg-[#F4F4F5]" : "min-h-screen bg-background flex flex-col"}>
       <PageSeo {...SEO_PAGES.book} />
       {!portalOpen ? (
-        <AuthPage slug={slug} office={office} onLogin={auth.login} onContinueAsGuest={enterGuestMode} />
+        <AuthPage slug={slug} office={office} onLogin={handlePortalLogin} onContinueAsGuest={enterGuestMode} />
       ) : (
         <CustomerPortalShell
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab);
+            setGoProfileView("menu");
+            if (tab !== "bookings") setFocusBookingId(null);
+          }}
           userName={auth.isAuthenticated ? auth.user?.name : "Guest"}
-          userSubtitle={guestMode && !auth.isAuthenticated ? "Guest booking" : "Customer"}
+          userSubtitle={
+            guestMode && !auth.isAuthenticated
+              ? "Guest booking"
+              : isBusiness
+                ? XGOO_MODULES.pro.name
+                : XGOO_MODULES.go.name
+          }
           isGuest={guestMode && !auth.isAuthenticated}
-          showTrack={guestMode && !auth.isAuthenticated}
+          showHome={auth.isAuthenticated}
+          showTrack
           showAccount={auth.isAuthenticated}
+          isBusiness={isBusiness}
           officePhone={office.phone}
           onLogout={auth.logout}
           onSignIn={exitGuestMode}
+          onHelp={
+            auth.isAuthenticated
+              ? () => {
+                  setActiveTab("account");
+                  setGoProfileView("help");
+                }
+              : undefined
+          }
         >
+          {isBusiness && auth.token && auth.user && businessProfileQuery.isLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#FF4907]" />
+            </div>
+          ) : isBusiness && auth.token && auth.user ? (
+            <>
+              {activeTab === "home" && (
+                <div className="h-full overflow-y-auto">
+                  {needsBusinessOnboarding ? (
+                    <div className="px-4 py-4 md:px-6">
+                      <BusinessOnboarding
+                        token={auth.token}
+                        slug={slug}
+                        userName={auth.user.name}
+                        userPhone={auth.user.phone}
+                        onDone={() => {
+                          void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+                          setActiveTab("customers");
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <ProHome
+                      token={auth.token}
+                      userName={auth.user.name}
+                      onPickup={() => setActiveTab("pickup")}
+                      onCustomers={() => setActiveTab("customers")}
+                      onShipments={() => setActiveTab("bookings")}
+                      onSchedule={() => setActiveTab("schedule")}
+                      onNotifications={() => {
+                        setActiveTab("account");
+                        setGoProfileView("notifications");
+                      }}
+                      onOpenBooking={(id) => {
+                        setFocusBookingId(id);
+                        setActiveTab("bookings");
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+              {activeTab === "customers" && (
+                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+                  {needsBusinessOnboarding ? (
+                    <BusinessOnboarding
+                      token={auth.token}
+                      slug={slug}
+                      userName={auth.user.name}
+                      userPhone={auth.user.phone}
+                      onDone={() => {
+                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+                        setActiveTab("customers");
+                      }}
+                    />
+                  ) : (
+                    <DestinationsPanel
+                      token={auth.token}
+                      onOpenPickup={() => setActiveTab("pickup")}
+                      onAddParcel={(customerId) => {
+                        setPickupCustomerId(customerId);
+                        setActiveTab("pickup");
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+              {activeTab === "pickup" && (
+                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+                  {needsBusinessOnboarding ? (
+                    <BusinessOnboarding
+                      token={auth.token}
+                      slug={slug}
+                      userName={auth.user.name}
+                      userPhone={auth.user.phone}
+                      onDone={() => {
+                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+                        setActiveTab("pickup");
+                      }}
+                    />
+                  ) : (
+                    <TodayDispatch
+                      token={auth.token}
+                      onOpenCustomers={() => setActiveTab("customers")}
+                      onOpenSchedule={() => setActiveTab("schedule")}
+                      prefillCustomerId={pickupCustomerId}
+                      onPrefillConsumed={() => setPickupCustomerId(null)}
+                    />
+                  )}
+                </div>
+              )}
+              {activeTab === "schedule" && (
+                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+                  {needsBusinessOnboarding ? (
+                    <BusinessOnboarding
+                      token={auth.token}
+                      slug={slug}
+                      userName={auth.user.name}
+                      userPhone={auth.user.phone}
+                      onDone={() => {
+                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+                        setActiveTab("schedule");
+                      }}
+                    />
+                  ) : (
+                    <SchedulePanel token={auth.token} slug={slug} userPhone={auth.user.phone} />
+                  )}
+                </div>
+              )}
+              {activeTab === "bookings" && (
+                <div className="h-full min-h-0">
+                  <MyBookingsTab
+                    token={auth.token}
+                    onBookShipment={() => setActiveTab("pickup")}
+                    focusId={focusBookingId}
+                    onFocusConsumed={() => setFocusBookingId(null)}
+                    addLabel="Request pickup"
+                    emptyHint="Request a pickup to see shipments here. Open any row to track it."
+                  />
+                </div>
+              )}
+              {activeTab === "account" && (
+                <div className="h-full overflow-y-auto">
+                  <GoProfile
+                    token={auth.token}
+                    userName={auth.user.name}
+                    userPhone={auth.user.phone}
+                    userEmail={auth.user.email}
+                    module="pro"
+                    view={goProfileView}
+                    onViewChange={setGoProfileView}
+                    onLogout={auth.logout}
+                    onOpenSchedule={() => setActiveTab("schedule")}
+                    onOpenDestinations={() => setActiveTab("customers")}
+                    onOpenBooking={(id) => {
+                      setFocusBookingId(id);
+                      setActiveTab("bookings");
+                    }}
+                    personalPanel={
+                      <AccountTab
+                        token={auth.token}
+                        user={auth.user}
+                        showAddresses={false}
+                        showLogout={false}
+                        onUserUpdate={(u) => {
+                          auth.setUser(u);
+                          localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
+                        }}
+                        onLogout={auth.logout}
+                      />
+                    }
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+          {activeTab === "home" && auth.isAuthenticated && auth.token && (
+            <div className="h-full overflow-y-auto">
+              <GoHome
+                token={auth.token}
+                slug={slug}
+                userName={auth.user?.name}
+                onBook={() => setActiveTab("book")}
+                onShipments={() => setActiveTab("bookings")}
+                onNotifications={() => {
+                  setActiveTab("account");
+                  setGoProfileView("notifications");
+                }}
+                onOpenBooking={(id) => {
+                  setFocusBookingId(id);
+                  setActiveTab("bookings");
+                }}
+              />
+            </div>
+          )}
           {activeTab === "book" && (
             <div className="h-full min-h-0">
               {guestMode && !auth.isAuthenticated ? (
@@ -3465,31 +4180,50 @@ export default function CustomerPortalPage() {
                 <MyBookingsTab
                   token={auth.token!}
                   onBookShipment={() => setActiveTab("book")}
+                  focusId={focusBookingId}
+                  onFocusConsumed={() => setFocusBookingId(null)}
                 />
               )}
             </div>
           )}
-          {activeTab === "track" && guestMode && !auth.isAuthenticated && (
+          {activeTab === "track" && (
             <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
               <div className="mx-auto max-w-3xl">
                 <TrackTab slug={slug} />
               </div>
             </div>
           )}
-          {activeTab === "account" && auth.isAuthenticated && (
-            <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
-              <div className="mx-auto max-w-3xl">
-                <AccountTab
-                  token={auth.token!}
-                  user={auth.user!}
-                  onUserUpdate={(u) => {
-                    auth.setUser(u);
-                    localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
-                  }}
-                  onLogout={auth.logout}
-                />
-              </div>
+          {activeTab === "account" && auth.isAuthenticated && auth.token && auth.user && (
+            <div className="h-full overflow-y-auto">
+              <GoProfile
+                token={auth.token}
+                userName={auth.user.name}
+                userPhone={auth.user.phone}
+                userEmail={auth.user.email}
+                view={goProfileView}
+                onViewChange={setGoProfileView}
+                onLogout={auth.logout}
+                onOpenBooking={(id) => {
+                  setFocusBookingId(id);
+                  setActiveTab("bookings");
+                }}
+                personalPanel={
+                  <AccountTab
+                    token={auth.token}
+                    user={auth.user}
+                    showAddresses={false}
+                    showLogout={false}
+                    onUserUpdate={(u) => {
+                      auth.setUser(u);
+                      localStorage.setItem(`xgoo_customer_user_${slug}`, JSON.stringify(u));
+                    }}
+                    onLogout={auth.logout}
+                  />
+                }
+              />
             </div>
+          )}
+            </>
           )}
         </CustomerPortalShell>
       )}

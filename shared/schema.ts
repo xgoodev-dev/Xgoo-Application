@@ -567,6 +567,10 @@ export const bookingRequests = pgTable("booking_requests", {
   numberOfPieces: integer("number_of_pieces").default(1),
   contentDescription: text("content_description"),
   declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  packageLength: decimal("package_length", { precision: 10, scale: 2 }),
+  packageWidth: decimal("package_width", { precision: 10, scale: 2 }),
+  packageHeight: decimal("package_height", { precision: 10, scale: 2 }),
+  packageItems: text("package_items").array(),
   
   packagePhotoUrls: text("package_photo_urls").array(),
   
@@ -588,7 +592,7 @@ export const bookingRequests = pgTable("booking_requests", {
   customerUserId: varchar("customer_user_id").references(() => customerUsers.id),
 
   // Origin channel: mobile_android, mobile_ios, whatsapp, in_store,
-  // website, customer_portal, phone, partner_api, or legacy.
+  // website, customer_portal, b2b_daily, phone, partner_api, or legacy.
   source: varchar("source", { length: 30 }).notNull().default("legacy"),
   
   // Status
@@ -622,9 +626,12 @@ export const customerUsers = pgTable("customer_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   officeId: varchar("office_id").notNull().references(() => offices.id),
   name: varchar("name", { length: 255 }).notNull(),
-  phone: varchar("phone", { length: 20 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  googleId: varchar("google_id", { length: 255 }),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  // individual = mobile OTP; business = email / phone / Google
+  accountType: varchar("account_type", { length: 20 }).notNull().default("individual"),
   address: text("address"),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 100 }),
@@ -637,6 +644,7 @@ export const customerUsers = pgTable("customer_users", {
   index("idx_customer_users_office").on(table.officeId),
   index("idx_customer_users_phone").on(table.phone),
   index("idx_customer_users_email").on(table.email),
+  index("idx_customer_users_google").on(table.googleId),
 ]);
 
 export const customerUsersRelations = relations(customerUsers, ({ one, many }) => ({
@@ -673,6 +681,96 @@ export const customerAddressesRelations = relations(customerAddresses, ({ one })
   customerUser: one(customerUsers, {
     fields: [customerAddresses.customerUserId],
     references: [customerUsers.id],
+  }),
+}));
+
+export const businessProfiles = pgTable("business_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  companyName: varchar("company_name", { length: 255 }).notNull().default(""),
+  storeType: varchar("store_type", { length: 50 }).notNull().default(""),
+  gstNumber: varchar("gst_number", { length: 20 }),
+  pickupAddress: text("pickup_address").notNull().default(""),
+  pickupCity: varchar("pickup_city", { length: 100 }),
+  pickupState: varchar("pickup_state", { length: 100 }),
+  pickupPincode: varchar("pickup_pincode", { length: 10 }),
+  pickupLat: decimal("pickup_lat", { precision: 10, scale: 7 }),
+  pickupLng: decimal("pickup_lng", { precision: 10, scale: 7 }),
+  pickupTimeSlot: varchar("pickup_time_slot", { length: 40 }),
+  pickupPhone: varchar("pickup_phone", { length: 20 }),
+  weekdays: jsonb("weekdays").notNull().default(sql`'{"sun":false,"mon":true,"tue":true,"wed":true,"thu":true,"fri":true,"sat":true}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_business_profiles_user").on(table.customerUserId),
+]);
+
+export const businessDestinations = pgTable("business_destinations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  pincode: varchar("pincode", { length: 10 }),
+  notes: text("notes"),
+  recurring: boolean("recurring").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_business_destinations_user").on(table.customerUserId),
+]);
+
+export const businessDailyJobs = pgTable("business_daily_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  destinationId: varchar("destination_id").references(() => businessDestinations.id),
+  jobDate: varchar("job_date", { length: 10 }).notNull(),
+  receiverName: varchar("receiver_name", { length: 255 }).notNull(),
+  receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
+  receiverAddress: text("receiver_address").notNull(),
+  receiverCity: varchar("receiver_city", { length: 100 }),
+  receiverState: varchar("receiver_state", { length: 100 }),
+  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  weight: decimal("weight", { precision: 10, scale: 2 }).default("1"),
+  numberOfPieces: integer("number_of_pieces").notNull().default(1),
+  contentDescription: text("content_description").notNull().default("Daily courier"),
+  status: varchar("status", { length: 20 }).notNull().default("planned"),
+  bookingRequestId: varchar("booking_request_id").references(() => bookingRequests.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_business_daily_jobs_user_date").on(table.customerUserId, table.jobDate),
+]);
+
+export const businessProfilesRelations = relations(businessProfiles, ({ one }) => ({
+  customerUser: one(customerUsers, {
+    fields: [businessProfiles.customerUserId],
+    references: [customerUsers.id],
+  }),
+}));
+
+export const businessDestinationsRelations = relations(businessDestinations, ({ one, many }) => ({
+  customerUser: one(customerUsers, {
+    fields: [businessDestinations.customerUserId],
+    references: [customerUsers.id],
+  }),
+  dailyJobs: many(businessDailyJobs),
+}));
+
+export const businessDailyJobsRelations = relations(businessDailyJobs, ({ one }) => ({
+  customerUser: one(customerUsers, {
+    fields: [businessDailyJobs.customerUserId],
+    references: [customerUsers.id],
+  }),
+  destination: one(businessDestinations, {
+    fields: [businessDailyJobs.destinationId],
+    references: [businessDestinations.id],
+  }),
+  bookingRequest: one(bookingRequests, {
+    fields: [businessDailyJobs.bookingRequestId],
+    references: [bookingRequests.id],
   }),
 }));
 
@@ -854,6 +952,24 @@ export const insertCustomerNotificationSchema = createInsertSchema(customerNotif
   createdAt: true,
 });
 
+export const insertBusinessProfileSchema = createInsertSchema(businessProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBusinessDestinationSchema = createInsertSchema(businessDestinations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBusinessDailyJobSchema = createInsertSchema(businessDailyJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertBookingJobSchema = createInsertSchema(bookingJobs).omit({
   id: true,
   createdAt: true,
@@ -923,6 +1039,13 @@ export type InsertCustomerPushToken = z.infer<typeof insertCustomerPushTokenSche
 
 export type CustomerNotification = typeof customerNotifications.$inferSelect;
 export type InsertCustomerNotification = z.infer<typeof insertCustomerNotificationSchema>;
+
+export type BusinessProfile = typeof businessProfiles.$inferSelect;
+export type InsertBusinessProfile = z.infer<typeof insertBusinessProfileSchema>;
+export type BusinessDestination = typeof businessDestinations.$inferSelect;
+export type InsertBusinessDestination = z.infer<typeof insertBusinessDestinationSchema>;
+export type BusinessDailyJob = typeof businessDailyJobs.$inferSelect;
+export type InsertBusinessDailyJob = z.infer<typeof insertBusinessDailyJobSchema>;
 
 export type BookingJob = typeof bookingJobs.$inferSelect;
 export type InsertBookingJob = z.infer<typeof insertBookingJobSchema>;

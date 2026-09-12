@@ -1,4 +1,5 @@
 import {
+  CUSTOMER_OTP_TEMPLATE_NAME,
   normalizeWhatsAppPhone,
   parseTemplateParamCounts,
   resolveWhatsAppGraphBase,
@@ -56,6 +57,8 @@ const META_ERROR_HINTS: Record<number, string> = {
     " Wrong number of template parameters. Re-sync templates and fill every placeholder.",
   132001:
     " That template name/language is not on your WhatsApp account. Sync templates from Meta and use the exact language code shown (e.g. en, not en_US). hello_world only exists on Meta's default test setup — use welcome_message on your own WABA.",
+  133010:
+    " Authentication templates must send the OTP as both the body parameter and the copy-code button. Re-sync templates, map Login OTP, then try again.",
 };
 
 function withMetaErrorHint(code: number | undefined, message: string): string {
@@ -93,19 +96,23 @@ function redactToken(url: string): string {
 async function graphRequest<T>(
   pathOrUrl: string,
   accessToken: string,
-  options?: { useFullUrl?: boolean; apiVersion?: string },
+  options?: { useFullUrl?: boolean; apiVersion?: string; method?: string; body?: unknown },
 ): Promise<T> {
   const isAbsolute = options?.useFullUrl || pathOrUrl.startsWith("http");
   const graphBase = resolveWhatsAppGraphBase(options?.apiVersion);
   const url = isAbsolute
     ? pathOrUrl
     : `${graphBase}${pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`}`;
+  const method = options?.method || "GET";
 
   const res = await fetch(url, {
+    method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
+      ...(options?.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
+    ...(options?.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
   });
   const text = await res.text();
 
@@ -162,6 +169,74 @@ async function graphGet<T>(
   apiVersion?: string,
 ): Promise<T> {
   return graphRequest<T>(path, accessToken, { apiVersion });
+}
+
+async function graphPost<T>(
+  path: string,
+  accessToken: string,
+  body: unknown,
+  apiVersion?: string,
+): Promise<T> {
+  return graphRequest<T>(path, accessToken, { apiVersion, method: "POST", body });
+}
+
+function isDuplicateTemplateError(error: unknown): boolean {
+  const meta = formatMetaGraphError(error);
+  const haystack = `${meta.message} ${JSON.stringify(meta.raw || "")}`.toLowerCase();
+  return (
+    haystack.includes("already exists") ||
+    haystack.includes("duplicate") ||
+    meta.error_subcode === 2388024 ||
+    meta.error_subcode === 2388048
+  );
+}
+
+export const CUSTOMER_OTP_TEMPLATE_LANGUAGE = "en_US";
+
+export async function createWhatsAppAuthenticationOtpTemplate(
+  config: WhatsAppApiConfig,
+  input?: { name?: string; language?: string },
+): Promise<{ id?: string; status?: string; name: string; language: string; alreadyExisted: boolean }> {
+  const name = input?.name?.trim() || CUSTOMER_OTP_TEMPLATE_NAME;
+  const language = input?.language?.trim() || CUSTOMER_OTP_TEMPLATE_LANGUAGE;
+  if (!config.wabaId?.trim()) {
+    throw new Error(
+      "WhatsApp Business Account ID is required to create an OTP template. Test the connection first so XGoo can detect your WABA ID.",
+    );
+  }
+
+  try {
+    const created = await graphPost<{ id?: string; status?: string }>(
+      `/${config.wabaId}/message_templates`,
+      config.accessToken,
+      {
+        name,
+        language,
+        category: "AUTHENTICATION",
+        components: [
+          { type: "BODY", add_security_recommendation: true },
+          { type: "FOOTER", code_expiration_minutes: 5 },
+          {
+            type: "BUTTONS",
+            buttons: [{ type: "OTP", otp_type: "COPY_CODE", text: "Copy Code" }],
+          },
+        ],
+      },
+      config.apiVersion,
+    );
+    return {
+      id: created.id,
+      status: created.status,
+      name,
+      language,
+      alreadyExisted: false,
+    };
+  } catch (error) {
+    if (isDuplicateTemplateError(error)) {
+      return { name, language, alreadyExisted: true };
+    }
+    throw error;
+  }
 }
 
 type PhoneNumberDetails = {

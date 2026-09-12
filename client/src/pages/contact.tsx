@@ -5,13 +5,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
+import { ServicesHero } from "@/components/marketing/ServicesHero";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { XGOO_CONTACT } from "@/components/marketing/site-info";
-import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { SEO_PAGES, buildBreadcrumbJsonLd, buildLocalBusinessJsonLd } from "@/lib/seo";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { Clock, Loader2, Mail, MapPin, Phone, Send } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
+import heroImage from "@/assets/landing/hero-xgoo-delivery.jpg";
+
+const ORANGE = "#FF4907";
+const fieldClass = cn(
+  "h-11 rounded-none border border-zinc-200 bg-[#f5f3f2] text-zinc-900 shadow-none",
+  "placeholder:text-zinc-400",
+  "focus-visible:ring-2 focus-visible:ring-[#FF4907]/35 focus-visible:border-[#FF4907]/40",
+);
+const areaClass = cn(fieldClass, "min-h-[8rem] h-auto resize-none py-2.5");
 
 export default function ContactPage() {
   const { toast } = useToast();
@@ -101,31 +111,31 @@ export default function ContactPage() {
           ]),
         ]}
       />
-      <section className="relative overflow-hidden border-b bg-gray-50">
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-          <span className="text-xs font-semibold uppercase tracking-widest block mb-3" style={{ color: "#FF4907" }}>
-            Contact Us
-          </span>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight max-w-2xl">
-            We&apos;re here to <span style={{ color: "#FF4907" }}>help</span>
-          </h1>
-          <p className="mt-6 text-lg text-gray-500 max-w-2xl leading-relaxed">
-            Questions about booking, tracking, partnerships, or our platform? Reach out and our team will respond as
-            soon as possible.
-          </p>
-          <div className="mt-4">
-            <ProductAttribution variant="badge" />
-          </div>
-        </div>
-      </section>
+      <ServicesHero
+        image={heroImage}
+        imageAlt="XGoo team ready to help with courier booking and support"
+        crumbs={[{ name: "Home", path: "/" }, { name: "Contact" }]}
+        eyebrow="Contact Us"
+        title={
+          <>
+            We&apos;re here to <span style={{ color: ORANGE }}>help</span>
+          </>
+        }
+        support="Questions about booking, tracking, partnerships, or our platform? Reach out and our team will respond as soon as possible."
+        showPickup={false}
+        highlights={[
+          { icon: <Phone className="h-4 w-4" style={{ color: ORANGE }} />, label: XGOO_CONTACT.phone },
+          { icon: <Mail className="h-4 w-4" style={{ color: ORANGE }} />, label: XGOO_CONTACT.email },
+        ]}
+      />
 
       <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-5">
             <div className="lg:col-span-2 space-y-4">
               {contactItems.map((item) => (
-                <Card key={item.label} className="border border-gray-100">
-                  <CardContent className="p-5 flex gap-4">
+                <Card key={item.label} className="border border-zinc-200 bg-white text-zinc-900 shadow-sm">
+                  <CardContent className="flex gap-4 p-5">
                     <div
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
                       style={{ background: "rgba(255,73,7,0.08)" }}
@@ -133,11 +143,11 @@ export default function ContactPage() {
                       <item.icon className="h-5 w-5" style={{ color: "#FF4907" }} />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">{item.label}</p>
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-zinc-500">{item.label}</p>
                       {item.href ? (
                         <a
                           href={item.href}
-                          className="text-gray-900 hover:text-[#FF4907] transition-colors font-medium"
+                          className="font-medium text-zinc-900 transition-colors hover:text-[#FF4907]"
                           {...("external" in item && item.external
                             ? { target: "_blank", rel: "noopener noreferrer" }
                             : {})}
@@ -145,7 +155,7 @@ export default function ContactPage() {
                           {item.value}
                         </a>
                       ) : (
-                        <p className="text-gray-900 font-medium leading-relaxed">{item.value}</p>
+                        <p className="font-medium leading-relaxed text-zinc-900">{item.value}</p>
                       )}
                     </div>
                   </CardContent>
@@ -153,24 +163,25 @@ export default function ContactPage() {
               ))}
             </div>
 
-            <Card className="lg:col-span-3 border border-gray-100 shadow-sm">
+            <Card className="border border-zinc-200 bg-white text-zinc-900 shadow-sm lg:col-span-3">
               <CardContent className="p-6 sm:p-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-1">Send us a message</h2>
-                <p className="text-sm text-gray-500 mb-6">Fill in the form below and we&apos;ll get back to you.</p>
+                <h2 className="mb-1 text-xl font-bold text-zinc-900">Send us a message</h2>
+                <p className="mb-6 text-sm text-zinc-500">Fill in the form below and we&apos;ll get back to you.</p>
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="grid gap-5 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="contact-name">Name</Label>
+                      <Label htmlFor="contact-name" className="text-zinc-800">Name</Label>
                       <Input
                         id="contact-name"
                         required
                         value={form.name}
                         onChange={(e) => updateField("name", e.target.value)}
                         placeholder="Your name"
+                        className={fieldClass}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="contact-email">Email</Label>
+                      <Label htmlFor="contact-email" className="text-zinc-800">Email</Label>
                       <Input
                         id="contact-email"
                         type="email"
@@ -178,33 +189,36 @@ export default function ContactPage() {
                         value={form.email}
                         onChange={(e) => updateField("email", e.target.value)}
                         placeholder="you@example.com"
+                        className={fieldClass}
                       />
                     </div>
                   </div>
                   <div className="grid gap-5 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="contact-phone">Phone (optional)</Label>
+                      <Label htmlFor="contact-phone" className="text-zinc-800">Phone (optional)</Label>
                       <Input
                         id="contact-phone"
                         type="tel"
                         value={form.phone}
                         onChange={(e) => updateField("phone", e.target.value)}
                         placeholder="+91 ..."
+                        className={fieldClass}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="contact-subject">Subject</Label>
+                      <Label htmlFor="contact-subject" className="text-zinc-800">Subject</Label>
                       <Input
                         id="contact-subject"
                         required
                         value={form.subject}
                         onChange={(e) => updateField("subject", e.target.value)}
                         placeholder="How can we help?"
+                        className={fieldClass}
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="contact-message">Message</Label>
+                    <Label htmlFor="contact-message" className="text-zinc-800">Message</Label>
                     <Textarea
                       id="contact-message"
                       required
@@ -212,6 +226,7 @@ export default function ContactPage() {
                       value={form.message}
                       onChange={(e) => updateField("message", e.target.value)}
                       placeholder="Tell us more about your enquiry..."
+                      className={areaClass}
                     />
                   </div>
                   <Button

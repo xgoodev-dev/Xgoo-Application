@@ -12,6 +12,7 @@ import {
 } from 'lucide-react-native';
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { AppButton, Card, PageHeader, Screen } from '@/components/ui';
+import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme';
 
@@ -114,6 +115,7 @@ export default function ProfileScreen() {
         onPress={logout}
       />
       <Text style={[styles.version, { color: colors.textMuted }]}>XGoo Mobile · Version 1.0.0</Text>
+      <TechPartnerCredit style={styles.credit} />
     </Screen>
   );
 }
@@ -161,5 +163,6 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 48 },
   logout: { marginTop: 24 },
   version: { fontSize: 10, textAlign: 'center', marginTop: 16 },
+  credit: { marginTop: 18, marginBottom: 8 },
 });
 

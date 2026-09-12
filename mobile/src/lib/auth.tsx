@@ -42,18 +42,27 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const TOKEN_KEY = 'xgoo-customer-token';
 
 async function loadToken() {
-  if (Platform.OS === 'web') return localStorage.getItem(TOKEN_KEY);
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  try {
+    if (Platform.OS === 'web') return localStorage.getItem(TOKEN_KEY);
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch (error) {
+    console.warn('Could not read saved session', error);
+    return null;
+  }
 }
 
 async function saveToken(token: string | null) {
-  if (Platform.OS === 'web') {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-    return;
+  try {
+    if (Platform.OS === 'web') {
+      if (token) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
+    else await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch (error) {
+    console.warn('Could not save session', error);
   }
-  if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
-  else await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {

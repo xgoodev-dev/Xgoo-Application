@@ -11,16 +11,60 @@ export const XGOO_CONTACT = {
   hours: "Mon – Sat, 9:00 AM – 7:00 PM IST",
 } as const;
 
+export const XGOO_MODULES = {
+  go: {
+    id: "go",
+    name: "XGoo Go",
+    shortName: "Go",
+    meaning: "Send something and go",
+    path: "/book?mode=login&account=go",
+  },
+  pro: {
+    id: "pro",
+    name: "XGoo Pro",
+    shortName: "Pro",
+    meaning: "Standing pickup for your store",
+    path: "/book?mode=login&account=pro",
+  },
+  hub: {
+    id: "hub",
+    name: "XGoo Hub",
+    shortName: "Hub",
+    meaning: "Physical operations and shipping hub",
+    path: "/auth-page?module=hub",
+  },
+  command: {
+    id: "command",
+    name: "XGoo Command",
+    shortName: "Command",
+    meaning: "Central control",
+    path: "/auth-page?module=command",
+  },
+} as const;
+
+export type XgooModuleId = keyof typeof XGOO_MODULES;
+
+export const XGOO_CUSTOMER_MODULES = [XGOO_MODULES.go, XGOO_MODULES.pro] as const;
+export const XGOO_OPS_MODULES = [XGOO_MODULES.hub, XGOO_MODULES.command] as const;
+
 /** Parent company and product attribution — use across marketing, portal, and staff UI. */
 export const XGOO_BRAND = {
   productName: "XGoo",
-  parentCompany: "Murthy Enterprises",
+  parentCompany: "NSGroup",
   /** Short line for footers and compact UI */
-  attributionShort: "XGoo — a product from Murthy Enterprises",
+  attributionShort: "XGoo — a product from NSGroup",
   /** Inline mention for hero / about copy */
-  attributionInline: "XGoo is a product from Murthy Enterprises",
+  attributionInline: "XGoo is a product from NSGroup",
   copyright: (year = new Date().getFullYear()) =>
-    `© ${year} Murthy Enterprises. XGoo is a product of Murthy Enterprises.`,
+    `© ${year} NSGroup. XGoo is a product of NSGroup.`,
+} as const;
+
+/** Technology partner credited in website footer and the mobile app. */
+export const XGOO_TECH_PARTNER = {
+  name: "Tectangle",
+  credit: "Designed and developed by",
+  website: "www.tectangle.com",
+  url: "https://www.tectangle.com",
 } as const;
 
 export {

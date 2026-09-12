@@ -2,6 +2,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Printer, ArrowLeft } from "lucide-react";
 import type { ShipmentWithRelations, Office } from "@shared/schema";
+import { XGOO_BRAND } from "@/components/marketing/site-info";
 
 interface ParcelLabelProps {
   shipment: ShipmentWithRelations;
@@ -48,7 +49,7 @@ export function ParcelLabel({ shipment, office, onBack }: ParcelLabelProps) {
               </div>
               <div>
                 <div className="font-bold text-sm">XGoo</div>
-                <div className="text-[10px] text-muted-foreground">Murthy Enterprises</div>
+                <div className="text-[10px] text-muted-foreground">{XGOO_BRAND.parentCompany}</div>
                 <div className="text-xs">{office.name}</div>
               </div>
             </div>

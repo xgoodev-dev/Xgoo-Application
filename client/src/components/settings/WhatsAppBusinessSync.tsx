@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Plus,
   X,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,11 +41,13 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
   WHATSAPP_MESSAGE_TYPES,
+  CUSTOMER_OTP_TEMPLATE_NAME,
   describeTemplateParameterRequirements,
   describeWhatsAppDeliveryStatus,
   enrichTemplateForSend,
   getTemplateDefinition,
   getWelcomeTemplateFieldLabels,
+  isCustomerOtpWhatsAppReady,
   isMaskedAccessToken,
   isWelcomeTemplateName,
   KNOWN_IMAGE_HEADER_TEMPLATES,
@@ -288,6 +291,44 @@ export function WhatsAppBusinessSync() {
     },
   });
 
+  const createOtpTemplateMutation = useMutation({
+    mutationFn: async () => {
+      const values = form.getValues();
+      const res = await apiRequest("POST", "/api/whatsapp/templates/otp", {
+        phoneNumberId: values.phoneNumberId,
+        wabaId: values.wabaId,
+        accessToken: values.accessToken,
+      });
+      return res.json() as Promise<{
+        templateName: string;
+        language: string;
+        status: string;
+        alreadyExisted: boolean;
+        wabaId?: string;
+        settings: WhatsAppSettings;
+      }>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(SETTINGS_QUERY_KEY, result.settings);
+      form.reset(result.settings);
+      toast({
+        title: result.alreadyExisted
+          ? "Login OTP template already exists"
+          : "Login OTP template created",
+        description: `${result.templateName} (${result.language}) is ${result.status.toLowerCase()} and mapped to Login OTP. Save if you change other settings, then send a test OTP from the customer login screen.`,
+        duration: 10000,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Could not create OTP template",
+        description: err.message,
+        variant: "destructive",
+        duration: 12000,
+      });
+    },
+  });
+
   const testConnectionMutation = useMutation({
     mutationFn: async () => {
       const values = form.getValues();
@@ -339,6 +380,17 @@ export function WhatsAppBusinessSync() {
       .filter((t) => t.name === templateName)
       .map((t) => t.language)
       .sort();
+
+  const otpReady = isCustomerOtpWhatsAppReady(watched);
+  const otpRule = watched.automation?.customer_otp;
+  const authTemplateOptions = useMemo(() => {
+    const names = new Set(
+      approvedTemplates
+        .filter((template) => (template.category || "").toUpperCase() === "AUTHENTICATION")
+        .map((template) => template.name),
+    );
+    return Array.from(names).sort();
+  }, [approvedTemplates]);
 
   const allTemplates = watched.templates || [];
 
@@ -638,8 +690,8 @@ export function WhatsAppBusinessSync() {
                 WhatsApp Business Sync
               </CardTitle>
               <CardDescription className="mt-1.5 max-w-2xl">
-                Connect your Meta WhatsApp Business API account to sync approved message templates
-                and send automated customer updates for bookings, tracking, invoices, and more.
+                Connect your Meta WhatsApp Business API account to send login OTPs and automated
+                customer updates for bookings, tracking, invoices, and more.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -1168,6 +1220,93 @@ export function WhatsAppBusinessSync() {
                 </p>
               )}
 
+              <Card className="border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/20">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <KeyRound className="h-4 w-4 text-green-700 dark:text-green-400" />
+                        Customer login OTP
+                      </CardTitle>
+                      <CardDescription className="mt-1.5 max-w-2xl">
+                        Meta only delivers one-time passwords through an approved{" "}
+                        <strong>Authentication</strong> template with a Copy code button. Session
+                        text messages will not reach new customers.
+                      </CardDescription>
+                    </div>
+                    {otpReady ? (
+                      <Badge className="bg-green-600 hover:bg-green-600">
+                        <CheckCircle2 className="mr-1 h-3 w-3" />
+                        Ready
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Needs setup</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <ol className="list-decimal list-inside space-y-1.5 text-sm text-muted-foreground">
+                    <li>Save Phone Number ID + Access Token, then Test Connection.</li>
+                    <li>
+                      Create or sync an Authentication template (XGoo uses{" "}
+                      <code className="text-xs">{CUSTOMER_OTP_TEMPLATE_NAME}</code> with language{" "}
+                      <code className="text-xs">en_US</code>).
+                    </li>
+                    <li>Turn on Auto-send for Login OTP and save.</li>
+                    <li>
+                      In Meta Developer Console → WhatsApp → API Setup, add each test mobile under{" "}
+                      <strong>To</strong> until the number is live.
+                    </li>
+                  </ol>
+                  {otpRule?.templateName ? (
+                    <p className="text-sm">
+                      Mapped template:{" "}
+                      <span className="font-medium">
+                        {otpRule.templateName} ({otpRule.languageCode || "en"})
+                      </span>
+                      {otpReady
+                        ? ". Customer login now sends this template instead of the test code 123456."
+                        : ". Template is mapped but not approved yet — keep using 123456 until Meta approves it."}
+                    </p>
+                  ) : (
+                    <p className="text-sm">
+                      Until this is mapped, individual login still accepts the test code{" "}
+                      <code className="text-xs">123456</code>.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => createOtpTemplateMutation.mutate()}
+                      disabled={createOtpTemplateMutation.isPending || !watched.phoneNumberId}
+                      data-testid="button-create-whatsapp-otp-template"
+                    >
+                      {createOtpTemplateMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <KeyRound className="mr-2 h-4 w-4" />
+                      )}
+                      {otpRule?.templateName
+                        ? "Re-sync login OTP template"
+                        : "Create login OTP template"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => syncMutation.mutate()}
+                      disabled={syncMutation.isPending}
+                    >
+                      {syncMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Sync templates
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-semibold">Automated message templates</h3>
@@ -1185,7 +1324,16 @@ export function WhatsAppBusinessSync() {
                       label={messageType.label}
                       description={messageType.description}
                       form={form}
-                      templateOptions={templateOptions}
+                      templateOptions={
+                        messageType.key === "customer_otp" && authTemplateOptions.length > 0
+                          ? [
+                              ...authTemplateOptions,
+                              ...templateOptions.filter(
+                                (name) => !authTemplateOptions.includes(name),
+                              ),
+                            ]
+                          : templateOptions
+                      }
                       languagesForTemplate={languagesForTemplate}
                     />
                   ))}
@@ -1214,7 +1362,8 @@ export function WhatsAppBusinessSync() {
                       </li>
                       <li>
                         <strong>welcome_message</strong> is MARKETING — WhatsApp may block it without
-                        opt-in. Use a UTILITY template for booking confirmations.
+                        opt-in. Login OTP must use an AUTHENTICATION template; it does not need the
+                        customer to message you first.
                       </li>
                     </ol>
                   </div>
@@ -1656,6 +1805,13 @@ function AutomationRuleRow({
           )}
         />
       </div>
+
+      {enabled && messageKey === "customer_otp" && (
+        <p className="text-xs text-muted-foreground">
+          Use an approved Authentication template (copy-code). Utility or marketing templates
+          will not deliver login codes to new customers.
+        </p>
+      )}
 
       {enabled && (
         <div className="grid gap-3 sm:grid-cols-2">

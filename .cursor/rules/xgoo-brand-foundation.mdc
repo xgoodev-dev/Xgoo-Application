@@ -53,5 +53,5 @@ Build technology that removes complexity, partner to expand capability, design e
 - Import from `@/components/marketing/brand-foundation` for quotes and principle lists instead of hardcoding variants.
 - Prefer **Movement** language over generic “shipping/logistics only” framing when talking about brand; product features can still say book, track, pickup.
 - Keep visual brand accent orange `#FF4907` with white / zinc / near-black (existing CASE-aligned marketing style).
-- Parent company: Murthy Enterprises; product name: XGoo (see `site-info.ts`).
-- Do not add “XGoo — a product from Murthy Enterprises” badges in the landing hero; attribution belongs in footer / about as appropriate.
+- Parent company: NSGroup; product name: XGoo (see `site-info.ts`).
+- Do not add “XGoo — a product from NSGroup” badges in the landing hero; attribution belongs in footer / about as appropriate.

@@ -27,14 +27,14 @@ export const SEO_PAGES = {
     path: "/",
     title: "XGoo | Book Courier Online — Send It. Delivered.",
     description:
-      "Book parcel pickups online with XGoo, a Murthy Enterprises product. Doorstep pickup, live tracking, and trusted courier networks. Movement creates progress.",
+      "Book parcel pickups online with XGoo, an NSGroup product. Doorstep pickup, live tracking, and trusted courier networks. Movement creates progress.",
     keywords: [
       "courier booking",
       "book parcel online",
       "doorstep pickup",
       "track shipment",
       "XGoo",
-      "Murthy Enterprises",
+      "NSGroup",
       "domestic courier",
       "international courier",
     ],
@@ -44,7 +44,7 @@ export const SEO_PAGES = {
     title: "About XGoo | Movement Creates Progress",
     description:
       "Learn XGoo’s brand foundation: purpose, vision, mission, and principles. We empower progress through movement and innovation.",
-    keywords: ["about XGoo", "movement platform", "Murthy Enterprises", "courier company"],
+    keywords: ["about XGoo", "movement platform", "NSGroup", "courier company"],
   },
   contact: {
     path: "/contact",
@@ -91,9 +91,33 @@ export const SEO_PAGES = {
   },
   auth: {
     path: "/auth-page",
-    title: "Staff Login | XGoo",
-    description: "Sign in to the XGoo staff dashboard for Murthy Enterprises courier operations.",
+    title: "XGoo Hub | Sign In",
+    description: "Sign in to XGoo Hub for physical operations and shipping, or XGoo Command for central control.",
     noIndex: true,
+  },
+  internationalCourier: {
+    path: "/international-courier",
+    title: "International Courier from Hyderabad | XGoo Courier Services",
+    description:
+      "International courier service in Hyderabad with XGoo. Send documents and parcels abroad with pickup, tracking, and a quote before you book.",
+    keywords: [
+      "international courier Hyderabad",
+      "international courier service in Hyderabad",
+      "send parcel from Hyderabad",
+      "courier pickup from Hyderabad",
+    ],
+  },
+  domesticCourier: {
+    path: "/domestic-courier",
+    title: "Domestic Courier in Hyderabad | XGoo Courier Services",
+    description:
+      "Domestic courier service in Hyderabad with XGoo. Book doorstep pickup and send documents or parcels across India. Get a quote or book online.",
+    keywords: [
+      "domestic courier Hyderabad",
+      "courier service in Hyderabad",
+      "courier pickup from Hyderabad",
+      "send parcel from Hyderabad",
+    ],
   },
 } satisfies Record<string, PageSeoConfig>;
 
@@ -186,6 +210,49 @@ export function buildBreadcrumbJsonLd(items: Array<{ name: string; path: string 
       name: item.name,
       item: absoluteUrl(item.path),
     })),
+  };
+}
+
+export function buildServiceJsonLd(input: {
+  name: string;
+  description: string;
+  path: string;
+  serviceType?: string;
+  areaServed?: string | string[];
+}) {
+  const areas = input.areaServed
+    ? (Array.isArray(input.areaServed) ? input.areaServed : [input.areaServed]).map((name) => ({
+        "@type": "Place",
+        name,
+      }))
+    : [
+        { "@type": "Place", name: "Hyderabad" },
+        { "@type": "Place", name: "India" },
+      ];
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: input.name,
+    description: input.description,
+    url: absoluteUrl(input.path),
+    serviceType: input.serviceType || "Courier service",
+    provider: {
+      "@type": "LocalBusiness",
+      "@id": `${SITE_URL}/#business`,
+      name: `${XGOO_BRAND.productName} Courier`,
+      telephone: XGOO_CONTACT.phone,
+      email: XGOO_CONTACT.email,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "Kondapur",
+        addressLocality: "Hyderabad",
+        addressRegion: "Telangana",
+        postalCode: "500084",
+        addressCountry: "IN",
+      },
+    },
+    areaServed: areas,
   };
 }
 

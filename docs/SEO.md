@@ -15,3 +15,15 @@ XGoo public SEO setup:
 Optional env: `VITE_SITE_URL=https://www.xgoo.in` (defaults to `https://www.xgoo.in`).
 
 After deploy, submit `https://www.xgoo.in/sitemap.xml` in Google Search Console.
+
+## Courier route landing pages
+
+Route pages are data-driven. To add a destination (for example Germany):
+
+1. Add a unique record to `client/src/components/marketing/courier-routes/destinations.ts`.
+2. Add the URL to `client/public/sitemap.xml` and an `Allow` line in `client/public/robots.txt`.
+3. Link it from related slugs on nearby countries if useful.
+
+No new page component is required. URLs follow `/courier-from-hyderabad-to-{slug}`.
+
+Hub pages: `/international-courier`, `/domestic-courier`.

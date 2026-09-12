@@ -2,9 +2,18 @@ import bcrypt from "bcryptjs";
 import { randomInt, randomUUID } from "crypto";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { customerOtps, type CustomerUser, type Office } from "@shared/schema";
-import { mergeWhatsAppSettings } from "@shared/whatsapp";
+import {
+  buildOtpTemplateComponents,
+  getTemplateDefinition,
+  isCustomerOtpWhatsAppReady,
+  mergeWhatsAppSettings,
+  resolveTemplateLanguageForSend,
+} from "@shared/whatsapp";
 import { db } from "./db";
-import { configForMessaging, sendWhatsAppTextMessage } from "./integrations/whatsapp";
+import {
+  configForMessaging,
+  sendWhatsAppTemplateMessage,
+} from "./integrations/whatsapp";
 import { storage } from "./storage";
 
 export type CustomerOtpPurpose = "login" | "register";
@@ -31,11 +40,14 @@ function maskPhone(phone: string) {
   return phone.length >= 4 ? `******${phone.slice(-4)}` : phone;
 }
 
-function whatsappReady(office: Office) {
-  const settings = mergeWhatsAppSettings(
+function officeWhatsAppSettings(office: Office) {
+  return mergeWhatsAppSettings(
     (office as { whatsappSettings?: unknown }).whatsappSettings,
   );
-  return Boolean(configForMessaging(settings));
+}
+
+function whatsappOtpReady(office: Office) {
+  return isCustomerOtpWhatsAppReady(officeWhatsAppSettings(office));
 }
 
 async function ensureOtpTable() {
@@ -62,17 +74,32 @@ async function ensureOtpTable() {
 }
 
 async function sendOtpWhatsApp(office: Office, phone: string, code: string) {
-  const settings = mergeWhatsAppSettings(
-    (office as { whatsappSettings?: unknown }).whatsappSettings,
-  );
+  const settings = officeWhatsAppSettings(office);
   const config = configForMessaging(settings);
   if (!config) {
     throw new Error("WhatsApp is not configured for this office.");
   }
 
-  await sendWhatsAppTextMessage(config, {
+  const rule = settings.automation.customer_otp;
+  const templateName = rule?.templateName?.trim();
+  if (!rule?.enabled || !templateName) {
+    throw new Error(
+      "Map an approved WhatsApp Authentication template to Login OTP in Settings → WhatsApp Business.",
+    );
+  }
+
+  const languageCode = resolveTemplateLanguageForSend(
+    settings.templates,
+    templateName,
+    rule.languageCode,
+  );
+  const template = getTemplateDefinition(settings.templates, templateName, languageCode);
+
+  await sendWhatsAppTemplateMessage(config, {
     to: phone,
-    text: `Your XGoo verification code is ${code}. It expires in 5 minutes. Do not share this code.`,
+    templateName,
+    languageCode,
+    components: buildOtpTemplateComponents(code, template),
   });
 }
 
@@ -136,7 +163,7 @@ export async function sendCustomerOtp(input: {
     });
   }
 
-  const dummy = isDummyOtpEnabled() && !whatsappReady(input.office);
+  const dummy = isDummyOtpEnabled() && !whatsappOtpReady(input.office);
   const code = dummy ? DUMMY_CUSTOMER_OTP : String(randomInt(100000, 1000000));
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
@@ -160,17 +187,21 @@ export async function sendCustomerOtp(input: {
   });
 
   if (!dummy) {
+    if (!whatsappOtpReady(input.office)) {
+      throw Object.assign(
+        new Error("WhatsApp OTP is not configured for this office yet."),
+        { status: 503 },
+      );
+    }
     try {
       await sendOtpWhatsApp(input.office, phone, code);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "WhatsApp send failed";
       console.error(`Customer OTP WhatsApp send failed for ${maskPhone(phone)}:`, reason);
-      if (!isDummyOtpEnabled()) {
-        throw Object.assign(
-          new Error("Could not send the OTP just now. Please try again in a moment."),
-          { status: 502 },
-        );
-      }
+      throw Object.assign(
+        new Error("Could not send the OTP just now. Please try again in a moment."),
+        { status: 502 },
+      );
     }
   }
 
@@ -178,7 +209,7 @@ export async function sendCustomerOtp(input: {
     phone,
     expiresInSec: OTP_TTL_MS / 1000,
     channel: dummy ? ("dummy" as const) : ("whatsapp" as const),
-    ...(dummy || isDummyOtpEnabled() ? { debugOtp: dummy ? DUMMY_CUSTOMER_OTP : code } : {}),
+    ...(dummy ? { debugOtp: DUMMY_CUSTOMER_OTP } : {}),
   };
 }
 
@@ -193,19 +224,6 @@ export async function consumeCustomerOtp(input: {
   const otp = input.otp.replace(/\D/g, "");
   if (otp.length !== 6) {
     throw Object.assign(new Error("Enter the 6-digit OTP."), { status: 400 });
-  }
-
-  if (isDummyOtpEnabled() && otp === DUMMY_CUSTOMER_OTP) {
-    await db
-      .delete(customerOtps)
-      .where(
-        and(
-          eq(customerOtps.officeId, input.officeId),
-          eq(customerOtps.phone, phone),
-          eq(customerOtps.purpose, input.purpose),
-        ),
-      );
-    return phone;
   }
 
   const [row] = await db
@@ -258,6 +276,7 @@ export async function createOtpCustomerUser(input: {
     phone: input.phone,
     email: input.email || null,
     passwordHash,
+    accountType: "individual",
     address: input.address || null,
     city: input.city || null,
     state: input.state || null,

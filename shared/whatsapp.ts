@@ -10,7 +10,16 @@ export function resolveWhatsAppGraphBase(apiVersion?: string): string {
   return `https://graph.facebook.com/${version}`;
 }
 
+/** Meta Authentication template used for customer login/signup OTPs. */
+export const CUSTOMER_OTP_TEMPLATE_NAME = "xgoo_login_otp";
+
 export const WHATSAPP_MESSAGE_TYPES = [
+  {
+    key: "customer_otp",
+    label: "Login OTP",
+    description:
+      "WhatsApp Authentication template that delivers the 6-digit login and signup code.",
+  },
   {
     key: "welcome",
     label: "Welcome Message",
@@ -235,6 +244,28 @@ export function isWhatsAppConfigured(settings: WhatsAppSettings): boolean {
   );
 }
 
+export function isAuthenticationTemplate(template?: Pick<WhatsAppTemplate, "category">): boolean {
+  return (template?.category || "").toUpperCase() === "AUTHENTICATION";
+}
+
+/** True when Meta can deliver a login OTP (credentials + mapped AUTHENTICATION template). */
+export function isCustomerOtpWhatsAppReady(settings: WhatsAppSettings): boolean {
+  if (!isWhatsAppConfigured(settings)) return false;
+  const rule = settings.automation?.customer_otp;
+  const templateName = rule?.templateName?.trim();
+  if (!rule?.enabled || !templateName) return false;
+
+  const templates = settings.templates || [];
+  const language = resolveTemplateLanguageForSend(
+    templates,
+    templateName,
+    rule.languageCode,
+  );
+  const definition = getTemplateDefinition(templates, templateName, language);
+  if (!definition) return true;
+  return definition.status.toUpperCase() === "APPROVED";
+}
+
 type MetaTemplateComponent = {
   type?: string;
   format?: string;
@@ -247,7 +278,13 @@ type MetaTemplateComponent = {
     header_handle?: string[];
     header_url?: string[];
   };
-  buttons?: Array<{ type?: string; url?: string; text?: string; example?: string[] }>;
+  buttons?: Array<{
+    type?: string;
+    url?: string;
+    text?: string;
+    example?: string[];
+    otp_type?: string;
+  }>;
 };
 
 function extractPositionalVariableCount(text?: string | null): number {
@@ -385,6 +422,12 @@ export function parseTemplateParamCounts(
               buttonParamExamples = [example.trim()];
             }
           }
+        }
+        const otpType = (btn.otp_type || "").toUpperCase();
+        if (btnType === "OTP" || btnType === "COPY_CODE" || otpType === "COPY_CODE") {
+          urlParamCount = Math.max(urlParamCount, 1);
+          buttonParamCount = Math.max(buttonParamCount, 1);
+          buttonParamIndex = index;
         }
         buttons.push({
           index,
@@ -806,6 +849,56 @@ export function buildWhatsAppTemplateComponents(input: {
   }
 
   return components.length ? components : undefined;
+}
+
+function textParam(text: string, parameterName?: string, named?: boolean): Record<string, unknown> {
+  const param: Record<string, unknown> = { type: "text", text };
+  if (named && parameterName) {
+    param.parameter_name = parameterName;
+  }
+  return param;
+}
+
+/**
+ * Meta Authentication OTP payload: the 6-digit code is both the body variable
+ * and the copy-code button parameter.
+ */
+export function buildOtpTemplateComponents(
+  code: string,
+  template?: WhatsAppTemplate,
+): Array<Record<string, unknown>> {
+  const otp = code.trim();
+  const named = template?.parameterFormat === "named";
+  const isAuth = isAuthenticationTemplate(template);
+  const hasCopyButton = (template?.buttons || []).some((button) => {
+    const type = (button.type || "").toUpperCase();
+    return type === "OTP" || type === "COPY_CODE" || (type === "URL" && (button.urlParamCount ?? 0) > 0);
+  });
+
+  const bodyCount = Math.max(template?.bodyParamCount ?? 0, isAuth || !template ? 1 : 0);
+  const includeButton = isAuth || hasCopyButton || (template?.buttonParamCount ?? 0) > 0 || !template;
+  const buttonCount = includeButton
+    ? Math.max(template?.buttonParamCount ?? 0, 1)
+    : 0;
+
+  const components: Array<Record<string, unknown>> = [];
+  if (bodyCount > 0) {
+    components.push({
+      type: "body",
+      parameters: Array.from({ length: bodyCount }, (_, index) =>
+        textParam(otp, template?.bodyParamNames?.[index], named),
+      ),
+    });
+  }
+  if (buttonCount > 0) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: String(template?.buttonParamIndex ?? 0),
+      parameters: Array.from({ length: buttonCount }, () => ({ type: "text", text: otp })),
+    });
+  }
+  return components;
 }
 
 export function templateParamsFilled(

@@ -10,7 +10,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db, verifyDatabaseConnection, databaseHost } from "./db";
 import { isOpenAiConfigured, resolveOpenAiApiKey } from "./openai-config";
-import { shipments, offices } from "@shared/schema";
+import { shipments, offices, bookingRequests } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
@@ -36,6 +36,7 @@ import {
 import { mapPartnerFormFields } from "./booking/map-partner-fields";
 import { BOOKING_METHODS, defaultBookingMethodForPartner } from "@shared/booking-engine";
 import {
+  CUSTOMER_OTP_TEMPLATE_NAME,
   applyWelcomeTemplateDefaults,
   finalizeWhatsAppSettingsMediaUrls,
   resolveAppBaseUrl,
@@ -64,6 +65,7 @@ import {
 import { buildCustomerTracking, buildCustomerTrackingSummary } from "@shared/customer-tracking";
 import {
   configFromSettings,
+  createWhatsAppAuthenticationOtpTemplate,
   fetchWhatsAppTemplates,
   formatMetaGraphError,
   resolveWhatsAppApiConfig,
@@ -76,6 +78,26 @@ import {
   triggerBookingSuccessWhatsApp,
 } from "./integrations/whatsapp-notifications";
 import { triggerCustomerNotification } from "./customer-notifications";
+import {
+  addBusinessTodayJob,
+  confirmBusinessToday,
+  createBusinessDestination,
+  deleteBusinessDestination,
+  ensureBusinessCourierTables,
+  getBusinessProfileDto,
+  getBusinessToday,
+  listBusinessDestinations,
+  patchBusinessTodayJob,
+  updateBusinessDestination,
+  updateBusinessProfile,
+} from "./business-courier";
+import {
+  businessAddTodayJobSchema,
+  businessDailyJobPatchSchema,
+  businessDestinationSchema,
+  businessProfilePatchSchema,
+  todayIsoDate,
+} from "@shared/business-courier";
 import {
   clearWelcomeCooldownForPhone,
   getRecentWhatsAppWebhookDebugEvents,
@@ -93,6 +115,7 @@ import {
   normalizeCustomerPhone,
   sendCustomerOtp,
 } from "./customer-otp";
+import { loginOrRegisterCustomerWithGoogle } from "./customer-google";
 
 const SUPER_ADMIN_EMAIL = (
   process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
@@ -255,6 +278,23 @@ const partnerSyncUpdateSchema = z.object({
 
 const dateParamSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format");
 
+function last10PhoneDigits(phone?: string | null) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+function customerOwnsBookingRequest(
+  request: { customerUserId?: string | null; officeId: string; senderPhone?: string | null },
+  user: { id: string; officeId: string; phone?: string | null },
+) {
+  if (request.customerUserId === user.id) return true;
+  if (request.customerUserId) return false;
+  if (request.officeId !== user.officeId) return false;
+  const requestPhone = last10PhoneDigits(request.senderPhone);
+  const userPhone = last10PhoneDigits(user.phone);
+  return requestPhone.length >= 10 && requestPhone === userPhone;
+}
+
 const reportTypeSchema = z.enum(["date_wise", "customer_wise", "partner_wise"]);
 
 const quotationCreateSchema = z.object({
@@ -354,9 +394,37 @@ function normalizeBookingRequestBody(body: unknown): unknown {
 
   if (typeof b.numberOfPieces === "string") {
     const parsed = parseInt(b.numberOfPieces, 10);
-    b.numberOfPieces = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    b.numberOfPieces = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   } else if (b.numberOfPieces === null || b.numberOfPieces === undefined || b.numberOfPieces === "") {
-    b.numberOfPieces = 0;
+    b.numberOfPieces = 1;
+  }
+
+  if (!b.receiverName || String(b.receiverName).trim() === "") {
+    b.receiverName = "Recipient";
+  }
+  if (!b.receiverPhone || String(b.receiverPhone).replace(/\D/g, "").length < 10) {
+    b.receiverPhone = b.senderPhone;
+  }
+
+  if (Array.isArray(b.packageItems)) {
+    b.packageItems = (b.packageItems as unknown[])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 20);
+  } else {
+    delete b.packageItems;
+  }
+
+  if (!b.contentDescription && Array.isArray(b.packageItems) && b.packageItems.length > 0) {
+    b.contentDescription = (b.packageItems as string[]).join(", ");
+  }
+
+  for (const key of ["packageLength", "packageWidth", "packageHeight"]) {
+    if (b[key] === null || b[key] === undefined || b[key] === "") {
+      delete b[key];
+    } else {
+      b[key] = String(b[key]).trim();
+    }
   }
 
   return b;
@@ -398,6 +466,10 @@ const bookingRequestCreateSchema = z.object({
   pickupLocationName: z.string().optional().nullable(),
   pickupDate: z.string().optional().nullable(),
   pickupTimeSlot: z.string().optional().nullable(),
+  packageLength: z.string().optional(),
+  packageWidth: z.string().optional(),
+  packageHeight: z.string().optional(),
+  packageItems: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
 });
 
 function parseBookingRequestBody(body: unknown) {
@@ -486,6 +558,10 @@ export async function registerRoutes(
       const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + path.extname(file.originalname));
     },
+  });
+
+  void ensureBusinessCourierTables().catch((error) => {
+    console.error("Failed to ensure business courier tables:", error);
   });
 
   const upload = multer({
@@ -1173,6 +1249,93 @@ export async function registerRoutes(
           wabaId,
         },
       });
+    }
+  });
+
+  app.post("/api/whatsapp/templates/otp", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const office = await storage.getOfficeByUserId(userId);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+
+      const saved = mergeWhatsAppSettings(
+        (office as { whatsappSettings?: unknown }).whatsappSettings,
+      );
+      const body = z
+        .object({
+          phoneNumberId: z.string().optional(),
+          wabaId: z.string().optional(),
+          accessToken: z.string().optional(),
+        })
+        .parse(req.body || {});
+
+      const settings = mergeWhatsAppSettings({
+        ...saved,
+        phoneNumberId: body.phoneNumberId?.trim() || saved.phoneNumberId,
+        wabaId: body.wabaId?.trim() || saved.wabaId,
+        accessToken: resolveAccessTokenForSave(body.accessToken, saved.accessToken),
+      });
+
+      if (!configFromSettings(settings)) {
+        return res.status(400).json({
+          message: "Save Phone Number ID and Access Token, then Test Connection before creating the OTP template.",
+        });
+      }
+
+      const config = await resolveWhatsAppApiConfig(settings);
+      if (!config?.wabaId) {
+        return res.status(400).json({
+          message:
+            "Could not resolve your WhatsApp Business Account ID. Test Connection first, then try again.",
+        });
+      }
+
+      const created = await createWhatsAppAuthenticationOtpTemplate(config, {
+        name: CUSTOMER_OTP_TEMPLATE_NAME,
+      });
+      const templates = await fetchWhatsAppTemplates(config);
+      const matched = templates.find(
+        (template) =>
+          template.name === created.name &&
+          (template.language === created.language ||
+            template.language.split("_")[0] === created.language.split("_")[0]),
+      );
+      const languageCode = matched?.language || created.language;
+      const updatedSettings = mergeWhatsAppSettings({
+        ...settings,
+        enabled: true,
+        wabaId: config.wabaId,
+        templates,
+        lastSyncedAt: new Date().toISOString(),
+        automation: {
+          ...settings.automation,
+          customer_otp: {
+            enabled: true,
+            templateName: created.name,
+            languageCode,
+            replyOnInboundGreeting: false,
+          },
+        },
+      });
+
+      await storage.updateOffice(office.id, {
+        whatsappSettings: updatedSettings,
+      } as Parameters<typeof storage.updateOffice>[1]);
+
+      res.json({
+        templateName: created.name,
+        language: languageCode,
+        status: matched?.status || created.status || "PENDING",
+        alreadyExisted: created.alreadyExisted,
+        wabaId: config.wabaId,
+        settings: sanitizeWhatsAppSettingsForClient(updatedSettings),
+      });
+    } catch (error) {
+      const meta = formatMetaGraphError(error);
+      console.error("[WhatsApp OTP template] Failed", meta);
+      res.status(500).json({ message: meta.message });
     }
   });
 
@@ -3466,11 +3629,26 @@ export async function registerRoutes(
 
       const validated = parseBookingRequestBody(req.body);
       const branchId = await resolveBranchIdForBooking(office.id, validated);
+      const phone = normalizeCustomerPhone(validated.senderPhone);
+      const existingCustomer = phone.length >= 10
+        ? await storage.getCustomerUserByPhone(office.id, phone)
+        : undefined;
+      const customerUser = existingCustomer
+        || (phone.length >= 10
+          ? await createOtpCustomerUser({
+              officeId: office.id,
+              name: validated.senderName,
+              phone,
+              email: validated.senderEmail || null,
+              address: validated.senderAddress,
+            })
+          : undefined);
 
       const request = await storage.createBookingRequest({
         ...validated,
         officeId: office.id,
         branchId,
+        customerUserId: customerUser?.id,
         source: "website",
         status: "pending",
       });
@@ -3484,7 +3662,14 @@ export async function registerRoutes(
         success: true,
         id: request.id,
         requestNumber: request.requestNumber,
-        message: "Your booking request has been submitted. The office will contact you shortly.",
+        accountCreated: Boolean(customerUser && !existingCustomer),
+        accountExists: Boolean(existingCustomer),
+        message:
+          existingCustomer?.accountType === "business"
+            ? "Your pickup request is in. Sign in to your business account to track it."
+            : existingCustomer
+              ? "Your pickup request is in. Sign in with this mobile number and OTP to track it."
+              : "Your pickup request is in. We created your XGoo account — sign in with this mobile number and OTP.",
         ...bookingWhatsAppExtras(
           (office as { whatsappSettings?: unknown }).whatsappSettings,
           request.requestNumber,
@@ -3630,6 +3815,7 @@ export async function registerRoutes(
     email: z.string().email().optional().or(z.literal("")),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
     otp: z.string().optional(),
+    accountType: z.enum(["individual", "business"]).optional(),
     address: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
@@ -3637,9 +3823,13 @@ export async function registerRoutes(
   });
 
   const customerLoginSchema = z.object({
-    phone: z.string().min(10, "Valid phone number required"),
+    phone: z.string().optional(),
+    email: z.string().email().optional(),
     password: z.string().min(1).optional(),
     otp: z.string().optional(),
+    accountType: z.enum(["individual", "business"]).optional(),
+  }).refine((data) => Boolean(data.phone?.trim() || data.email?.trim()), {
+    message: "Enter your mobile number or email",
   });
 
   const customerOtpSendSchema = z.object({
@@ -3710,8 +3900,12 @@ export async function registerRoutes(
 
       const validated = customerRegisterSchema.parse(req.body);
       const phone = normalizeCustomerPhone(validated.phone);
+      const accountType = validated.accountType === "business" ? "business" : "individual";
 
-      if (validated.otp) {
+      if (accountType === "individual") {
+        if (!validated.otp) {
+          return res.status(400).json({ message: "Verify the OTP sent to your mobile number." });
+        }
         await consumeCustomerOtp({
           officeId: office.id,
           phone,
@@ -3719,12 +3913,18 @@ export async function registerRoutes(
           otp: validated.otp,
         });
       } else if (!validated.password) {
-        return res.status(400).json({ message: "Verify the OTP sent to your mobile number." });
+        return res.status(400).json({ message: "Enter a password to create a business account." });
+      } else if (!validated.email) {
+        return res.status(400).json({ message: "Business accounts need a work email." });
       }
 
       const existing = await storage.getCustomerUserByPhone(office.id, phone);
       if (existing) {
-        return res.status(400).json({ message: "An account with this phone number already exists. Please login instead." });
+        return res.status(400).json({
+          message: existing.accountType === "individual"
+            ? "An individual account already exists for this mobile number. Sign in with OTP."
+            : "An account with this phone number already exists. Please login instead.",
+        });
       }
 
       if (validated.email) {
@@ -3734,7 +3934,7 @@ export async function registerRoutes(
         }
       }
 
-      const customerUser = validated.otp
+      const customerUser = accountType === "individual"
         ? await createOtpCustomerUser({
             officeId: office.id,
             name: validated.name,
@@ -3749,8 +3949,9 @@ export async function registerRoutes(
             officeId: office.id,
             name: validated.name,
             phone,
-            email: validated.email || null,
+            email: validated.email?.trim().toLowerCase() || null,
             passwordHash: await bcrypt.hash(validated.password!, 10),
+            accountType: "business",
             address: validated.address || null,
             city: validated.city || null,
             state: validated.state || null,
@@ -3778,33 +3979,68 @@ export async function registerRoutes(
       }
 
       const validated = customerLoginSchema.parse(req.body);
-      const phone = normalizeCustomerPhone(validated.phone);
-      const customerUser =
-        (await storage.getCustomerUserByPhone(office.id, phone)) ||
-        (phone !== validated.phone.trim()
-          ? await storage.getCustomerUserByPhone(office.id, validated.phone.trim())
-          : undefined);
+      const email = validated.email?.trim().toLowerCase();
+      const phone = validated.phone ? normalizeCustomerPhone(validated.phone) : "";
+      const customerUser = email
+        ? await storage.getCustomerUserByEmail(office.id, email)
+          || await storage.getCustomerUserByEmail(office.id, validated.email!.trim())
+        : (await storage.getCustomerUserByPhone(office.id, phone))
+          || (validated.phone && phone !== validated.phone.trim()
+            ? await storage.getCustomerUserByPhone(office.id, validated.phone.trim())
+            : undefined);
       if (!customerUser) {
-        return res.status(401).json({ message: "No account found for this mobile number" });
+        return res.status(401).json({
+          message: email
+            ? "No business account found for this email"
+            : "No account found for this mobile number",
+        });
+      }
+
+      const accountType = customerUser.accountType === "individual" ? "individual" : "business";
+      if (validated.accountType === "business" && accountType !== "business") {
+        return res.status(403).json({
+          message: "This is an XGoo Go account. Sign in with your mobile number and OTP.",
+        });
       }
 
       if (validated.otp) {
+        if (!customerUser.phone) {
+          return res.status(400).json({ message: "This account has no mobile number for OTP." });
+        }
         await consumeCustomerOtp({
           officeId: office.id,
-          phone,
+          phone: normalizeCustomerPhone(customerUser.phone),
           purpose: "login",
           otp: validated.otp,
         });
       } else if (validated.password) {
+        if (accountType === "individual") {
+          return res.status(400).json({
+            message: "Individual accounts sign in with the OTP sent to your mobile number.",
+          });
+        }
         const isValid = await bcrypt.compare(validated.password, customerUser.passwordHash);
         if (!isValid) {
-          return res.status(401).json({ message: "Invalid phone number or password" });
+          return res.status(401).json({ message: "Invalid email, phone number, or password" });
         }
       } else {
-        return res.status(400).json({ message: "Enter the OTP sent to your mobile number." });
+        return res.status(400).json({
+          message: accountType === "individual"
+            ? "Enter the OTP sent to your mobile number."
+            : "Enter your password, or continue with Google.",
+        });
       }
 
-      const session = await issueCustomerSession(customerUser);
+      let sessionUser = customerUser;
+      if (validated.otp && validated.accountType !== "business") {
+        if (accountType !== "individual" && !customerUser.googleId) {
+          sessionUser =
+            (await storage.updateCustomerUser(customerUser.id, { accountType: "individual" })) || customerUser;
+        }
+        sessionUser = { ...sessionUser, accountType: "individual" };
+      }
+
+      const session = await issueCustomerSession(sessionUser);
       res.json(session);
     } catch (error) {
       if (error instanceof z.ZodError || (error as { status?: number })?.status) {
@@ -3812,6 +4048,31 @@ export async function registerRoutes(
       }
       console.error("Error logging in customer:", error);
       res.status(500).json({ message: "Failed to login" });
+    }
+  });
+
+  app.post("/api/public/office/:slug/customer/google", async (req, res) => {
+    try {
+      const office = await storage.getOfficeBySlug(req.params.slug);
+      if (!office) {
+        return res.status(404).json({ message: "Office not found" });
+      }
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "Google sign-in expired. Try again." });
+      }
+      const accessToken = authHeader.slice("Bearer ".length).trim();
+      if (!accessToken) {
+        return res.status(401).json({ message: "Google sign-in expired. Try again." });
+      }
+      const session = await loginOrRegisterCustomerWithGoogle(office, accessToken);
+      res.json(session);
+    } catch (error) {
+      if (error instanceof z.ZodError || (error as { status?: number })?.status) {
+        return otpError(res, error);
+      }
+      console.error("Error signing in customer with Google:", error);
+      res.status(500).json({ message: "Failed to sign in with Google" });
     }
   });
 
@@ -4002,7 +4263,10 @@ export async function registerRoutes(
   // Get customer's booking requests
   app.get("/api/customer/bookings", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      const requests = await storage.getBookingRequestsByCustomerUser(req.customerUser.id);
+      const requests = await storage.getBookingRequestsByCustomerUser(req.customerUser.id, {
+        officeId: req.customerUser.officeId,
+        phone: req.customerUser.phone,
+      });
       const enriched = await Promise.all(
         requests.map(async (request) => {
           const shipment = await storage.getShipmentForBookingRequest(request);
@@ -4023,9 +4287,18 @@ export async function registerRoutes(
   app.get("/api/customer/bookings/:id", isCustomerAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const request = await storage.getBookingRequest(id);
-      if (!request || request.customerUserId !== req.customerUser.id) {
+      let request =
+        (await storage.getBookingRequest(id)) ||
+        (await storage.getBookingRequestByShipmentId(id));
+      if (!request || !customerOwnsBookingRequest(request, req.customerUser)) {
         return res.status(404).json({ message: "Booking not found" });
+      }
+      if (!request.customerUserId) {
+        await db
+          .update(bookingRequests)
+          .set({ customerUserId: req.customerUser.id })
+          .where(eq(bookingRequests.id, request.id));
+        request = { ...request, customerUserId: req.customerUser.id };
       }
 
       const shipment = await storage.getShipmentForBookingRequest(request);
@@ -4103,6 +4376,184 @@ export async function registerRoutes(
       }
       console.error("Error creating customer booking:", error);
       res.status(500).json({ message: "Failed to submit booking" });
+    }
+  });
+
+  function requireBusinessCustomer(req: any, res: Response): boolean {
+    if (req.customerUser?.accountType !== "business") {
+      res.status(403).json({ message: "This area is for business accounts." });
+      return false;
+    }
+    return true;
+  }
+
+  function parseJobDate(value: unknown): string {
+    const raw = String(value || todayIsoDate());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      throw Object.assign(new Error("Use a date in YYYY-MM-DD format."), { status: 400 });
+    }
+    return raw;
+  }
+
+  app.get("/api/customer/business/profile", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      res.json(await getBusinessProfileDto(req.customerUser.id));
+    } catch (error) {
+      console.error("Error fetching business profile:", error);
+      res.status(500).json({ message: "Failed to load business profile" });
+    }
+  });
+
+  app.patch("/api/customer/business/profile", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const patch = businessProfilePatchSchema.parse(req.body || {});
+      res.json(await updateBusinessProfile(req.customerUser.id, patch));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating business profile:", error);
+      res.status(500).json({ message: "Failed to save business profile" });
+    }
+  });
+
+  app.get("/api/customer/business/destinations", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      res.json(await listBusinessDestinations(req.customerUser.id));
+    } catch (error) {
+      console.error("Error listing destinations:", error);
+      res.status(500).json({ message: "Failed to load destinations" });
+    }
+  });
+
+  app.post("/api/customer/business/destinations", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const input = businessDestinationSchema.parse(req.body || {});
+      res.json(await createBusinessDestination(req.customerUser.id, input));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating destination:", error);
+      res.status(500).json({ message: "Failed to save destination" });
+    }
+  });
+
+  app.patch("/api/customer/business/destinations/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const patch = businessDestinationSchema.partial().parse(req.body || {});
+      const updated = await updateBusinessDestination(req.customerUser.id, req.params.id, patch);
+      if (!updated) return res.status(404).json({ message: "Destination not found" });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating destination:", error);
+      res.status(500).json({ message: "Failed to update destination" });
+    }
+  });
+
+  app.delete("/api/customer/business/destinations/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const deleted = await deleteBusinessDestination(req.customerUser.id, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Destination not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting destination:", error);
+      res.status(500).json({ message: "Failed to delete destination" });
+    }
+  });
+
+  app.get("/api/customer/business/today", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const date = parseJobDate(req.query.date);
+      res.json(await getBusinessToday(req.customerUser.id, date));
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      if (status !== 500) {
+        return res.status(status).json({ message: error instanceof Error ? error.message : "Request failed" });
+      }
+      console.error("Error loading today list:", error);
+      res.status(500).json({ message: "Failed to load today's list" });
+    }
+  });
+
+  app.post("/api/customer/business/today/jobs", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const input = businessAddTodayJobSchema.parse(req.body || {});
+      const date = parseJobDate((req.body as { date?: string })?.date);
+      res.json(
+        await addBusinessTodayJob(req.customerUser.id, date, {
+          destinationId: input.destinationId,
+          newCustomer: input.newCustomer,
+          saveCustomer: input.saveCustomer,
+          weight: input.weight,
+          numberOfPieces: input.numberOfPieces,
+          contentDescription: input.contentDescription,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to add pickup",
+      });
+    }
+  });
+
+  app.patch("/api/customer/business/today/jobs/:id", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const patch = businessDailyJobPatchSchema.parse(req.body || {});
+      res.json(await patchBusinessTodayJob(req.customerUser.id, req.params.id, patch));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to update pickup",
+      });
+    }
+  });
+
+  app.post("/api/customer/business/today/confirm", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!requireBusinessCustomer(req, res)) return;
+      const date = parseJobDate((req.body as { date?: string })?.date);
+      const result = await confirmBusinessToday(
+        req.customerUser,
+        date,
+        async (officeId, body) =>
+          (await resolveBranchIdForBooking(officeId, body)) || null,
+      );
+      res.json(result);
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      if (status !== 500) {
+        return res.status(status).json({ message: error instanceof Error ? error.message : "Request failed" });
+      }
+      console.error("Error confirming daily pickups:", error);
+      res.status(500).json({ message: "Failed to confirm today's pickups" });
     }
   });
 
@@ -4717,6 +5168,8 @@ Important: Focus on extracting receiver details since the sender is the customer
       phone: z.string().trim().max(20).optional().or(z.literal("")),
       subject: z.string().trim().min(1).max(200),
       message: z.string().trim().min(1).max(5000),
+      source: z.string().trim().max(80).optional(),
+      route: z.string().trim().max(80).optional(),
     });
 
     try {

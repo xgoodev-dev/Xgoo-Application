@@ -52,9 +52,11 @@ function statusColor(status: string): "default" | "secondary" | "destructive" {
 export function PublicTrackingSearch({
   variant = "default",
   officeSlug,
+  id,
 }: {
-  variant?: "hero" | "default";
+  variant?: "hero" | "default" | "panel";
   officeSlug?: string;
+  id?: string;
 }) {
   const [trackingNumber, setTrackingNumber] = useState("");
   const [result, setResult] = useState<PublicTrackResult | null>(null);
@@ -95,9 +97,11 @@ export function PublicTrackingSearch({
   }
 
   const isHero = variant === "hero";
+  const isPanel = variant === "panel";
+  const isLight = isHero || isPanel;
 
   return (
-    <div className={isHero ? "w-full min-w-0 max-w-full" : "w-full min-w-0"} id="track-parcel">
+    <div className={isHero ? "w-full min-w-0 max-w-full" : "w-full min-w-0"} id={id ?? (isHero ? "track-parcel" : undefined)}>
       <div
         className={
           isHero
@@ -107,15 +111,15 @@ export function PublicTrackingSearch({
       >
         <div className="relative flex-1 min-w-0 w-full">
           <Search
-            className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isHero ? "text-gray-400" : "text-muted-foreground"}`}
+            className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isLight ? "text-zinc-400" : "text-muted-foreground"}`}
           />
           <Input
             value={trackingNumber}
             onChange={(e) => setTrackingNumber(e.target.value)}
             placeholder="Enter request #, booking #, or AWB"
             className={
-              isHero
-                ? "pl-9 border border-gray-200 shadow-none focus-visible:ring-1 focus-visible:ring-gray-300 h-11 min-w-0 w-full bg-white text-gray-900 placeholder:text-gray-400"
+              isLight
+                ? "h-11 min-w-0 w-full border border-zinc-200 bg-[#f5f3f2] pl-9 text-zinc-900 shadow-none placeholder:text-zinc-400 focus-visible:ring-1 focus-visible:ring-[#FF4907]"
                 : "pl-9 min-w-0 w-full"
             }
             onKeyDown={(e) => e.key === "Enter" && handleTrack()}
@@ -127,9 +131,11 @@ export function PublicTrackingSearch({
           onClick={handleTrack}
           disabled={isSearching || !trackingNumber.trim()}
           className={
-            isHero
-              ? "h-11 px-6 w-full sm:w-auto sm:shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium disabled:opacity-50"
-              : "shrink-0"
+            isPanel
+              ? "h-11 shrink-0 border-0 bg-[#FF4907] px-5 font-semibold text-white hover:bg-[#e03d00] disabled:opacity-50"
+              : isHero
+                ? "h-11 px-6 w-full sm:w-auto sm:shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium disabled:opacity-50"
+                : "shrink-0"
           }
           data-testid="button-landing-track"
         >
@@ -157,10 +163,10 @@ export function PublicTrackingSearch({
       )}
 
       {notFound && (
-        <Card className="mt-4 border-dashed">
+        <Card className={`mt-4 border-dashed ${isLight ? "border-zinc-200 bg-zinc-50 text-zinc-800" : ""}`}>
           <CardContent className="py-8 text-center">
-            <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground" data-testid="text-track-not-found">
+            <Package className={`mx-auto mb-3 h-10 w-10 ${isLight ? "text-zinc-400" : "text-muted-foreground"}`} />
+            <p className={`text-sm ${isLight ? "text-zinc-500" : "text-muted-foreground"}`} data-testid="text-track-not-found">
               No booking found with this number. Check the ID and try again.
             </p>
           </CardContent>
@@ -168,7 +174,7 @@ export function PublicTrackingSearch({
       )}
 
       {result && (
-        <Card className="mt-4">
+        <Card className={`mt-4 ${isLight ? "border-zinc-200 bg-white text-zinc-900" : ""}`}>
           <CardContent className="pt-6 space-y-4">
             {result.kind === "booking_request" && (
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -198,11 +204,11 @@ export function PublicTrackingSearch({
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-muted-foreground">From</p>
+                <p className={isLight ? "text-zinc-500" : "text-muted-foreground"}>From</p>
                 <p>{result.senderCity || "N/A"}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">To</p>
+                <p className={isLight ? "text-zinc-500" : "text-muted-foreground"}>To</p>
                 <p>{result.receiverCity || "N/A"}</p>
               </div>
               {result.kind === "shipment" && (

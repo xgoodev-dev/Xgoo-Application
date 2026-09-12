@@ -56,6 +56,8 @@ export type TrackingLoadsWorkspaceProps = {
   detailLoading?: boolean;
   onCloseDetail?: () => void;
   searchPlaceholder?: string;
+  addLabel?: string;
+  emptyHint?: string;
 };
 
 type FilterKey = "all" | "in_transit" | "delivered" | "pending";
@@ -482,6 +484,8 @@ export function TrackingLoadsWorkspace({
   detailLoading,
   onCloseDetail,
   searchPlaceholder = "Search request, name, or city…",
+  addLabel = "Book shipment",
+  emptyHint = "Book a shipment to see it here.",
 }: TrackingLoadsWorkspaceProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -599,7 +603,7 @@ export function TrackingLoadsWorkspace({
             <p className="mt-1 text-xs text-zinc-500">
               {query || filter !== "all"
                 ? "Try a different search or filter."
-                : "Book a shipment to see it here."}
+                : emptyHint}
             </p>
           </div>
         ) : (
@@ -624,7 +628,7 @@ export function TrackingLoadsWorkspace({
           className="h-11 w-full rounded-xl bg-[#1A1A1A] text-sm font-semibold text-white hover:bg-zinc-800"
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          Book shipment
+          {addLabel}
         </Button>
       </div>
     </div>

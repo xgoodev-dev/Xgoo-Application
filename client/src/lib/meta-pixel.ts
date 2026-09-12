@@ -6,7 +6,7 @@ declare global {
 }
 
 type FbqFunction = {
-  (command: "init" | "track", eventOrPixelId: string, params?: Record<string, string>): void;
+  (command: "init" | "track" | "trackCustom", eventOrPixelId: string, params?: Record<string, string>): void;
   callMethod?: (...args: unknown[]) => void;
   queue: unknown[][];
   push: FbqFunction;
@@ -112,4 +112,14 @@ export function trackMetaLead(payload?: Record<string, string>): void {
     content_name: "Booking Request",
     ...payload,
   });
+}
+
+export function trackMetaContact(payload?: Record<string, string>): void {
+  if (!isMetaPixelReady()) return;
+  window.fbq!("track", "Contact", payload);
+}
+
+export function trackMetaCustom(eventName: string, payload?: Record<string, string>): void {
+  if (!isMetaPixelReady()) return;
+  window.fbq!("trackCustom", eventName, payload);
 }

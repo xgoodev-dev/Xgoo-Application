@@ -8,6 +8,11 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { InstallExtensionButton } from "@/components/InstallExtensionButton";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  customerGoogleOAuthBookPath,
+  isCustomerBookPath,
+  isCustomerGoogleOAuthPending,
+} from "@/lib/customer-google-oauth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +39,9 @@ import SettingsPage from "@/pages/settings";
 import CustomerPortalPage from "@/pages/customer-portal";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
+import CourierRoutePage from "@/pages/courier-route";
+import InternationalCourierPage from "@/pages/international-courier";
+import DomesticCourierPage from "@/pages/domestic-courier";
 import { MetaPixel } from "@/components/analytics/MetaPixel";
 import { WhatsAppFloatingButton } from "@/components/marketing/WhatsAppFloatingButton";
 
@@ -119,20 +127,33 @@ function LoadingScreen() {
 function HomeRoute() {
   const { isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
+  const customerOAuth = isCustomerGoogleOAuthPending();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (isLoading) return;
+    if (customerOAuth) {
+      setLocation(customerGoogleOAuthBookPath());
+      return;
+    }
+    if (isAuthenticated) {
       setLocation("/dashboard");
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, customerOAuth, setLocation]);
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading || customerOAuth) return <LoadingScreen />;
   if (isAuthenticated) return null;
   return <LandingPage />;
 }
 
 function Router() {
   const { isLoading, isAuthenticated } = useAuth();
+  const [location, setLocation] = useLocation();
+  const customerOAuth = isCustomerGoogleOAuthPending();
+
+  useEffect(() => {
+    if (!customerOAuth || isCustomerBookPath(location)) return;
+    setLocation(customerGoogleOAuthBookPath());
+  }, [customerOAuth, location, setLocation]);
 
   return (
     <Switch>
@@ -147,8 +168,11 @@ function Router() {
       <Route path="/auth-page" component={AuthPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
+      <Route path="/international-courier" component={InternationalCourierPage} />
+      <Route path="/domestic-courier" component={DomesticCourierPage} />
+      <Route path={/^\/courier-from-hyderabad-to-[a-z0-9-]+$/} component={CourierRoutePage} />
       <Route>
-        {isLoading ? (
+        {isLoading || customerOAuth ? (
           <LoadingScreen />
         ) : !isAuthenticated ? (
           <AuthPage />

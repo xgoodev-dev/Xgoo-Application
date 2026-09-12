@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 type Theme = "light" | "dark";
 
@@ -10,7 +11,26 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const STAFF_PATH_PREFIXES = [
+  "/dashboard",
+  "/bookings",
+  "/shipments",
+  "/documents",
+  "/quotations",
+  "/booking-requests",
+  "/customers",
+  "/partners",
+  "/pricing",
+  "/reports",
+  "/settings",
+];
+
+function isStaffAppPath(path: string): boolean {
+  return STAFF_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("xgoo-theme") as Theme;
@@ -20,10 +40,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return "light";
   });
 
+  const pathOnly = location.split("?")[0] || "/";
+  const appliedTheme = isStaffAppPath(pathOnly) ? theme : "light";
+
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
-    root.classList.add(theme);
+    root.classList.add(appliedTheme);
+  }, [appliedTheme]);
+
+  useEffect(() => {
     localStorage.setItem("xgoo-theme", theme);
   }, [theme]);
 

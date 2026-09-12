@@ -62,9 +62,11 @@ import {
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, inArray, ne } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, inArray, ne } from "drizzle-orm";
 
 let customerIntakeColumnsReady: Promise<void> | null = null;
+let customerAccountTypeReady: Promise<void> | null = null;
+let bookingPackageColumnsReady: Promise<void> | null = null;
 
 function ensureCustomerIntakeColumns() {
   if (!customerIntakeColumnsReady) {
@@ -80,6 +82,46 @@ function ensureCustomerIntakeColumns() {
     });
   }
   return customerIntakeColumnsReady;
+}
+
+export function ensureCustomerAccountTypeColumn() {
+  if (!customerAccountTypeReady) {
+    customerAccountTypeReady = db.execute(sql`
+      ALTER TABLE customer_users
+      ADD COLUMN IF NOT EXISTS google_id varchar(255)
+    `).then(async () => {
+      await db.execute(sql`
+        ALTER TABLE customer_users ALTER COLUMN phone DROP NOT NULL
+      `);
+      await db.execute(sql`
+        ALTER TABLE customer_users
+        ADD COLUMN IF NOT EXISTS account_type varchar(20) NOT NULL DEFAULT 'individual'
+      `);
+      await db.execute(sql`
+        ALTER TABLE customer_users ALTER COLUMN account_type SET DEFAULT 'individual'
+      `);
+    });
+  }
+  return customerAccountTypeReady;
+}
+
+export function ensureBookingPackageColumns() {
+  if (!bookingPackageColumnsReady) {
+    bookingPackageColumnsReady = db.execute(sql`
+      ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS package_length decimal(10, 2)
+    `).then(async () => {
+      await db.execute(sql`
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS package_width decimal(10, 2)
+      `);
+      await db.execute(sql`
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS package_height decimal(10, 2)
+      `);
+      await db.execute(sql`
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS package_items text[]
+      `);
+    });
+  }
+  return bookingPackageColumnsReady;
 }
 import { randomUUID } from "crypto";
 import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
@@ -210,6 +252,7 @@ export interface IStorage {
   // Customer User operations
   getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
   getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined>;
+  getCustomerUserByGoogleId(officeId: string, googleId: string): Promise<CustomerUser | undefined>;
   getCustomerUser(id: string): Promise<CustomerUser | undefined>;
   createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser>;
   updateCustomerUser(id: string, data: Partial<InsertCustomerUser>): Promise<CustomerUser | undefined>;
@@ -232,7 +275,10 @@ export interface IStorage {
   markCustomerNotificationsRead(customerUserId: string, id?: string): Promise<void>;
 
   // Customer booking requests (by customer user)
-  getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]>;
+  getBookingRequestsByCustomerUser(
+    customerUserId: string,
+    opts?: { officeId?: string; phone?: string | null },
+  ): Promise<BookingRequest[]>;
 
   // Customer saved addresses
   getCustomerAddresses(customerUserId: string): Promise<CustomerAddress[]>;
@@ -927,6 +973,7 @@ export class DatabaseStorage implements IStorage {
     officeId: string,
     branchId?: string | null,
   ): Promise<BookingRequest[]> {
+    await ensureBookingPackageColumns();
     return db
       .select()
       .from(bookingRequests)
@@ -942,11 +989,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingRequest(id: string): Promise<BookingRequest | undefined> {
+    await ensureBookingPackageColumns();
     const [request] = await db.select().from(bookingRequests).where(eq(bookingRequests.id, id));
     return request;
   }
 
   async createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest> {
+    await ensureBookingPackageColumns();
     const requestNumber = `BR${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
     const [created] = await db
       .insert(bookingRequests)
@@ -1005,6 +1054,7 @@ export class DatabaseStorage implements IStorage {
   async getBookingRequestByShipmentId(
     shipmentId: string,
   ): Promise<BookingRequest | undefined> {
+    await ensureBookingPackageColumns();
     const [request] = await db
       .select()
       .from(bookingRequests)
@@ -1015,6 +1065,7 @@ export class DatabaseStorage implements IStorage {
 
   // Customer User operations
   async getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined> {
+    await ensureCustomerAccountTypeColumn();
     const digits = phone.replace(/\D/g, "");
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
     const [user] = await db.select().from(customerUsers).where(
@@ -1031,18 +1082,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined> {
+    await ensureCustomerAccountTypeColumn();
     const [user] = await db.select().from(customerUsers).where(
       and(eq(customerUsers.officeId, officeId), eq(customerUsers.email, email))
     );
     return user;
   }
 
+  async getCustomerUserByGoogleId(officeId: string, googleId: string): Promise<CustomerUser | undefined> {
+    await ensureCustomerAccountTypeColumn();
+    const [user] = await db.select().from(customerUsers).where(
+      and(eq(customerUsers.officeId, officeId), eq(customerUsers.googleId, googleId))
+    );
+    return user;
+  }
+
   async getCustomerUser(id: string): Promise<CustomerUser | undefined> {
+    await ensureCustomerAccountTypeColumn();
     const [user] = await db.select().from(customerUsers).where(eq(customerUsers.id, id));
     return user;
   }
 
   async createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser> {
+    await ensureCustomerAccountTypeColumn();
     const [created] = await db.insert(customerUsers).values(user).returning();
     return created;
   }
@@ -1139,7 +1201,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Customer booking requests
-  async getBookingRequestsByCustomerUser(customerUserId: string): Promise<BookingRequest[]> {
+  async getBookingRequestsByCustomerUser(
+    customerUserId: string,
+    opts?: { officeId?: string; phone?: string | null },
+  ): Promise<BookingRequest[]> {
+    await ensureBookingPackageColumns();
+    const digits = (opts?.phone || "").replace(/\D/g, "");
+    const phone = digits.length >= 10 ? digits.slice(-10) : digits;
+    const officeId = opts?.officeId;
+
+    if (officeId && phone.length >= 10) {
+      const phoneMatch = sql`RIGHT(REGEXP_REPLACE(COALESCE(${bookingRequests.senderPhone}, ''), '[^0-9]', '', 'g'), 10) = ${phone}`;
+      await db
+        .update(bookingRequests)
+        .set({ customerUserId })
+        .where(
+          and(
+            eq(bookingRequests.officeId, officeId),
+            or(isNull(bookingRequests.customerUserId), eq(bookingRequests.customerUserId, customerUserId)),
+            phoneMatch,
+          ),
+        );
+      return db
+        .select()
+        .from(bookingRequests)
+        .where(
+          or(
+            eq(bookingRequests.customerUserId, customerUserId),
+            and(
+              eq(bookingRequests.officeId, officeId),
+              phoneMatch,
+              or(isNull(bookingRequests.customerUserId), eq(bookingRequests.customerUserId, customerUserId)),
+            ),
+          ),
+        )
+        .orderBy(desc(bookingRequests.createdAt));
+    }
+
     return db.select().from(bookingRequests)
       .where(eq(bookingRequests.customerUserId, customerUserId))
       .orderBy(desc(bookingRequests.createdAt));
@@ -1220,6 +1318,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingRequestByOfficeAndRequestNumber(officeId: string, rawRequestNumber: string): Promise<BookingRequest | undefined> {
+    await ensureBookingPackageColumns();
     const normalized = rawRequestNumber.trim().replace(/^#/, "").toUpperCase();
     if (!normalized) return undefined;
     const [row] = await db

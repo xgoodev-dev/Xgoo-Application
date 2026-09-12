@@ -21,6 +21,41 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://www.xgoo.in/international-courier</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/domestic-courier</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/courier-from-hyderabad-to-usa</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/courier-from-hyderabad-to-australia</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/courier-from-hyderabad-to-canada</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/courier-from-hyderabad-to-uk</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://www.xgoo.in/courier-from-hyderabad-to-uae</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://www.xgoo.in/terms</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>

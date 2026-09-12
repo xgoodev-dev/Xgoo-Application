@@ -1,7 +1,14 @@
 import { useLocation } from "wouter";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { ProductAttribution } from "./ProductAttribution";
-import { XGOO_BRAND, XGOO_CONTACT } from "./site-info";
+import { TechPartnerCredit } from "./TechPartnerCredit";
+import { XGOO_BRAND, XGOO_CONTACT, XGOO_OPS_MODULES } from "./site-info";
+import {
+  DOMESTIC_COURIER_PATH,
+  INTERNATIONAL_COURIER_PATH,
+  courierRoutePath,
+  listPublishedCourierRoutes,
+} from "./courier-routes";
 
 type FooterLink = {
   label: string;
@@ -11,9 +18,10 @@ type FooterLink = {
 
 const COMPANY_LINKS: FooterLink[] = [
   { label: "Book a Parcel", href: "/book" },
+  { label: "International Courier", href: INTERNATIONAL_COURIER_PATH },
+  { label: "Domestic Courier", href: DOMESTIC_COURIER_PATH },
   { label: "About Us", href: "/about" },
   { label: "Contact", href: "/contact" },
-  { label: "Staff Login", href: "/auth-page" },
 ];
 
 const POLICY_LINKS: FooterLink[] = [
@@ -56,7 +64,7 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-white/10 pb-28 pt-12 sm:py-14" style={{ background: "#141414" }}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
           <div className="sm:col-span-2 lg:col-span-1">
             <button
               type="button"
@@ -104,6 +112,26 @@ export function MarketingFooter() {
           </div>
 
           <div>
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Popular routes</h3>
+            <nav className="mt-4 flex flex-col gap-2.5">
+              <FooterNavLink
+                link={{ label: "International Courier", href: INTERNATIONAL_COURIER_PATH }}
+                onNavigate={navigate}
+              />
+              {listPublishedCourierRoutes().map((route) => (
+                <FooterNavLink
+                  key={route.slug}
+                  link={{
+                    label: `Hyderabad to ${route.countryName}`,
+                    href: courierRoutePath(route.slug),
+                  }}
+                  onNavigate={navigate}
+                />
+              ))}
+            </nav>
+          </div>
+
+          <div>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Policies</h3>
             <nav className="mt-4 flex flex-col gap-2.5">
               {POLICY_LINKS.map((link) => (
@@ -116,6 +144,13 @@ export function MarketingFooter() {
             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Support</h3>
             <nav className="mt-4 flex flex-col gap-2.5">
               <FooterNavLink link={{ label: "Help & Contact", href: "/contact" }} onNavigate={navigate} />
+              {XGOO_OPS_MODULES.map((module) => (
+                <FooterNavLink
+                  key={module.id}
+                  link={{ label: module.name, href: module.path }}
+                  onNavigate={navigate}
+                />
+              ))}
               <FooterNavLink link={{ label: "Book Online", href: "/book" }} onNavigate={navigate} />
               <a
                 href={`mailto:${XGOO_CONTACT.email}?subject=XGoo%20Support`}
@@ -129,20 +164,23 @@ export function MarketingFooter() {
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 sm:flex-row">
-          <ProductAttribution variant="footer-dark" className="sm:text-left" />
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/35">
-            {POLICY_LINKS.slice(0, 3).map((link) => (
-              <button
-                key={link.href}
-                type="button"
-                onClick={() => navigate(link.href)}
-                className="hover:text-white"
-              >
-                {link.label}
-              </button>
-            ))}
+        <div className="mt-10 flex flex-col gap-6 border-t border-white/10 pt-6">
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <ProductAttribution variant="footer-dark" className="sm:text-left" />
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/35">
+              {POLICY_LINKS.slice(0, 3).map((link) => (
+                <button
+                  key={link.href}
+                  type="button"
+                  onClick={() => navigate(link.href)}
+                  className="hover:text-white"
+                >
+                  {link.label}
+                </button>
+              ))}
+            </div>
           </div>
+          <TechPartnerCredit variant="dark" />
         </div>
       </div>
     </footer>

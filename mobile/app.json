@@ -2,7 +2,7 @@
   "expo": {
     "name": "XGoo",
     "slug": "xgoo",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/xgoo-logo.png",
     "scheme": "xgoo",
@@ -62,7 +62,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

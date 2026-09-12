@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { ArrowRight, Box, MapPin, PackageCheck, Truck } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Card, Screen } from '@/components/ui';
+import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAppTheme } from '@/lib/theme';
 
 export default function WelcomeScreen() {
@@ -55,6 +56,7 @@ export default function WelcomeScreen() {
             Trusted movement, from pickup to delivery.
           </Text>
         </Card>
+        <TechPartnerCredit style={styles.credit} />
       </View>
     </Screen>
   );
@@ -115,5 +117,6 @@ const styles = StyleSheet.create({
   actions: { gap: 11 },
   trust: { paddingVertical: 11, alignItems: 'center', marginTop: 2, elevation: 0, shadowOpacity: 0 },
   trustText: { fontSize: 11, fontWeight: '600' },
+  credit: { marginTop: 10 },
 });
 

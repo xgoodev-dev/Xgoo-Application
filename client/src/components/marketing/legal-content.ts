@@ -19,7 +19,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     title: "Terms and Conditions",
     lastUpdated: "12 July 2026",
     summary:
-      "These terms govern your use of XGoo courier booking services operated by Murthy Enterprises.",
+      "These terms govern your use of XGoo courier booking services operated by NSGroup.",
     sections: [
       {
         heading: "1. Acceptance of terms",

@@ -14,7 +14,7 @@ export function MarketingLayout({
   mainClassName = "pt-28",
 }: MarketingLayoutProps) {
   return (
-    <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden flex flex-col">
+    <div className="marketing-surface flex min-h-screen flex-col overflow-x-hidden bg-white text-gray-900 [color-scheme:light]">
       <MarketingHeader showSectionLinks={showSectionLinks} />
       <main className={`flex-1 ${mainClassName}`}>{children}</main>
       <MarketingFooter />

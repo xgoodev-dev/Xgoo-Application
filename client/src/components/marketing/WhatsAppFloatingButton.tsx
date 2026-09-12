@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { SiWhatsapp } from "react-icons/si";
 import { X } from "lucide-react";
 import { XGOO_BRAND, XGOO_CONTACT } from "@/components/marketing/site-info";
+import { getCourierRoute, parseCourierRouteSlug } from "@/components/marketing/courier-routes";
+import { trackMetaContact } from "@/lib/meta-pixel";
 
 const STAFF_PATH_PREFIXES = [
   "/dashboard",
@@ -46,7 +48,10 @@ export function WhatsAppFloatingButton() {
   const phone = resolveWhatsAppNumber();
   if (phone.length < 10) return null;
 
-  const prefill = "Hi";
+  const route = getCourierRoute(parseCourierRouteSlug(location));
+  const prefill = route
+    ? `Hi, I need a courier quote from Hyderabad to ${route.countryName}.`
+    : "Hi";
   const href = `https://wa.me/${phone}?text=${encodeURIComponent(prefill)}`;
 
   return (
@@ -78,6 +83,12 @@ export function WhatsAppFloatingButton() {
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1ebe57]"
               data-testid="link-whatsapp-bot-start"
+              onClick={() =>
+                trackMetaContact({
+                  content_name: "WhatsApp",
+                  content_category: route?.analyticsRoute || "site",
+                })
+              }
             >
               <SiWhatsapp className="h-4 w-4" />
               Start chat

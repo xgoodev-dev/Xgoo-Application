@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,8 @@ import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XgooGradientPanelPatterns } from "@/components/auth/XgooAuthPattern";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
-import { XGOO_BRAND } from "@/components/marketing/site-info";
+import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
+import { XGOO_BRAND, XGOO_CUSTOMER_MODULES, XGOO_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { SEO_PAGES } from "@/lib/seo";
 
@@ -111,6 +112,9 @@ function VisualPanel() {
 
 export default function AuthPage() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const moduleParam = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("module");
+  const opsModule = moduleParam === "command" ? XGOO_MODULES.command : XGOO_MODULES.hub;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -170,7 +174,11 @@ export default function AuthPage() {
 
   return (
     <div className="flex min-h-screen bg-white text-stone-900 [color-scheme:light]" data-auth-page>
-      <PageSeo {...SEO_PAGES.auth} />
+      <PageSeo
+        {...SEO_PAGES.auth}
+        title={`${opsModule.name} | Sign In`}
+        description={`${opsModule.meaning}. Sign in to ${opsModule.name}.`}
+      />
       {/* Left — Jeton-style form (~45%) */}
       <div className="flex w-full lg:w-[45%] xl:w-[42%] flex-col min-h-screen">
         <header className="flex items-center justify-between bg-white px-8 py-7 sm:px-12">
@@ -193,9 +201,10 @@ export default function AuthPage() {
 
         <main className="flex flex-1 flex-col justify-center px-8 sm:px-12 lg:px-16 xl:px-20">
           <div className="mx-auto w-full max-w-[400px]">
-            <h1 className="text-[2rem] sm:text-[2.125rem] font-bold tracking-tight text-stone-900 mb-8">
-              Staff Sign In
+            <h1 className="text-[2rem] sm:text-[2.125rem] font-bold tracking-tight text-stone-900 mb-2">
+              {opsModule.name}
             </h1>
+            <p className="mb-8 text-sm text-stone-500">{opsModule.meaning}</p>
 
             <form onSubmit={handleSignIn} className="space-y-4">
               <AuthField
@@ -232,7 +241,9 @@ export default function AuthPage() {
               </div>
 
               <p className="text-center text-sm text-stone-600 pt-4 pb-1">
-                Staff access is invitation-only. Contact the XGoo Super Admin to join your branch.
+              {opsModule.id === "command"
+                ? "XGoo Command is invitation-only. Contact the Super Admin for central access."
+                : "XGoo Hub access is invitation-only. Contact the Super Admin to join your branch."}
               </p>
 
               <Button
@@ -264,8 +275,23 @@ export default function AuthPage() {
               className="h-[52px] w-full rounded-none border border-stone-200 bg-[#f5f3f2] text-stone-800 hover:bg-stone-100 gap-3"
             >
               <FcGoogle className="h-5 w-5" />
-              Google
+              Sign in with Google
             </Button>
+
+            <p className="mt-8 text-center text-sm text-stone-500">
+              Customer?{" "}
+              {XGOO_CUSTOMER_MODULES.map((module, index) => (
+                <span key={module.id}>
+                  {index > 0 ? " or " : null}
+                  <Link
+                    href={module.path}
+                    className="font-semibold text-stone-700 hover:text-[#FF4907] hover:underline"
+                  >
+                    {module.name}
+                  </Link>
+                </span>
+              ))}
+            </p>
           </div>
         </main>
 
@@ -286,6 +312,7 @@ export default function AuthPage() {
           <p className="mt-2 text-xs text-stone-400">
             <ProductAttribution variant="subtle" className="!text-stone-400" />
           </p>
+          <TechPartnerCredit className="mt-4" />
         </footer>
       </div>
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import {
   Inbox,
   Search,
@@ -86,6 +87,7 @@ const sourceLabels: Record<string, string> = {
   staff_portal: "Staff Portal",
   api: "API",
   legacy: "Legacy",
+  b2b_daily: "B2B Daily",
 };
 
 function bookingSourceLabel(request: BookingRequest) {
@@ -159,6 +161,9 @@ export default function BookingRequestsPage() {
       weight: request.weight || "",
       numberOfPieces: String(request.numberOfPieces || 1),
       contentDescription: request.contentDescription || "",
+      length: request.packageLength || "",
+      width: request.packageWidth || "",
+      height: request.packageHeight || "",
       declaredValue: request.declaredValue || "",
       serviceType: request.serviceType || "surface",
       bookingRequestId: request.id,
@@ -254,6 +259,7 @@ export default function BookingRequestsPage() {
                   <SelectItem value="in_store">In Store</SelectItem>
                   <SelectItem value="website">Website</SelectItem>
                   <SelectItem value="customer_portal">Web Customer Portal</SelectItem>
+                  <SelectItem value="b2b_daily">B2B Daily</SelectItem>
                   <SelectItem value="phone">Phone</SelectItem>
                   <SelectItem value="partner_api">Partner API</SelectItem>
                 </SelectContent>
@@ -314,7 +320,14 @@ export default function BookingRequestsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="whitespace-nowrap">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "whitespace-nowrap",
+                            request.source === "b2b_daily" && "border-[#FF4907] text-[#FF4907]",
+                          )}
+                          data-testid={request.source === "b2b_daily" ? "badge-b2b-daily" : undefined}
+                        >
                           {bookingSourceLabel(request)}
                         </Badge>
                       </TableCell>
@@ -402,7 +415,12 @@ export default function BookingRequestsPage() {
                 <Badge variant="secondary" className={statusColors[selectedRequest.status]}>
                   {statusLabels[selectedRequest.status]}
                 </Badge>
-                <Badge variant="outline">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    selectedRequest.source === "b2b_daily" && "border-[#FF4907] text-[#FF4907]",
+                  )}
+                >
                   Created from {bookingSourceLabel(selectedRequest)}
                 </Badge>
                 <Badge variant="secondary" className="capitalize">
@@ -491,6 +509,23 @@ export default function BookingRequestsPage() {
                         <span className="text-right">{selectedRequest.contentDescription}</span>
                       </div>
                     )}
+                    {(selectedRequest.packageLength || selectedRequest.packageWidth || selectedRequest.packageHeight) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Dimensions</span>
+                        <span>
+                          {[selectedRequest.packageLength, selectedRequest.packageWidth, selectedRequest.packageHeight]
+                            .filter(Boolean)
+                            .join(" × ")}{" "}
+                          cm
+                        </span>
+                      </div>
+                    )}
+                    {selectedRequest.packageItems?.length ? (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Items</span>
+                        <span className="text-right">{selectedRequest.packageItems.join(", ")}</span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

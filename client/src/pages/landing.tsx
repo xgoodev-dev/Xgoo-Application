@@ -42,6 +42,7 @@ import aboutImage from "@/assets/landing/purpose-deliveries.jpg";
 import processImage from "@/assets/landing/process-delivery.jpg";
 import faqImage from "@/assets/landing/faq-packing.jpg";
 import ctaImage from "@/assets/landing/cta-shipping.jpg";
+import { DirectPickupForm } from "@/components/marketing/DirectPickupForm";
 
 const ORANGE = "#FF4907";
 
@@ -132,7 +133,7 @@ const faqs = [
   },
   {
     q: "Can I track my shipment online?",
-    a: "Yes. Use the tracking search on this page or after booking with your booking number or AWB to see the latest status.",
+    a: "Yes. Use Track in the header, or the search on this page, with your request number, booking number, or AWB.",
   },
   {
     q: "How do I contact support?",
@@ -178,7 +179,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-white text-zinc-900">
+    <div className="marketing-surface min-h-screen overflow-x-hidden bg-white text-zinc-900 [color-scheme:light]">
       <PageSeo
         {...SEO_PAGES.home}
         jsonLd={[
@@ -204,8 +205,8 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/25" />
         </div>
 
-        <div className="mx-auto flex max-w-7xl flex-col justify-end px-4 pb-10 pt-8 sm:min-h-[calc(100svh-7.5rem)] sm:px-6 sm:pb-40 sm:pt-10 lg:px-8 lg:pb-44">
-          <div className="max-w-2xl">
+        <div className="mx-auto grid max-w-7xl items-start gap-8 px-4 pb-10 pt-8 sm:px-6 sm:pb-40 sm:pt-10 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] lg:gap-12 lg:px-8 lg:pb-44">
+          <div className="max-w-2xl sm:min-h-[22rem] sm:self-end">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 sm:mb-4 sm:text-sm sm:tracking-[0.2em]">
               {XGOO_BRAND_FOUNDATION.coreIdea.title}
             </p>
@@ -221,11 +222,13 @@ export default function LandingPage() {
             <div className="mt-7 flex w-full flex-col gap-3 sm:mt-8 sm:flex-row sm:items-center">
               <Button
                 size="lg"
-                onClick={() => navigate("/book")}
+                onClick={() =>
+                  document.getElementById("book-pickup")?.scrollIntoView({ behavior: "smooth" })
+                }
                 className="h-12 w-full gap-2 border-0 px-7 text-base font-semibold text-white hover:opacity-95 sm:w-auto"
                 style={{ background: ORANGE }}
               >
-                Book a Parcel
+                Book a Pickup
                 <ArrowUpRight className="h-4 w-4" />
               </Button>
               <Button
@@ -240,6 +243,7 @@ export default function LandingPage() {
               </Button>
             </div>
           </div>
+          <DirectPickupForm compact title="Book Shipment" analyticsCategory="landing-hero" />
         </div>
 
         {/* In-flow on phones so cards don't cover About; overlapping strip from sm up */}
@@ -363,6 +367,34 @@ export default function LandingPage() {
                 </button>
               </div>
             ))}
+          </div>
+          <div className="mx-auto mt-12 max-w-3xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
+              Courier from Hyderabad
+            </p>
+            <p className="mt-3 text-sm text-zinc-500">
+              Looking for a specific country? International courier pages for popular destinations:
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm font-semibold">
+              <button type="button" onClick={() => navigate("/international-courier")} style={{ color: ORANGE }}>
+                All international routes
+              </button>
+              <button type="button" onClick={() => navigate("/courier-from-hyderabad-to-usa")} style={{ color: ORANGE }}>
+                USA
+              </button>
+              <button type="button" onClick={() => navigate("/courier-from-hyderabad-to-australia")} style={{ color: ORANGE }}>
+                Australia
+              </button>
+              <button type="button" onClick={() => navigate("/courier-from-hyderabad-to-canada")} style={{ color: ORANGE }}>
+                Canada
+              </button>
+              <button type="button" onClick={() => navigate("/courier-from-hyderabad-to-uk")} style={{ color: ORANGE }}>
+                UK
+              </button>
+              <button type="button" onClick={() => navigate("/courier-from-hyderabad-to-uae")} style={{ color: ORANGE }}>
+                UAE
+              </button>
+            </div>
           </div>
         </div>
       </section>

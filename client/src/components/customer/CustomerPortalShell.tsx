@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import {
+  Clock,
   HelpCircle,
+  Home,
   LogOut,
   Menu,
   Package,
@@ -9,6 +11,7 @@ import {
   Search,
   Truck,
   User,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XGOO_BRAND } from "@/components/marketing/site-info";
@@ -32,10 +35,15 @@ export type CustomerPortalShellProps = {
   userSubtitle?: string;
   isGuest?: boolean;
   showTrack?: boolean;
+  /** Go workspace: Home dashboard like the mobile app. */
+  showHome?: boolean;
   /** Hide Account nav for guests (default true when not guest). */
   showAccount?: boolean;
+  /** Business workspace: Today / Destinations / Schedule instead of one-off Book. */
+  isBusiness?: boolean;
   onLogout?: () => void;
   onSignIn?: () => void;
+  onHelp?: () => void;
   officePhone?: string;
   children: React.ReactNode;
 };
@@ -51,21 +59,35 @@ function SidebarNav({
   activeTab,
   onTabChange,
   showTrack,
+  showHome,
   showAccount = true,
+  isBusiness,
   onNavigate,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showTrack?: boolean;
+  showHome?: boolean;
   showAccount?: boolean;
+  isBusiness?: boolean;
   onNavigate?: () => void;
 }) {
-  const items: NavItem[] = [
-    { id: "book", label: "Book", icon: Plus },
-    { id: "bookings", label: "Shipments", icon: Truck },
-    ...(showTrack ? [{ id: "track", label: "Track", icon: Search } as NavItem] : []),
-    ...(showAccount ? [{ id: "account", label: "Account", icon: User } as NavItem] : []),
-  ];
+  const items: NavItem[] = isBusiness
+    ? [
+        { id: "home", label: "Home", icon: Home },
+        { id: "customers", label: "Customers", icon: Users },
+        { id: "pickup", label: "Pickup", icon: Package },
+        { id: "bookings", label: "Shipments", icon: Truck },
+        { id: "schedule", label: "Schedule", icon: Clock },
+        ...(showAccount ? [{ id: "account", label: "Profile", icon: User } as NavItem] : []),
+      ]
+    : [
+        ...(showHome ? [{ id: "home", label: "Home", icon: Home } as NavItem] : []),
+        { id: "book", label: "Book", icon: Plus },
+        ...(showTrack ? [{ id: "track", label: "Track", icon: Search } as NavItem] : []),
+        { id: "bookings", label: "Shipments", icon: Truck },
+        ...(showAccount ? [{ id: "account", label: "Profile", icon: User } as NavItem] : []),
+      ];
 
   return (
     <nav className="flex flex-1 flex-col gap-1 px-3" data-testid="customer-portal-nav">
@@ -122,6 +144,7 @@ function SidebarFooter({
   onLogout,
   onSignIn,
   onNavigate,
+  onHelp,
 }: {
   userName?: string;
   userSubtitle?: string;
@@ -129,12 +152,27 @@ function SidebarFooter({
   onLogout?: () => void;
   onSignIn?: () => void;
   onNavigate?: () => void;
+  onHelp?: () => void;
 }) {
   const displayName = userName?.trim() || (isGuest ? "Guest" : "Customer");
   const subtitle = userSubtitle ?? (isGuest ? "Guest" : "Customer");
 
   return (
     <div className="mt-auto border-t border-white/10 px-3 pb-4 pt-3">
+      {onHelp ? (
+        <button
+          type="button"
+          onClick={() => {
+            onHelp();
+            onNavigate?.();
+          }}
+          data-testid="nav-help"
+          className="mb-3 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
+        >
+          <HelpCircle className="h-5 w-5 shrink-0 text-zinc-500" />
+          Help
+        </button>
+      ) : (
       <Link
         href="/contact"
         onClick={onNavigate}
@@ -144,6 +182,7 @@ function SidebarFooter({
         <HelpCircle className="h-5 w-5 shrink-0 text-zinc-500" />
         Help
       </Link>
+      )}
 
       <div className="flex items-center gap-3 rounded-xl bg-white/5 px-3 py-3">
         <div
@@ -199,9 +238,12 @@ function SidebarBody({
   userSubtitle,
   isGuest,
   showTrack,
+  showHome,
   showAccount = true,
+  isBusiness,
   onLogout,
   onSignIn,
+  onHelp,
   officePhone,
   onNavigate,
 }: Omit<CustomerPortalShellProps, "children"> & { onNavigate?: () => void }) {
@@ -212,7 +254,9 @@ function SidebarBody({
         activeTab={activeTab}
         onTabChange={onTabChange}
         showTrack={showTrack}
+        showHome={showHome}
         showAccount={showAccount}
+        isBusiness={isBusiness}
         onNavigate={onNavigate}
       />
       {officePhone && (
@@ -230,6 +274,7 @@ function SidebarBody({
         onLogout={onLogout}
         onSignIn={onSignIn}
         onNavigate={onNavigate}
+        onHelp={onHelp}
       />
     </div>
   );
@@ -242,9 +287,12 @@ export function CustomerPortalShell({
   userSubtitle,
   isGuest,
   showTrack,
+  showHome,
   showAccount = true,
+  isBusiness,
   onLogout,
   onSignIn,
+  onHelp,
   officePhone,
   children,
 }: CustomerPortalShellProps) {
@@ -268,9 +316,12 @@ export function CustomerPortalShell({
           userSubtitle={userSubtitle}
           isGuest={isGuest}
           showTrack={showTrack}
+          showHome={showHome}
           showAccount={showAccount}
+          isBusiness={isBusiness}
           onLogout={onLogout}
           onSignIn={onSignIn}
+          onHelp={onHelp}
           officePhone={officePhone}
         />
       </aside>
@@ -290,9 +341,12 @@ export function CustomerPortalShell({
             userSubtitle={userSubtitle}
             isGuest={isGuest}
             showTrack={showTrack}
+            showHome={showHome}
             showAccount={showAccount}
+            isBusiness={isBusiness}
             onLogout={onLogout}
             onSignIn={onSignIn}
+            onHelp={onHelp}
             officePhone={officePhone}
             onNavigate={() => setMobileOpen(false)}
           />

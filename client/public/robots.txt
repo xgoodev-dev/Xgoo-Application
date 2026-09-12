@@ -3,6 +3,13 @@ Allow: /
 Allow: /about
 Allow: /contact
 Allow: /book
+Allow: /international-courier
+Allow: /domestic-courier
+Allow: /courier-from-hyderabad-to-usa
+Allow: /courier-from-hyderabad-to-australia
+Allow: /courier-from-hyderabad-to-canada
+Allow: /courier-from-hyderabad-to-uk
+Allow: /courier-from-hyderabad-to-uae
 Allow: /terms
 Allow: /privacy
 Allow: /return-policy

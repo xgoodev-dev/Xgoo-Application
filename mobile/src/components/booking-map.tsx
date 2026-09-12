@@ -1,7 +1,6 @@
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { StyleSheet } from 'react-native';
+import { useEffect, useState, type ComponentType } from 'react';
 import { OpenStreetMap } from '@/components/open-street-map';
-import { useAppTheme } from '@/lib/theme';
+import { isExpoGoClient } from '@/lib/notifications';
 
 type Props = {
   latitude?: number | null;
@@ -18,53 +17,40 @@ export function BookingMap({
   markerColor,
   onMapPress,
 }: Props) {
-  const { colors, isDark } = useAppTheme();
+  const [GoogleMap, setGoogleMap] = useState<ComponentType<Props> | null>(null);
+  const canUseGoogle = !isExpoGoClient() && Boolean(googleMapsKey);
 
-  if (!googleMapsKey) {
+  useEffect(() => {
+    if (!canUseGoogle) return;
+    let active = true;
+    void import('./booking-map-google')
+      .then((mod) => {
+        if (active) setGoogleMap(() => mod.GoogleBookingMap);
+      })
+      .catch((error) => {
+        console.warn('Google Maps unavailable, using OpenStreetMap', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canUseGoogle]);
+
+  if (GoogleMap) {
     return (
-      <OpenStreetMap
+      <GoogleMap
         latitude={latitude}
         longitude={longitude}
+        markerColor={markerColor}
         onMapPress={onMapPress}
       />
     );
   }
 
-  const center = {
-    latitude: latitude ?? 17.385,
-    longitude: longitude ?? 78.4867,
-  };
-
   return (
-    <MapView
-      provider={PROVIDER_GOOGLE}
-      style={styles.map}
-      userInterfaceStyle={isDark ? 'dark' : 'light'}
-      region={{
-        ...center,
-        latitudeDelta: latitude == null ? 0.12 : 0.02,
-        longitudeDelta: longitude == null ? 0.12 : 0.02,
-      }}
-      showsUserLocation
-      showsMyLocationButton={false}
-      onPress={(event) =>
-        onMapPress(
-          event.nativeEvent.coordinate.latitude,
-          event.nativeEvent.coordinate.longitude,
-        )
-      }
-    >
-      {latitude != null && longitude != null ? (
-        <Marker
-          coordinate={{ latitude, longitude }}
-          pinColor={markerColor || colors.accent}
-        />
-      ) : null}
-    </MapView>
+    <OpenStreetMap
+      latitude={latitude}
+      longitude={longitude}
+      onMapPress={onMapPress}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  map: { flex: 1 },
-});
-

@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { XgooGradientPanelPatterns } from "@/components/auth/XgooAuthPattern";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
+import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
 import { XGOO_BRAND } from "@/components/marketing/site-info";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 
@@ -21,7 +22,7 @@ function VisualPanel({ officeName }: { officeName?: string }) {
           <h2 className="text-3xl xl:text-[2.75rem] font-bold text-white leading-tight tracking-tight">
             Book a pickup
             <br />
-            in minutes
+            from anywhere
           </h2>
           <p className="mt-4 max-w-md text-base text-white/85 leading-relaxed">
             {officeName
@@ -109,6 +110,7 @@ export function CustomerAuthShell({
           <p className="mt-2 text-xs text-stone-400">
             <ProductAttribution variant="subtle" className="!text-stone-400" />
           </p>
+          <TechPartnerCredit className="mt-4" />
         </footer>
       </div>
       <VisualPanel officeName={officeName} />
@@ -129,4 +131,9 @@ export const customerAuthPrimaryButtonClass = cn(
 export const customerAuthSecondaryButtonClass = cn(
   "h-[48px] w-full rounded-none border border-stone-200 bg-white text-stone-800",
   "hover:bg-stone-50 shadow-none",
+);
+
+export const customerAuthGoogleButtonClass = cn(
+  "h-[52px] w-full rounded-none border border-stone-300 bg-white text-stone-900",
+  "hover:bg-stone-50 shadow-none gap-3 [&_svg]:size-5",
 );
