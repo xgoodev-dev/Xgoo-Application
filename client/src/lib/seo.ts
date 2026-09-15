@@ -69,13 +69,15 @@ export const SEO_PAGES = {
   terms: {
     path: "/terms",
     title: "Terms and Conditions | XGoo",
-    description: "Read XGoo Terms and Conditions for courier booking, liability, payments, and acceptable use.",
+    description:
+      "Terms for XGoo Go, XGoo Pro, XGoo Pickup, XGoo Hub, and XGoo Command: booking, pickup, quotations, bills, and partner use.",
     type: "article" as const,
   },
   privacy: {
     path: "/privacy",
     title: "Privacy Policy | XGoo",
-    description: "How XGoo collects, uses, and protects your personal information when you book or contact us.",
+    description:
+      "How XGoo Go and XGoo Pickup collect location, account, and shipment data on the website and Google Play apps, including account deletion.",
     type: "article" as const,
   },
   returnPolicy: {
@@ -87,19 +89,21 @@ export const SEO_PAGES = {
   shippingPolicy: {
     path: "/shipping-policy",
     title: "Shipping Policy | XGoo",
-    description: "Pickup, transit, packaging, and delivery guidelines for shipments booked through XGoo.",
+    description:
+      "Doorstep pickup with XGoo Pickup, standing Pro pickup, inspection, quotation, packing, AWB, and delivery guidelines.",
     type: "article" as const,
   },
   cancellationPolicy: {
     path: "/cancellation-policy",
     title: "Cancellation Policy | XGoo",
-    description: "When you can cancel an XGoo booking and how refunds or credits are handled.",
+    description: "When you can cancel an XGoo Go or XGoo Pro booking, quotation, or bill, and how refunds are handled.",
     type: "article" as const,
   },
   auth: {
     path: "/auth-page",
     title: "XGoo Hub | Sign In",
-    description: "Sign in to XGoo Hub for physical operations and shipping, or XGoo Command for central control.",
+    description:
+      "Sign in to XGoo Hub for one store’s bookings and customers, or XGoo Command for Super Admin control of every XGoo app and store.",
     noIndex: true,
   },
   internationalCourier: {

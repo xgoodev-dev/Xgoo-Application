@@ -30,15 +30,22 @@ export const XGOO_MODULES = {
     id: "hub",
     name: "XGoo Hub",
     shortName: "Hub",
-    meaning: "Physical operations and shipping hub",
+    meaning: "Your store’s bookings, customers, and staff",
     path: "/auth-page?module=hub",
   },
   command: {
     id: "command",
     name: "XGoo Command",
     shortName: "Command",
-    meaning: "Central control",
+    meaning: "Super Admin control of every XGoo app and store",
     path: "/auth-page?module=command",
+  },
+  pickup: {
+    id: "pickup",
+    name: "XGoo Pickup",
+    shortName: "Pickup",
+    meaning: "Collect at the door",
+    path: "/auth-page?module=pickup",
   },
 } as const;
 

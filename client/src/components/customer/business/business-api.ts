@@ -21,6 +21,12 @@ export function businessApi(token: string) {
         headers,
         body: JSON.stringify(body),
       }).then(parseJson),
+    submitApplication: (body: Record<string, unknown>) =>
+      fetch("/api/customer/business/application", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      }).then(parseJson),
     destinations: () =>
       fetch("/api/customer/business/destinations", { headers }).then(parseJson),
     createDestination: (body: Record<string, unknown>) =>
@@ -61,6 +67,33 @@ export function businessApi(token: string) {
         method: "POST",
         headers,
         body: JSON.stringify({ date }),
+      }).then(parseJson),
+    orders: () =>
+      fetch("/api/customer/business/orders", { headers }).then(parseJson),
+    createOrder: (body: Record<string, unknown>) =>
+      fetch("/api/customer/business/orders", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      }).then(parseJson),
+    queueOrderPickup: (id: string, date?: string) =>
+      fetch(`/api/customer/business/orders/${id}/pickup`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(date ? { date } : {}),
+      }).then(parseJson),
+    cancelOrder: (id: string) =>
+      fetch(`/api/customer/business/orders/${id}/cancel`, {
+        method: "POST",
+        headers,
+      }).then(parseJson),
+    bills: () =>
+      fetch("/api/customer/business/bills", { headers }).then(parseJson),
+    settleBills: (body: Record<string, unknown>) =>
+      fetch("/api/customer/business/bills/settle", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
       }).then(parseJson),
   };
 }

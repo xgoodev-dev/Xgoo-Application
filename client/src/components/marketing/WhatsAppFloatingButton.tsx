@@ -13,6 +13,7 @@ const STAFF_PATH_PREFIXES = [
   "/documents",
   "/quotations",
   "/booking-requests",
+  "/enquiries",
   "/customers",
   "/partners",
   "/pricing",

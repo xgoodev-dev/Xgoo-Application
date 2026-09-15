@@ -41,9 +41,12 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { CommandStoreOverview } from "@/components/command/CommandStoreOverview";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 import { apiRequest } from "@/lib/queryClient";
-import type { ShipmentWithRelations, BookingRequest } from "@shared/schema";
+import { quotationForEnquiry, type EnquiryWithQuote } from "@/lib/enquiry-quote";
+import type { ShipmentWithRelations, Quotation } from "@shared/schema";
 
 interface DashboardStats {
   todayBookings: number;
@@ -221,6 +224,7 @@ function RecentShipmentRow({ shipment }: { shipment: ShipmentWithRelations }) {
 }
 
 export default function DashboardPage() {
+  const { isCommandWorkspace } = useStaffAccess();
   const chartFrom = format(subDays(new Date(), 29), "yyyy-MM-dd");
   const chartTo = format(new Date(), "yyyy-MM-dd");
 
@@ -232,12 +236,19 @@ export default function DashboardPage() {
     queryKey: ["/api/shipments"],
   });
 
-  const { data: bookingRequests, isLoading: requestsLoading } = useQuery<BookingRequest[]>({
+  const { data: bookingRequests, isLoading: requestsLoading } = useQuery<EnquiryWithQuote[]>({
     queryKey: ["/api/booking-requests"],
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 20_000,
   });
+  const { data: quotations = [] } = useQuery<Quotation[]>({
+    queryKey: ["/api/quotations"],
+  });
+  const recentEnquiries = (bookingRequests || []).map((request) => ({
+    ...request,
+    quotation: quotationForEnquiry(request, quotations),
+  }));
 
   const { data: reportData, isLoading: chartsLoading } = useQuery<ReportData>({
     queryKey: ["dashboard-charts", chartFrom, chartTo],
@@ -275,11 +286,17 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">
+          {isCommandWorkspace ? `${XGOO_MODULES.command.name} dashboard` : `${XGOO_MODULES.hub.name} dashboard`}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          Welcome back! Here's your {XGOO_MODULES.hub.name} overview.
+          {isCommandWorkspace
+            ? `Control every XGoo app and ${XGOO_MODULES.hub.name} store from one place.`
+            : `Book shipments, manage customers, and run this store.`}
         </p>
       </div>
+
+      {isCommandWorkspace ? <CommandStoreOverview compact /> : null}
 
       {/* App-icon quick actions — top */}
       <Card className="border-none shadow-sm bg-muted/30">
@@ -311,6 +328,7 @@ export default function DashboardPage() {
               bgClassName="from-violet-500/25 to-violet-500/5 border-violet-500/25"
               iconClassName="text-violet-500"
             />
+            {isCommandWorkspace ? (
             <QuickActionIcon
               href="/partners"
               icon={Truck}
@@ -319,15 +337,17 @@ export default function DashboardPage() {
               bgClassName="from-emerald-500/25 to-emerald-500/5 border-emerald-500/25"
               iconClassName="text-emerald-500"
             />
+            ) : null}
             <QuickActionIcon
-              href="/booking-requests"
+              href="/enquiries"
               icon={Inbox}
-              label="Requests"
+              label="Enquiries"
               badge={stats?.pendingBookingRequests}
               testId="button-quick-booking-requests"
               bgClassName="from-amber-500/25 to-amber-500/5 border-amber-500/25"
               iconClassName="text-amber-500"
             />
+            {isCommandWorkspace ? (
             <QuickActionIcon
               href="/pricing"
               icon={Calculator}
@@ -335,6 +355,7 @@ export default function DashboardPage() {
               bgClassName="from-rose-500/25 to-rose-500/5 border-rose-500/25"
               iconClassName="text-rose-500"
             />
+            ) : null}
             <QuickActionIcon
               href="/documents"
               icon={Files}
@@ -591,7 +612,7 @@ export default function DashboardPage() {
                 <Inbox className="h-5 w-5 text-amber-700 dark:text-amber-400" />
               </div>
               <div>
-                <p className="font-semibold">XGoo Go / Pro booking requests</p>
+                <p className="font-semibold">New enquiries</p>
                 <p className="text-sm text-muted-foreground">
                   {stats?.pendingBookingRequests || 0} pending
                   {(stats?.todayBookingRequests ?? 0) > 0 && ` · ${stats?.todayBookingRequests} today`}
@@ -599,7 +620,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <Button asChild>
-              <Link href="/booking-requests">Review Requests</Link>
+              <Link href="/enquiries">Review enquiries</Link>
             </Button>
           </CardContent>
         </Card>
@@ -608,10 +629,10 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-lg">Recent Customer Requests</CardTitle>
+            <CardTitle className="text-lg">Recent enquiries</CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/booking-requests">
-                View All <ArrowRight className="ml-1 h-4 w-4" />
+              <Link href="/enquiries">
+                View all <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
           </CardHeader>
@@ -622,15 +643,24 @@ export default function DashboardPage() {
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
-            ) : bookingRequests && bookingRequests.length > 0 ? (
+            ) : recentEnquiries.length > 0 ? (
               <div className="space-y-3">
-                {bookingRequests.slice(0, 5).map((req) => (
+                {recentEnquiries.slice(0, 5).map((req) => (
                   <div key={req.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
                       <p className="text-sm font-medium">{req.requestNumber}</p>
                       <p className="text-xs text-muted-foreground">
                         {req.senderName} → {req.receiverCity || req.receiverName}
                         {req.pickupDate && ` · ${req.pickupDate}`}
+                        {req.quotation
+                          ? ` · ${formatCurrency(req.quotation.totalAmount)} ${
+                              req.quotation.status === "accepted"
+                                ? "approved"
+                                : req.quotation.status === "sent"
+                                  ? "awaiting approval"
+                                  : req.quotation.status
+                            }`
+                          : ""}
                       </p>
                     </div>
                     <Badge variant={req.status === "pending" ? "secondary" : "outline"} className="capitalize">

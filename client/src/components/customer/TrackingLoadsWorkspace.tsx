@@ -58,6 +58,7 @@ export type TrackingLoadsWorkspaceProps = {
   searchPlaceholder?: string;
   addLabel?: string;
   emptyHint?: string;
+  listLayout?: "cards" | "table";
 };
 
 type FilterKey = "all" | "in_transit" | "delivered" | "pending";
@@ -486,6 +487,7 @@ export function TrackingLoadsWorkspace({
   searchPlaceholder = "Search request, name, or city…",
   addLabel = "Book shipment",
   emptyHint = "Book a shipment to see it here.",
+  listLayout = "cards",
 }: TrackingLoadsWorkspaceProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -543,7 +545,10 @@ export function TrackingLoadsWorkspace({
   ];
 
   const listPanel = (
-    <div className="relative flex h-full w-full flex-col bg-[#F4F4F5] md:w-[400px] md:shrink-0 md:border-r md:border-zinc-200/80">
+    <div className={cn(
+      "relative flex h-full w-full flex-col bg-[#F4F4F5] md:shrink-0 md:border-r md:border-zinc-200/80",
+      listLayout === "table" ? "md:min-w-0 md:flex-1" : "md:w-[400px]",
+    )}>
       <div className="shrink-0 space-y-3 px-4 pb-3 pt-5">
         <h1 className="text-xl font-bold tracking-tight text-zinc-900">
           Tracking shipments
@@ -607,6 +612,38 @@ export function TrackingLoadsWorkspace({
             </p>
           </div>
         ) : (
+          listLayout === "table" ? (
+            <div className="overflow-auto rounded-none border border-zinc-200 bg-white">
+              <table className="w-full min-w-[640px] border-collapse text-sm">
+                <thead className="sticky top-0 bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <tr className="border-b border-zinc-200">
+                    <th className="px-3 py-2.5 font-semibold">Booking</th>
+                    <th className="px-3 py-2.5 font-semibold">From</th>
+                    <th className="px-3 py-2.5 font-semibold">To</th>
+                    <th className="px-3 py-2.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((load) => (
+                    <tr
+                      key={load.id}
+                      className={cn(
+                        "cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]",
+                        selectedId === load.id && "bg-[#FFF7F3]",
+                      )}
+                      onClick={() => handleSelect(load.id)}
+                      data-testid={`load-card-${load.id}`}
+                    >
+                      <td className="px-3 py-2 font-mono font-semibold text-zinc-900">#{load.requestNumber}</td>
+                      <td className="px-3 py-2 text-zinc-700">{load.senderName || load.fromLabel}</td>
+                      <td className="px-3 py-2 text-zinc-600">{load.receiverName || load.toLabel}</td>
+                      <td className="px-3 py-2 text-xs font-medium text-zinc-500">{load.statusLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <div className="space-y-3 py-1">
             {filtered.map((load) => (
               <LoadCard
@@ -617,6 +654,7 @@ export function TrackingLoadsWorkspace({
               />
             ))}
           </div>
+          )
         )}
       </div>
 

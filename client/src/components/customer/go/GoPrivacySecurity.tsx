@@ -119,6 +119,12 @@ export function GoPrivacySecurity({
         <Link href="/terms" className="text-[#FF4907] hover:underline">
           Terms and Conditions
         </Link>
+        <Link href="/shipping-policy" className="text-[#FF4907] hover:underline">
+          Shipping Policy
+        </Link>
+        <Link href="/cancellation-policy" className="text-[#FF4907] hover:underline">
+          Cancellation Policy
+        </Link>
       </div>
     </div>
   );

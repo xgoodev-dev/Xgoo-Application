@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import {
+  ClipboardList,
   Clock,
   HelpCircle,
   Home,
+  LayoutDashboard,
   LogOut,
   Menu,
   Package,
   Plus,
+  Receipt,
   Search,
   Truck,
   User,
@@ -15,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { LocationChip } from "@/components/location-chip";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
@@ -45,6 +49,7 @@ export type CustomerPortalShellProps = {
   onSignIn?: () => void;
   onHelp?: () => void;
   officePhone?: string;
+  locationFallback?: string | null;
   children: React.ReactNode;
 };
 
@@ -74,10 +79,12 @@ function SidebarNav({
 }) {
   const items: NavItem[] = isBusiness
     ? [
-        { id: "home", label: "Home", icon: Home },
+        { id: "home", label: "Dashboard", icon: LayoutDashboard },
+        { id: "orders", label: "Orders", icon: ClipboardList },
         { id: "customers", label: "Customers", icon: Users },
         { id: "pickup", label: "Pickup", icon: Package },
         { id: "bookings", label: "Shipments", icon: Truck },
+        { id: "bills", label: "Bills", icon: Receipt },
         { id: "schedule", label: "Schedule", icon: Clock },
         ...(showAccount ? [{ id: "account", label: "Profile", icon: User } as NavItem] : []),
       ]
@@ -295,6 +302,7 @@ export function CustomerPortalShell({
   onSignIn,
   onHelp,
   officePhone,
+  locationFallback,
   children,
 }: CustomerPortalShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -356,28 +364,25 @@ export function CustomerPortalShell({
 
       {/* Main */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F4F4F5]">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200/80 bg-white px-4 md:hidden">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200/80 bg-white px-4">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-9 w-9 text-zinc-700"
+            className="h-9 w-9 text-zinc-700 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
             data-testid="button-open-sidebar"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
             <img src={xgooLogo} alt="" className="h-7 w-7 object-contain" />
-            <span className="text-base font-bold tracking-tight text-zinc-900">
+            <span className="text-sm font-bold tracking-tight text-zinc-900">
               {isBusiness ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
             </span>
           </div>
-          <div className="ml-auto flex items-center gap-1.5 text-xs text-zinc-500">
-            <Package className="h-3.5 w-3.5" style={{ color: ACCENT }} />
-            {isBusiness ? XGOO_MODULES.pro.shortName : XGOO_MODULES.go.shortName}
-          </div>
+          <LocationChip fallback={locationFallback} className="ml-auto max-w-[70%] md:ml-0 md:max-w-none md:flex-1" />
         </header>
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>

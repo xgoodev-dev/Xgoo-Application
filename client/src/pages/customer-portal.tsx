@@ -70,7 +70,6 @@ import {
   CustomerAuthShell,
   customerAuthFieldClass,
   customerAuthPrimaryButtonClass,
-  customerAuthSecondaryButtonClass,
   customerAuthGoogleButtonClass,
 } from "@/components/customer/CustomerAuthShell";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
@@ -82,9 +81,17 @@ import {
   SchedulePanel,
   TodayDispatch,
 } from "@/components/customer/business/BusinessWorkspace";
+import { OrdersPanel } from "@/components/customer/business/OrdersPanel";
+import { BillsPanel } from "@/components/customer/business/BillsPanel";
 import { ProHome } from "@/components/customer/business/ProHome";
 import { businessApi } from "@/components/customer/business/business-api";
-import { isBusinessProfileReady } from "@shared/business-courier";
+import { BUSINESS_STORE_TYPES, isBusinessProfileReady } from "@shared/business-courier";
+import {
+  ProApplicationForm,
+  ProVerificationPending,
+  proAccessState,
+  type ProProfileStatus,
+} from "@/components/customer/business/ProAccessGate";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   TrackingLoadsWorkspace,
@@ -327,6 +334,10 @@ const registerSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   pincode: z.string().optional(),
+  companyName: z.string().optional(),
+  storeName: z.string().optional(),
+  storeType: z.string().optional(),
+  gstNumber: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -380,12 +391,14 @@ const bookingSchema = z.object({
     ),
   ),
   senderAddress: requiredText("Sender address"),
+  senderAddressLine2: optionalText(),
   senderCity: requiredText("Sender city"),
   senderState: requiredText("Sender state"),
   senderPincode: requiredText("Sender pincode"),
   receiverName: requiredText("Receiver name"),
   receiverPhone: phoneText("Receiver phone"),
   receiverAddress: requiredText("Receiver address"),
+  receiverAddressLine2: optionalText(),
   receiverCity: requiredText("Receiver city"),
   receiverState: requiredText("Receiver state"),
   receiverPincode: requiredText("Receiver pincode"),
@@ -854,32 +867,6 @@ function CustomerGoogleSignIn({
   );
 }
 
-function GuestContinue({
-  onContinueAsGuest,
-  testId,
-}: {
-  onContinueAsGuest?: () => void;
-  testId: string;
-}) {
-  if (!onContinueAsGuest) return null;
-  return (
-    <div className="mt-4">
-      <Button
-        type="button"
-        variant="outline"
-        className={customerAuthSecondaryButtonClass}
-        onClick={onContinueAsGuest}
-        data-testid={testId}
-      >
-        Continue as guest
-      </Button>
-      <p className="mt-2 text-center text-xs text-stone-400">
-        Guests can book a pickup once. After booking, sign in with mobile OTP to track it.
-      </p>
-    </div>
-  );
-}
-
 function LoginForm({
   slug,
   office,
@@ -887,7 +874,6 @@ function LoginForm({
   onKindChange,
   onLogin,
   onToggle,
-  onContinueAsGuest,
 }: {
   slug: string;
   office: OfficeInfo;
@@ -895,7 +881,6 @@ function LoginForm({
   onKindChange: (value: "individual" | "business") => void;
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onToggle: () => void;
-  onContinueAsGuest?: () => void;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1072,10 +1057,6 @@ function LoginForm({
           </Button>
         </form>
       </Form>
-      <GuestContinue
-        onContinueAsGuest={kind === "individual" ? onContinueAsGuest : undefined}
-        testId="button-continue-as-guest"
-      />
     </CustomerAuthShell>
   );
 }
@@ -1087,7 +1068,6 @@ function RegisterForm({
   onKindChange,
   onLogin,
   onToggle,
-  onContinueAsGuest,
 }: {
   slug: string;
   office: OfficeInfo;
@@ -1095,14 +1075,27 @@ function RegisterForm({
   onKindChange: (value: "individual" | "business") => void;
   onLogin: (user: CustomerUserInfo, token: string) => void;
   onToggle: () => void;
-  onContinueAsGuest?: () => void;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const form = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", phone: "", email: "", password: "", otp: "", address: "", city: "", state: "", pincode: "" },
+    defaultValues: {
+      name: "",
+      phone: "",
+      email: "",
+      password: "",
+      otp: "",
+      address: "",
+      city: "",
+      state: "",
+      pincode: "",
+      companyName: "",
+      storeName: "",
+      storeType: "",
+      gstNumber: "",
+    },
   });
 
   async function handleSendOtp() {
@@ -1132,6 +1125,21 @@ function RegisterForm({
       toast({ title: "XGoo Pro details needed", description: "Enter a work email and a password of at least 6 characters.", variant: "destructive" });
       return;
     }
+    if (
+      kind === "business" &&
+      (!data.companyName?.trim() ||
+        !data.storeName?.trim() ||
+        !data.storeType ||
+        !data.gstNumber?.trim() ||
+        !data.address?.trim())
+    ) {
+      toast({
+        title: "Business details needed",
+        description: "Add business name, store name, GSTIN, category, and store address. Command verifies these before Pro opens.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/public/office/${slug}/customer/register`, {
@@ -1147,7 +1155,13 @@ function RegisterForm({
       if (!res.ok) throw new Error(result.message);
       persistCustomerModule(kind);
       onLogin(result.user, result.token);
-      toast({ title: "Account Created!", description: `Welcome, ${result.user.name}` });
+      toast({
+        title: kind === "business" ? "Submitted for verification" : "Account Created!",
+        description:
+          kind === "business"
+            ? `${XGOO_MODULES.command.name} will verify your store before Pro opens.`
+            : `Welcome, ${result.user.name}`,
+      });
     } catch (err: any) {
       toast({ title: "Registration Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -1161,7 +1175,7 @@ function RegisterForm({
       subtitle={
         kind === "individual"
           ? `${XGOO_MODULES.go.meaning}. Create an account with your mobile number and OTP, or book a pickup first.`
-          : `${XGOO_MODULES.pro.meaning}. Sign up with Google, work email, or phone.`
+          : `${XGOO_MODULES.pro.meaning}. Add your business, store, GST, and category. ${XGOO_MODULES.command.name} verifies these before Pro opens.`
       }
       officeName={office.name}
     >
@@ -1294,6 +1308,80 @@ function RegisterForm({
               )}
             />
           )}
+          {kind === "business" ? (
+            <>
+              <FormField
+                control={form.control}
+                name="companyName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="Business name *"
+                        className={customerAuthFieldClass}
+                        data-testid="input-register-company"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="storeName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="Store name *"
+                        className={customerAuthFieldClass}
+                        data-testid="input-register-store"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="gstNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="GSTIN *"
+                        maxLength={15}
+                        className={customerAuthFieldClass}
+                        data-testid="input-register-gst"
+                        onChange={(event) => field.onChange(event.target.value.toUpperCase())}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <div>
+                <p className="mb-2 text-xs font-medium text-stone-600">Business category *</p>
+                <div className="flex flex-wrap gap-2">
+                  {BUSINESS_STORE_TYPES.map((type) => (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => form.setValue("storeType", type.id)}
+                      className={
+                        form.watch("storeType") === type.id
+                          ? "rounded-none border border-[#FF4907] bg-[#FF4907] px-3 py-2 text-sm font-semibold text-white"
+                          : "rounded-none border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+                      }
+                      data-testid={`chip-register-store-type-${type.id}`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : null}
           <FormField
             control={form.control}
             name="address"
@@ -1303,7 +1391,7 @@ function RegisterForm({
                 <FormControl>
                   <Input
                     {...field}
-                    placeholder="Pickup address (optional)"
+                    placeholder={kind === "business" ? "Store address *" : "Pickup address (optional)"}
                     className={customerAuthFieldClass}
                     data-testid="input-register-address"
                   />
@@ -1368,19 +1456,14 @@ function RegisterForm({
           </Button>
         </form>
       </Form>
-      <GuestContinue
-        onContinueAsGuest={kind === "individual" ? onContinueAsGuest : undefined}
-        testId="button-continue-as-guest-register"
-      />
     </CustomerAuthShell>
   );
 }
 
-function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
+function AuthPage({ slug, office, onLogin }: {
   slug: string;
   office: OfficeInfo;
   onLogin: (user: CustomerUserInfo, token: string) => void;
-  onContinueAsGuest?: () => void;
 }) {
   const [mode, setMode] = useState<"login" | "register">(() => {
     if (typeof window === "undefined") return "login";
@@ -1409,7 +1492,6 @@ function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
         onKindChange={handleKindChange}
         onLogin={onLogin}
         onToggle={toggle}
-        onContinueAsGuest={onContinueAsGuest}
       />
     );
   }
@@ -1421,7 +1503,6 @@ function AuthPage({ slug, office, onLogin, onContinueAsGuest }: {
       onKindChange={handleKindChange}
       onLogin={onLogin}
       onToggle={toggle}
-      onContinueAsGuest={onContinueAsGuest}
     />
   );
 }
@@ -1526,12 +1607,14 @@ function BookingTab({
       senderPhone: user?.phone || "",
       senderEmail: user?.email || "",
       senderAddress: user?.address || "",
+      senderAddressLine2: "",
       senderCity: user?.city || "",
       senderState: user?.state || "",
       senderPincode: user?.pincode || "",
       receiverName: "",
       receiverPhone: "",
       receiverAddress: "",
+      receiverAddressLine2: "",
       receiverCity: "",
       receiverState: "",
       receiverPincode: "",
@@ -2022,6 +2105,9 @@ function BookingTab({
     try {
       const payload = {
         ...data,
+        shipmentType: addressScope,
+        destinationCountry:
+          addressScope === "international" ? destinationPoint.country || null : null,
         numberOfPieces: parseInt(data.numberOfPieces) || 1,
         declaredValue: data.declaredValue || null,
         courierPreference:
@@ -2393,15 +2479,24 @@ function BookingTab({
                   </div>
                   <FormField control={form.control} name="senderAddress" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Street / building / area *</FormLabel>
+                      <FormLabel>Address 1 *</FormLabel>
                       <FormControl>
                         <Textarea
                           {...field}
                           rows={3}
                           className="resize-none rounded-xl"
-                          placeholder="House / flat no., street, landmark"
+                          placeholder="House / flat, street"
                           data-testid="input-sender-address"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="senderAddressLine2" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address 2</FormLabel>
+                      <FormControl>
+                        <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-sender-address-2" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -2464,15 +2559,24 @@ function BookingTab({
                   </div>
                   <FormField control={form.control} name="receiverAddress" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Street / building / area *</FormLabel>
+                      <FormLabel>Address 1 *</FormLabel>
                       <FormControl>
                         <Textarea
                           {...field}
                           rows={3}
                           className="resize-none rounded-xl"
-                          placeholder="House / flat no., street, landmark"
+                          placeholder="House / flat, street"
                           data-testid="input-receiver-address"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="receiverAddressLine2" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address 2</FormLabel>
+                      <FormControl>
+                        <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-receiver-address-2" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -3065,6 +3169,7 @@ function MyBookingsTab({
   onFocusConsumed,
   addLabel,
   emptyHint,
+  listLayout,
 }: {
   token: string;
   onBookShipment: () => void;
@@ -3072,6 +3177,7 @@ function MyBookingsTab({
   onFocusConsumed?: () => void;
   addLabel?: string;
   emptyHint?: string;
+  listLayout?: "cards" | "table";
 }) {
   const [bookings, setBookings] = useState<BookingRequestInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -3195,6 +3301,7 @@ function MyBookingsTab({
       detailLoading={isLoadingDetail}
       addLabel={addLabel}
       emptyHint={emptyHint}
+      listLayout={listLayout}
       onCloseDetail={() => {
         setSelectedBooking(null);
         setBookingDetail(null);
@@ -3653,11 +3760,16 @@ export default function CustomerPortalPage() {
     queryFn: () => businessApi(auth.token!).profile(),
     enabled: Boolean(isBusiness && auth.token),
   });
+  const [editingProApplication, setEditingProApplication] = useState(false);
+  const businessProfile = businessProfileQuery.data as ProProfileStatus | undefined;
+  const proAccess = proAccessState(businessProfile);
   const needsBusinessOnboarding = Boolean(
     isBusiness &&
-      businessProfileQuery.data &&
-      !isBusinessProfileReady(businessProfileQuery.data as { companyName?: string; storeType?: string; pickupAddress?: string; pickupTimeSlot?: string }),
+      proAccess === "approved" &&
+      businessProfile &&
+      !isBusinessProfileReady(businessProfile),
   );
+  const proLocked = isBusiness && (proAccess === "apply" || proAccess === "pending" || editingProApplication);
   const [guestMode, setGuestMode] = useState(false);
   const [guestBookingsTick, setGuestBookingsTick] = useState(0);
   const [googleExchanging, setGoogleExchanging] = useState(() => {
@@ -3782,13 +3894,6 @@ export default function CustomerPortalPage() {
       sub.subscription.unsubscribe();
     };
   }, [slug, search, auth.isAuthenticated, handlePortalLogin, toast]);
-
-  const enterGuestMode = useCallback(() => {
-    if (!slug) return;
-    localStorage.setItem(guestModeStorageKey(slug), "1");
-    setGuestMode(true);
-    setActiveTab("book");
-  }, [slug]);
 
   const exitGuestMode = useCallback(() => {
     if (!slug) return;
@@ -3935,12 +4040,46 @@ export default function CustomerPortalPage() {
   }
 
   const portalOpen = auth.isAuthenticated || guestMode;
+  const refreshProProfile = () => {
+    void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+  };
+  const proGate =
+    auth.token && auth.user && (proLocked || needsBusinessOnboarding) ? (
+      <div className="px-4 py-4 md:px-6">
+        {proLocked && (proAccess === "apply" || editingProApplication) ? (
+          <ProApplicationForm
+            token={auth.token}
+            profile={businessProfile}
+            onDone={() => {
+              setEditingProApplication(false);
+              refreshProProfile();
+            }}
+          />
+        ) : proLocked ? (
+          <ProVerificationPending
+            profile={businessProfile}
+            onEdit={() => setEditingProApplication(true)}
+          />
+        ) : (
+          <BusinessOnboarding
+            token={auth.token}
+            slug={slug}
+            userName={auth.user.name}
+            userPhone={auth.user.phone}
+            onDone={() => {
+              refreshProProfile();
+              setActiveTab("customers");
+            }}
+          />
+        )}
+      </div>
+    ) : null;
 
   return (
     <div className={portalOpen ? "h-dvh max-h-dvh overflow-hidden bg-[#F4F4F5]" : "min-h-screen bg-background flex flex-col"}>
       <PageSeo {...SEO_PAGES.book} />
       {!portalOpen ? (
-        <AuthPage slug={slug} office={office} onLogin={handlePortalLogin} onContinueAsGuest={enterGuestMode} />
+        <AuthPage slug={slug} office={office} onLogin={handlePortalLogin} />
       ) : (
         <CustomerPortalShell
           activeTab={activeTab}
@@ -3963,6 +4102,11 @@ export default function CustomerPortalPage() {
           showAccount={auth.isAuthenticated}
           isBusiness={isBusiness}
           officePhone={office.phone}
+          locationFallback={
+            isBusiness
+              ? [businessProfile?.pickupAddress, businessProfile?.pickupCity].filter(Boolean).join(", ")
+              : [auth.user?.address, auth.user?.city].filter(Boolean).join(", ")
+          }
           onLogout={auth.logout}
           onSignIn={exitGuestMode}
           onHelp={
@@ -3981,27 +4125,16 @@ export default function CustomerPortalPage() {
           ) : isBusiness && auth.token && auth.user ? (
             <>
               {activeTab === "home" && (
-                <div className="h-full overflow-y-auto">
-                  {needsBusinessOnboarding ? (
-                    <div className="px-4 py-4 md:px-6">
-                      <BusinessOnboarding
-                        token={auth.token}
-                        slug={slug}
-                        userName={auth.user.name}
-                        userPhone={auth.user.phone}
-                        onDone={() => {
-                          void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
-                          setActiveTab("customers");
-                        }}
-                      />
-                    </div>
-                  ) : (
+                <div className="h-full min-h-0 overflow-y-auto px-4 md:px-6">
+                  {proGate || (
                     <ProHome
                       token={auth.token}
                       userName={auth.user.name}
                       onPickup={() => setActiveTab("pickup")}
+                      onOrders={() => setActiveTab("orders")}
                       onCustomers={() => setActiveTab("customers")}
                       onShipments={() => setActiveTab("bookings")}
+                      onBills={() => setActiveTab("bills")}
                       onSchedule={() => setActiveTab("schedule")}
                       onNotifications={() => {
                         setActiveTab("account");
@@ -4015,20 +4148,19 @@ export default function CustomerPortalPage() {
                   )}
                 </div>
               )}
-              {activeTab === "customers" && (
-                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
-                  {needsBusinessOnboarding ? (
-                    <BusinessOnboarding
+              {activeTab === "orders" && (
+                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                  {proGate || (
+                    <OrdersPanel
                       token={auth.token}
-                      slug={slug}
-                      userName={auth.user.name}
-                      userPhone={auth.user.phone}
-                      onDone={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
-                        setActiveTab("customers");
-                      }}
+                      onOpenPickup={() => setActiveTab("pickup")}
                     />
-                  ) : (
+                  )}
+                </div>
+              )}
+              {activeTab === "customers" && (
+                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                  {proGate || (
                     <DestinationsPanel
                       token={auth.token}
                       onOpenPickup={() => setActiveTab("pickup")}
@@ -4041,23 +4173,13 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "pickup" && (
-                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
-                  {needsBusinessOnboarding ? (
-                    <BusinessOnboarding
-                      token={auth.token}
-                      slug={slug}
-                      userName={auth.user.name}
-                      userPhone={auth.user.phone}
-                      onDone={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
-                        setActiveTab("pickup");
-                      }}
-                    />
-                  ) : (
+                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                  {proGate || (
                     <TodayDispatch
                       token={auth.token}
                       onOpenCustomers={() => setActiveTab("customers")}
                       onOpenSchedule={() => setActiveTab("schedule")}
+                      onOpenOrders={() => setActiveTab("orders")}
                       prefillCustomerId={pickupCustomerId}
                       onPrefillConsumed={() => setPickupCustomerId(null)}
                     />
@@ -4065,33 +4187,30 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "schedule" && (
-                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
-                  {needsBusinessOnboarding ? (
-                    <BusinessOnboarding
-                      token={auth.token}
-                      slug={slug}
-                      userName={auth.user.name}
-                      userPhone={auth.user.phone}
-                      onDone={() => {
-                        void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
-                        setActiveTab("schedule");
-                      }}
-                    />
-                  ) : (
+                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                  {proGate || (
                     <SchedulePanel token={auth.token} slug={slug} userPhone={auth.user.phone} />
                   )}
                 </div>
               )}
               {activeTab === "bookings" && (
                 <div className="h-full min-h-0">
+                  {proGate || (
                   <MyBookingsTab
                     token={auth.token}
                     onBookShipment={() => setActiveTab("pickup")}
                     focusId={focusBookingId}
                     onFocusConsumed={() => setFocusBookingId(null)}
                     addLabel="Request pickup"
-                    emptyHint="Request a pickup to see shipments here. Open any row to track it."
+                    emptyHint="Record store orders, request pickup, then track shipments here."
+                    listLayout="table"
                   />
+                  )}
+                </div>
+              )}
+              {activeTab === "bills" && (
+                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                  {proGate || <BillsPanel token={auth.token} />}
                 </div>
               )}
               {activeTab === "account" && (

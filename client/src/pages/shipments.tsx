@@ -258,13 +258,13 @@ export default function ShipmentsPage() {
             <div>
               <p className="text-sm font-semibold text-zinc-900">Looking for website bookings?</p>
               <p className="text-xs text-zinc-600">
-                Customer portal requests appear under Booking Requests first. Approve and convert them here to create a shipment.
+                Customer portal requests appear under Enquiries first. Approve and convert them here to create a shipment.
               </p>
             </div>
           </div>
           <Button asChild variant="outline" className="shrink-0 border-[#FF4907]/30" data-testid="button-go-booking-requests">
-            <Link href="/booking-requests">
-              Open Booking Requests
+            <Link href="/enquiries">
+              Open Enquiries
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>

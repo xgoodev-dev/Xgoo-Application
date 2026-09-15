@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
+import { LegalLinks } from '@/components/legal-links';
 import { useAuth } from '@/lib/auth';
 import { consumePendingDeepLink } from '@/lib/pending-deep-link';
 import { useAppTheme } from '@/lib/theme';
@@ -140,6 +141,7 @@ export default function RegisterScreen() {
           <Text style={{ color: colors.accent, fontWeight: '700' }}>Sign in</Text>
         </Pressable>
       </View>
+      <LegalLinks prefix="By creating an account you agree to our" />
       <TechPartnerCredit style={styles.credit} />
     </Screen>
   );
@@ -153,5 +155,5 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, marginTop: 8 },
   form: { gap: 15 },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  credit: { marginTop: 28 },
+  credit: { marginTop: 16 },
 });

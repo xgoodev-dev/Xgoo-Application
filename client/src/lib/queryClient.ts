@@ -10,6 +10,12 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 async function throwIfResNotOk(res: Response) {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    throw new Error(
+      "Server error (received HTML instead of JSON). Restart the dev server and run npm run db:push if you recently updated the app.",
+    );
+  }
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     let detail = text;

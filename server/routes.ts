@@ -80,22 +80,37 @@ import {
 import { triggerCustomerNotification } from "./customer-notifications";
 import {
   addBusinessTodayJob,
+  cancelBusinessOrder,
   confirmBusinessToday,
   createBusinessDestination,
+  createBusinessOrder,
   deleteBusinessDestination,
   ensureBusinessCourierTables,
   getBusinessProfileDto,
   getBusinessToday,
+  listBusinessAccounts,
+  listBusinessBills,
   listBusinessDestinations,
+  listBusinessOrders,
+  queueBusinessOrderForPickup,
+  settleBusinessBills,
   patchBusinessTodayJob,
+  reviewBusinessAccount,
+  submitBusinessApplication,
   updateBusinessDestination,
   updateBusinessProfile,
 } from "./business-courier";
 import {
   businessAddTodayJobSchema,
+  businessApplicationSchema,
+  businessOrderSchema,
   businessDailyJobPatchSchema,
   businessDestinationSchema,
   businessProfilePatchSchema,
+  businessReviewSchema,
+  businessSettleBillsSchema,
+  businessStoreTypeSchema,
+  isBusinessVerified,
   todayIsoDate,
 } from "@shared/business-courier";
 import {
@@ -116,6 +131,8 @@ import {
   sendCustomerOtp,
 } from "./customer-otp";
 import { loginOrRegisterCustomerWithGoogle } from "./customer-google";
+import { assignPickupJob, ensurePickupTables } from "./pickup-dispatch";
+import { registerPickupRoutes } from "./pickup-routes";
 
 const SUPER_ADMIN_EMAIL = (
   process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
@@ -239,12 +256,14 @@ const shipmentCreateSchema = z.object({
   senderName: z.string().min(1, "Sender name is required"),
   senderPhone: z.string().min(10, "Valid phone required"),
   senderAddress: z.string().min(1, "Address required"),
+  senderAddressLine2: z.string().optional().nullable(),
   senderCity: z.string().optional(),
   senderState: z.string().optional(),
   senderPincode: z.string().optional(),
   receiverName: z.string().min(1, "Receiver name is required"),
   receiverPhone: z.string().min(10, "Valid phone required"),
   receiverAddress: z.string().min(1, "Address required"),
+  receiverAddressLine2: z.string().optional().nullable(),
   receiverCity: z.string().optional(),
   receiverState: z.string().optional(),
   receiverPincode: z.string().optional(),
@@ -435,12 +454,14 @@ const bookingRequestCreateSchema = z.object({
   senderPhone: z.string().min(10, "Valid phone required").max(15),
   senderEmail: z.union([z.literal(""), z.string().email()]).optional(),
   senderAddress: z.string().min(1, "Address required"),
+  senderAddressLine2: z.string().optional().nullable(),
   senderCity: z.string().optional(),
   senderState: z.string().optional(),
   senderPincode: z.string().optional(),
   receiverName: z.string().min(1, "Receiver name required"),
   receiverPhone: z.string().min(10, "Valid phone required").max(15),
   receiverAddress: z.string().min(1, "Address required"),
+  receiverAddressLine2: z.string().optional().nullable(),
   receiverCity: z.string().optional(),
   receiverState: z.string().optional(),
   receiverPincode: z.string().optional(),
@@ -806,7 +827,7 @@ export async function registerRoutes(
 
   async function requireSuperAdmin(req: any, res: Response) {
     if (!isSuperAdmin(req)) {
-      res.status(403).json({ message: "Super Admin access is required" });
+      res.status(403).json({ message: "XGoo Command Super Admin access is required" });
       return null;
     }
     const office = await storage.getOfficeByUserId(req.user.id);
@@ -815,6 +836,25 @@ export async function registerRoutes(
       return null;
     }
     return office;
+  }
+
+  async function requireStaffDirectoryAccess(req: any, res: Response) {
+    const office = await storage.getOfficeByUserId(req.user.id);
+    if (!office) {
+      res.status(404).json({ message: "XGoo organization was not found" });
+      return null;
+    }
+    if (isSuperAdmin(req)) {
+      return { office, isSuperAdmin: true as const, branchId: null as string | null };
+    }
+    const member = req.staffMember as { role?: string; branchId?: string | null } | undefined;
+    if (member?.role === "branch_manager" && member.branchId) {
+      return { office, isSuperAdmin: false as const, branchId: member.branchId };
+    }
+    res.status(403).json({
+      message: "Only XGoo Command Super Admin or an XGoo Hub store manager can manage staff.",
+    });
+    return null;
   }
 
   // Office routes
@@ -893,24 +933,79 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/staff-members", isAuthenticated, async (req: any, res) => {
+  app.get("/api/command/stores", isAuthenticated, async (req: any, res) => {
     try {
       const office = await requireSuperAdmin(req, res);
       if (!office) return;
-      await storage.upsertOfficeMember({
-        officeId: office.id,
-        userId: req.user.id,
-        email: SUPER_ADMIN_EMAIL,
-        displayName:
-          [req.user.user_metadata?.firstName, req.user.user_metadata?.lastName]
-            .filter(Boolean)
-            .join(" ") || "XGoo Command Super Admin",
-        role: "super_admin",
-        status: "active",
-        branchId: null,
-        invitedByUserId: req.user.id,
+      res.json({ stores: await storage.getStoreRevenueSummaries(office.id) });
+    } catch (error) {
+      console.error("Error fetching Command store summaries:", error);
+      res.status(500).json({ message: "Failed to load store revenue" });
+    }
+  });
+
+  app.get("/api/command/pro-accounts", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      res.json({ accounts: await listBusinessAccounts(office.id) });
+    } catch (error) {
+      console.error("Error fetching Pro accounts:", error);
+      res.status(500).json({ message: "Failed to load Pro accounts" });
+    }
+  });
+
+  app.patch("/api/command/pro-accounts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const body = businessReviewSchema.parse(req.body || {});
+      res.json(
+        await reviewBusinessAccount(office.id, req.params.id, {
+          status: body.status,
+          note: body.note,
+          reviewerUserId: req.user.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      console.error("Error reviewing Pro account:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to review Pro account",
       });
-      res.json(await storage.getOfficeMembersByOffice(office.id));
+    }
+  });
+
+  app.get("/api/staff-members", isAuthenticated, async (req: any, res) => {
+    try {
+      const context = await requireStaffDirectoryAccess(req, res);
+      if (!context) return;
+      if (context.isSuperAdmin) {
+        await storage.upsertOfficeMember({
+          officeId: context.office.id,
+          userId: req.user.id,
+          email: SUPER_ADMIN_EMAIL,
+          displayName:
+            [req.user.user_metadata?.firstName, req.user.user_metadata?.lastName]
+              .filter(Boolean)
+              .join(" ") || "XGoo Command Super Admin",
+          role: "super_admin",
+          status: "active",
+          branchId: null,
+          invitedByUserId: req.user.id,
+        });
+      }
+      const members = await storage.getOfficeMembersByOffice(context.office.id);
+      res.json(
+        context.isSuperAdmin
+          ? members
+          : members.filter((member) => member.branchId === context.branchId && member.role !== "super_admin"),
+      );
     } catch (error) {
       console.error("Error fetching staff members:", error);
       res.status(500).json({ message: "Failed to fetch staff members" });
@@ -919,16 +1014,21 @@ export async function registerRoutes(
 
   app.post("/api/staff-members", isAuthenticated, async (req: any, res) => {
     try {
-      const office = await requireSuperAdmin(req, res);
-      if (!office) return;
+      const context = await requireStaffDirectoryAccess(req, res);
+      if (!context) return;
+      const office = context.office;
       const validated = staffMemberInputSchema.parse(req.body);
       if (validated.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
         return res.status(400).json({ message: "The Super Admin is already a member" });
       }
+      if (!context.isSuperAdmin) {
+        validated.role = "staff";
+        validated.branchId = context.branchId;
+      }
       if (validated.branchId) {
         const branch = await storage.getBranch(validated.branchId);
         if (!branch || branch.officeId !== office.id) {
-          return res.status(400).json({ message: "Invalid branch assignment" });
+          return res.status(400).json({ message: "Invalid store assignment" });
         }
       }
 
@@ -976,8 +1076,9 @@ export async function registerRoutes(
 
   app.patch("/api/staff-members/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const office = await requireSuperAdmin(req, res);
-      if (!office) return;
+      const context = await requireStaffDirectoryAccess(req, res);
+      if (!context) return;
+      const office = context.office;
       const existing = (await storage.getOfficeMembersByOffice(office.id)).find(
         (member) => member.id === req.params.id,
       );
@@ -985,11 +1086,18 @@ export async function registerRoutes(
       if (existing.userId === office.userId || existing.role === "super_admin") {
         return res.status(400).json({ message: "The Super Admin cannot be modified" });
       }
+      if (!context.isSuperAdmin && existing.branchId !== context.branchId) {
+        return res.status(403).json({ message: "You can only manage staff for your XGoo Hub store." });
+      }
       const validated = staffMemberUpdateSchema.parse(req.body);
+      if (!context.isSuperAdmin) {
+        validated.role = "staff";
+        validated.branchId = context.branchId;
+      }
       if (validated.branchId) {
         const branch = await storage.getBranch(validated.branchId);
         if (!branch || branch.officeId !== office.id) {
-          return res.status(400).json({ message: "Invalid branch assignment" });
+          return res.status(400).json({ message: "Invalid store assignment" });
         }
       }
       const updated = await storage.updateOfficeMember(
@@ -1009,14 +1117,18 @@ export async function registerRoutes(
 
   app.delete("/api/staff-members/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const office = await requireSuperAdmin(req, res);
-      if (!office) return;
+      const context = await requireStaffDirectoryAccess(req, res);
+      if (!context) return;
+      const office = context.office;
       const existing = (await storage.getOfficeMembersByOffice(office.id)).find(
         (member) => member.id === req.params.id,
       );
       if (!existing) return res.status(404).json({ message: "Staff member not found" });
       if (existing.userId === office.userId || existing.role === "super_admin") {
         return res.status(400).json({ message: "The Super Admin cannot be removed" });
+      }
+      if (!context.isSuperAdmin && existing.branchId !== context.branchId) {
+        return res.status(403).json({ message: "You can only remove staff from your XGoo Hub store." });
       }
       await storage.deleteOfficeMember(existing.id, office.id);
       res.json({ success: true });
@@ -3291,6 +3403,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
+      await ensurePickupTables();
       const quotations = await storage.getQuotationsByOffice(officeId);
       res.json(quotations);
     } catch (error) {
@@ -3400,7 +3513,83 @@ export async function registerRoutes(
         officeId,
         req.staffMember?.branchId,
       );
-      res.json(requests);
+      await ensurePickupTables();
+      let quotes: Awaited<ReturnType<typeof storage.getQuotationsByOffice>> = [];
+      try {
+        quotes = await storage.getQuotationsByOffice(officeId);
+      } catch (quoteError) {
+        console.error("Quotation enrich failed:", quoteError);
+      }
+      const quotesById = new Map(quotes.map((quote) => [quote.id, quote]));
+      const quotesByRequest = new Map(
+        quotes
+          .filter((quote) => quote.bookingRequestId)
+          .map((quote) => [quote.bookingRequestId as string, quote]),
+      );
+      const quotesByJob = new Map(
+        quotes
+          .filter((quote) => quote.pickupJobId)
+          .map((quote) => [quote.pickupJobId as string, quote]),
+      );
+      try {
+        const displayJobs = await storage.getPickupJobsByOffice(officeId, req.staffMember?.branchId);
+        const allJobs = req.staffMember?.branchId
+          ? await storage.getPickupJobsByOffice(officeId)
+          : displayJobs;
+        const displayJobsByRequest = new Map(displayJobs.map((job) => [job.bookingRequestId, job]));
+        const allJobsByRequest = new Map(allJobs.map((job) => [job.bookingRequestId, job]));
+        const partners = await storage.getPickupPartnersByOffice(officeId);
+        const partnersById = new Map(partners.map((partner) => [partner.id, partner]));
+        res.json(
+          requests.map((request) => {
+            const job = displayJobsByRequest.get(request.id) || allJobsByRequest.get(request.id);
+            const partner = job?.partnerId ? partnersById.get(job.partnerId) : undefined;
+            const quote =
+              (job?.quotationId ? quotesById.get(job.quotationId) : undefined) ||
+              quotesByRequest.get(request.id) ||
+              (job?.id ? quotesByJob.get(job.id) : undefined);
+            return {
+              ...request,
+              pickupJob: job
+                ? {
+                    id: job.id,
+                    status: job.status,
+                    partnerId: job.partnerId,
+                    partnerName: partner?.name || null,
+                    quotationId: job.quotationId,
+                  }
+                : null,
+              quotation: quote
+                ? {
+                    id: quote.id,
+                    quotationNumber: quote.quotationNumber,
+                    totalAmount: quote.totalAmount,
+                    status: quote.status,
+                  }
+                : null,
+            };
+          }),
+        );
+      } catch (pickupError) {
+        console.error("Pickup job enrich failed:", pickupError);
+        res.json(
+          requests.map((request) => {
+            const quote = quotesByRequest.get(request.id);
+            return {
+              ...request,
+              pickupJob: null,
+              quotation: quote
+                ? {
+                    id: quote.id,
+                    quotationNumber: quote.quotationNumber,
+                    totalAmount: quote.totalAmount,
+                    status: quote.status,
+                  }
+                : null,
+            };
+          }),
+        );
+      }
     } catch (error) {
       console.error("Error fetching booking requests:", error);
       res.status(500).json({ message: "Failed to fetch booking requests" });
@@ -3657,6 +3846,9 @@ export async function registerRoutes(
         (office as { whatsappSettings?: unknown }).whatsappSettings,
         request,
       );
+      void assignPickupJob(request).catch((error) => {
+        console.error("Pickup assign failed:", error);
+      });
 
       res.json({
         success: true,
@@ -3820,6 +4012,10 @@ export async function registerRoutes(
     city: z.string().optional(),
     state: z.string().optional(),
     pincode: z.string().optional(),
+    companyName: z.string().trim().max(255).optional(),
+    storeName: z.string().trim().max(255).optional(),
+    storeType: businessStoreTypeSchema.optional(),
+    gstNumber: z.string().trim().max(20).optional(),
   });
 
   const customerLoginSchema = z.object({
@@ -3901,6 +4097,7 @@ export async function registerRoutes(
       const validated = customerRegisterSchema.parse(req.body);
       const phone = normalizeCustomerPhone(validated.phone);
       const accountType = validated.accountType === "business" ? "business" : "individual";
+      let businessApplication: z.infer<typeof businessApplicationSchema> | null = null;
 
       if (accountType === "individual") {
         if (!validated.otp) {
@@ -3916,6 +4113,23 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Enter a password to create an XGoo Pro account." });
       } else if (!validated.email) {
         return res.status(400).json({ message: "XGoo Pro accounts need a work email." });
+      } else {
+        const application = businessApplicationSchema.safeParse({
+          companyName: validated.companyName,
+          storeName: validated.storeName,
+          storeType: validated.storeType,
+          gstNumber: validated.gstNumber,
+          pickupAddress: validated.address,
+          pickupCity: validated.city,
+          pickupState: validated.state,
+          pickupPincode: validated.pincode,
+        });
+        if (!application.success) {
+          return res.status(400).json({
+            message: application.error.errors[0]?.message || "Add your business name, store name, GST, and category.",
+          });
+        }
+        businessApplication = application.data;
       }
 
       const existing = await storage.getCustomerUserByPhone(office.id, phone);
@@ -3957,6 +4171,10 @@ export async function registerRoutes(
             state: validated.state || null,
             pincode: validated.pincode || null,
           });
+
+      if (businessApplication) {
+        await submitBusinessApplication(customerUser.id, businessApplication);
+      }
 
       const session = await issueCustomerSession(customerUser);
       res.json(session);
@@ -4360,6 +4578,9 @@ export async function registerRoutes(
           request,
         );
       }
+      void assignPickupJob(request).catch((error) => {
+        console.error("Pickup assign failed:", error);
+      });
 
       res.json({
         success: true,
@@ -4382,6 +4603,19 @@ export async function registerRoutes(
   function requireBusinessCustomer(req: any, res: Response): boolean {
     if (req.customerUser?.accountType !== "business") {
       res.status(403).json({ message: "This area is for XGoo Pro accounts." });
+      return false;
+    }
+    return true;
+  }
+
+  async function requireApprovedBusiness(req: any, res: Response): Promise<boolean> {
+    if (!requireBusinessCustomer(req, res)) return false;
+    const profile = await getBusinessProfileDto(req.customerUser.id);
+    if (!isBusinessVerified(profile)) {
+      res.status(403).json({
+        message: "XGoo Command must verify this business before you can use Pro.",
+        verificationStatus: profile.verificationStatus,
+      });
       return false;
     }
     return true;
@@ -4419,9 +4653,26 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/customer/business/destinations", isCustomerAuthenticated, async (req: any, res) => {
+  app.post("/api/customer/business/application", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!requireBusinessCustomer(req, res)) return;
+      const application = businessApplicationSchema.parse(req.body || {});
+      res.json(await submitBusinessApplication(req.customerUser.id, application));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: error.errors[0]?.message || "Validation error",
+          errors: error.errors,
+        });
+      }
+      console.error("Error submitting Pro application:", error);
+      res.status(500).json({ message: "Failed to submit business details" });
+    }
+  });
+
+  app.get("/api/customer/business/destinations", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
       res.json(await listBusinessDestinations(req.customerUser.id));
     } catch (error) {
       console.error("Error listing destinations:", error);
@@ -4431,7 +4682,7 @@ export async function registerRoutes(
 
   app.post("/api/customer/business/destinations", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const input = businessDestinationSchema.parse(req.body || {});
       res.json(await createBusinessDestination(req.customerUser.id, input));
     } catch (error) {
@@ -4445,7 +4696,7 @@ export async function registerRoutes(
 
   app.patch("/api/customer/business/destinations/:id", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const patch = businessDestinationSchema.partial().parse(req.body || {});
       const updated = await updateBusinessDestination(req.customerUser.id, req.params.id, patch);
       if (!updated) return res.status(404).json({ message: "Destination not found" });
@@ -4461,7 +4712,7 @@ export async function registerRoutes(
 
   app.delete("/api/customer/business/destinations/:id", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const deleted = await deleteBusinessDestination(req.customerUser.id, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Destination not found" });
       res.json({ success: true });
@@ -4471,9 +4722,94 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/customer/business/orders", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      res.json(await listBusinessOrders(req.customerUser.id));
+    } catch (error) {
+      console.error("Error listing store orders:", error);
+      res.status(500).json({ message: "Failed to load orders" });
+    }
+  });
+
+  app.post("/api/customer/business/orders", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      const input = businessOrderSchema.parse(req.body || {});
+      res.json(await createBusinessOrder(req.customerUser.id, input));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Validation error" });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to save order",
+      });
+    }
+  });
+
+  app.post("/api/customer/business/orders/:id/pickup", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      const date = parseJobDate((req.body as { date?: string })?.date);
+      res.json(await queueBusinessOrderForPickup(req.customerUser.id, req.params.id, date));
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to queue pickup",
+      });
+    }
+  });
+
+  app.post("/api/customer/business/orders/:id/cancel", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      res.json(await cancelBusinessOrder(req.customerUser.id, req.params.id));
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to cancel order",
+      });
+    }
+  });
+
+  app.get("/api/customer/business/bills", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      res.json(await listBusinessBills(req.customerUser));
+    } catch (error) {
+      console.error("Error listing store bills:", error);
+      res.status(500).json({ message: "Failed to load bills" });
+    }
+  });
+
+  app.post("/api/customer/business/bills/settle", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await requireApprovedBusiness(req, res))) return;
+      const input = businessSettleBillsSchema.parse(req.body || {});
+      res.json(await settleBusinessBills(req.customerUser, input));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Validation error" });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to settle bills",
+      });
+    }
+  });
+
   app.get("/api/customer/business/today", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const date = parseJobDate(req.query.date);
       res.json(await getBusinessToday(req.customerUser.id, date));
     } catch (error) {
@@ -4490,7 +4826,7 @@ export async function registerRoutes(
 
   app.post("/api/customer/business/today/jobs", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const input = businessAddTodayJobSchema.parse(req.body || {});
       const date = parseJobDate((req.body as { date?: string })?.date);
       res.json(
@@ -4518,7 +4854,7 @@ export async function registerRoutes(
 
   app.patch("/api/customer/business/today/jobs/:id", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const patch = businessDailyJobPatchSchema.parse(req.body || {});
       res.json(await patchBusinessTodayJob(req.customerUser.id, req.params.id, patch));
     } catch (error) {
@@ -4536,7 +4872,7 @@ export async function registerRoutes(
 
   app.post("/api/customer/business/today/confirm", isCustomerAuthenticated, async (req: any, res) => {
     try {
-      if (!requireBusinessCustomer(req, res)) return;
+      if (!(await requireApprovedBusiness(req, res))) return;
       const date = parseJobDate((req.body as { date?: string })?.date);
       const result = await confirmBusinessToday(
         req.customerUser,
@@ -5160,6 +5496,8 @@ Important: Focus on extracting receiver details since the sender is the customer
       res.status(500).json({ message: "Failed to track shipment" });
     }
   });
+
+  registerPickupRoutes(app);
 
   app.post("/api/public/contact", async (req, res) => {
     const contactInquirySchema = z.object({

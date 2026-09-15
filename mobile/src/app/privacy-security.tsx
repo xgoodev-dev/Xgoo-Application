@@ -5,6 +5,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { AppButton, Card, Field, Screen } from '@/components/ui';
 import { customerApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { XGOO_LEGAL_URLS } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
 export default function PrivacySecurityScreen() {
@@ -97,13 +98,25 @@ export default function PrivacySecurityScreen() {
       </Card>
 
       <Card
-        onPress={() => void Linking.openURL('https://www.xgoo.in/privacy')}
+        onPress={() => void Linking.openURL(XGOO_LEGAL_URLS.privacy)}
         style={styles.linkCard}
       >
         <View style={styles.flex}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy policy</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy Policy</Text>
           <Text style={[styles.copy, { color: colors.textMuted }]}>
-            Read how XGoo Go collects, protects, and uses customer information.
+            How XGoo Go collects location, account, and shipment information, and how to request account deletion.
+          </Text>
+        </View>
+        <ExternalLink size={18} color={colors.textMuted} />
+      </Card>
+      <Card
+        onPress={() => void Linking.openURL(XGOO_LEGAL_URLS.terms)}
+        style={styles.linkCard}
+      >
+        <View style={styles.flex}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Terms and Conditions</Text>
+          <Text style={[styles.copy, { color: colors.textMuted }]}>
+            Booking, pickup, quotations, and acceptable use for XGoo Go.
           </Text>
         </View>
         <ExternalLink size={18} color={colors.textMuted} />

@@ -11,7 +11,7 @@
       "icon": "./assets/images/xgoo-logo.png",
       "bundleIdentifier": "com.murthyenterprises.xgoo",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "XGoo Go uses your location to set the parcel pickup point."
+        "NSLocationWhenInUseUsageDescription": "XGoo Go uses your location when you choose live location to set the parcel pickup address."
       }
     },
     "android": {

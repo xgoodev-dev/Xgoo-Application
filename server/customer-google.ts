@@ -44,16 +44,9 @@ export async function loginOrRegisterCustomerWithGoogle(office: Office, accessTo
   const phone = googlePhone(googleUser);
 
   let customer =
-    (await storage.getCustomerUserByGoogleId(office.id, googleUser.id)) ||
-    (email ? await storage.getCustomerUserByEmail(office.id, email) : undefined) ||
-    (phone ? await storage.getCustomerUserByPhone(office.id, phone) : undefined);
-
-  if (customer?.accountType === "individual") {
-    throw Object.assign(
-      new Error("This is an individual account. Sign in with your mobile number and OTP."),
-      { status: 403 },
-    );
-  }
+    (await storage.getCustomerUserByGoogleId(office.id, googleUser.id, "business")) ||
+    (email ? await storage.getCustomerUserByEmail(office.id, email, "business") : undefined) ||
+    (phone ? await storage.getCustomerUserByPhone(office.id, phone, "business") : undefined);
 
   if (!customer) {
     const passwordHash = await bcrypt.hash(randomUUID(), 10);

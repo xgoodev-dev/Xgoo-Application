@@ -15,7 +15,9 @@ import {
 } from "@/lib/customer-google-oauth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { LocationChip } from "@/components/location-chip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 
 import LandingPage from "@/pages/landing";
 import AboutPage from "@/pages/about";
@@ -30,14 +32,19 @@ import ShipmentBillPage from "@/pages/shipments/bill";
 import ShipmentDetailPage from "@/pages/shipments/detail";
 import QuotationDocumentPage from "@/pages/quotations/document";
 import BookingRequestsPage from "@/pages/booking-requests";
+import EnquiriesPage from "@/pages/enquiries";
 import CustomersPage from "@/pages/customers";
 import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
 import PricingPage from "@/pages/pricing";
 import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
+import StoresPage from "@/pages/stores";
+import ProAccountsPage from "@/pages/pro-accounts";
+import StaffPage from "@/pages/staff";
 import CustomerPortalPage from "@/pages/customer-portal";
 import TrackPage from "@/pages/track";
+import QuoteAcceptPage from "@/pages/quote";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
 import CourierRoutePage from "@/pages/courier-route";
@@ -54,6 +61,24 @@ function QuotationsRedirect() {
   return null;
 }
 
+function CommandOnlyRedirect() {
+  const [location, setLocation] = useLocation();
+  const { isCommandWorkspace, isLoading } = useStaffAccess();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const commandOnly =
+      location.startsWith("/stores") ||
+      location.startsWith("/pro-accounts") ||
+      location.startsWith("/settings") ||
+      location === "/partners" ||
+      location === "/pricing";
+    if (commandOnly && !isCommandWorkspace) setLocation("/dashboard");
+  }, [isCommandWorkspace, isLoading, location, setLocation]);
+
+  return null;
+}
+
 function AuthenticatedApp() {
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -67,12 +92,14 @@ function AuthenticatedApp() {
         <div className="flex flex-col flex-1 overflow-hidden bg-background">
           <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-4">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <LocationChip className="min-w-0 flex-1" />
             <div className="flex items-center gap-2">
               <InstallExtensionButton />
               <ThemeToggle />
             </div>
           </header>
           <main className="flex-1 overflow-auto p-4 md:p-6">
+            <CommandOnlyRedirect />
             <Switch>
               <Route path="/dashboard" component={DashboardPage} />
               <Route path="/bookings/new" component={NewBookingPage} />
@@ -85,11 +112,15 @@ function AuthenticatedApp() {
               <Route path="/documents/:tab" component={DocumentsPage} />
               <Route path="/quotations" component={QuotationsRedirect} />
               <Route path="/quotations/:id/document" component={QuotationDocumentPage} />
+              <Route path="/enquiries" component={EnquiriesPage} />
               <Route path="/booking-requests" component={BookingRequestsPage} />
               <Route path="/customers" component={CustomersPage} />
               <Route path="/partners" component={PartnersPage} />
               <Route path="/pricing" component={PricingPage} />
               <Route path="/reports" component={ReportsPage} />
+              <Route path="/stores" component={StoresPage} />
+              <Route path="/pro-accounts" component={ProAccountsPage} />
+              <Route path="/staff" component={StaffPage} />
               <Route path="/settings" component={SettingsPage} />
               <Route component={NotFound} />
             </Switch>
@@ -171,6 +202,7 @@ function Router() {
       <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route path="/track" component={TrackPage} />
       <Route path="/track/:ref" component={TrackPage} />
+      <Route path="/quote/:token" component={QuoteAcceptPage} />
       <Route path="/international-courier" component={InternationalCourierPage} />
       <Route path="/domestic-courier" component={DomesticCourierPage} />
       <Route path={/^\/courier-from-hyderabad-to-[a-z0-9-]+$/} component={CourierRoutePage} />

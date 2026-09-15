@@ -1,17 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
   Bell,
+  ClipboardList,
   Clock3,
+  Loader2,
   Package,
   PackageCheck,
+  Receipt,
   Truck,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
-import { storeTypeLabel, todayIsoDate } from "@shared/business-courier";
+import {
+  BUSINESS_ORDER_CHANNELS,
+  pickupStyleLabel,
+  storeTypeLabel,
+  todayIsoDate,
+} from "@shared/business-courier";
 import { businessApi } from "./business-api";
 
 type BookingRow = {
@@ -24,16 +30,44 @@ type BookingRow = {
   tracking?: { overallStatusLabel?: string };
 };
 
+type StoreOrder = {
+  id: string;
+  channel: string;
+  receiverName: string;
+  receiverPhone: string;
+  receiverCity?: string | null;
+  contentDescription?: string | null;
+  status: string;
+};
+
+type PendingQuote = {
+  id: string;
+  quotationNumber: string;
+  totalAmount: string;
+  acceptToken?: string | null;
+  senderCity?: string | null;
+  receiverCity?: string | null;
+  status: string;
+};
+
 type TodayPayload = {
   pickupDay: boolean;
+  pickupStyle?: "standing" | "on_demand";
   profile: {
     companyName?: string;
+    storeName?: string;
     storeType?: string;
     pickupTimeSlot?: string | null;
-    pickupAddress?: string;
+    pickupStyle?: "standing" | "on_demand";
   };
   jobs: Array<{ status: string }>;
-  destinations: unknown[];
+};
+
+const ORDER_STATUS: Record<string, string> = {
+  open: "Open",
+  pickup_requested: "On pickup",
+  booked: "Booked",
+  cancelled: "Cancelled",
 };
 
 function inTransitCount(items: BookingRow[]) {
@@ -42,12 +76,18 @@ function inTransitCount(items: BookingRow[]) {
   ).length;
 }
 
+function channelLabel(channel: string) {
+  return BUSINESS_ORDER_CHANNELS.find((item) => item.id === channel)?.label || channel;
+}
+
 export function ProHome({
   token,
   userName,
   onPickup,
+  onOrders,
   onCustomers,
   onShipments,
+  onBills,
   onSchedule,
   onNotifications,
   onOpenBooking,
@@ -55,12 +95,15 @@ export function ProHome({
   token: string;
   userName?: string;
   onPickup: () => void;
+  onOrders: () => void;
   onCustomers: () => void;
   onShipments: () => void;
+  onBills: () => void;
   onSchedule: () => void;
   onNotifications: () => void;
   onOpenBooking: (id: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const firstName = userName?.trim().split(/\s+/)[0] || "Mover";
   const date = todayIsoDate();
   const api = businessApi(token);
@@ -73,6 +116,14 @@ export function ProHome({
     queryKey: ["/api/customer/business/destinations"],
     queryFn: () => api.destinations() as Promise<unknown[]>,
   });
+  const ordersQuery = useQuery({
+    queryKey: ["/api/customer/business/orders"],
+    queryFn: () => api.orders() as Promise<StoreOrder[]>,
+  });
+  const billsQuery = useQuery({
+    queryKey: ["/api/customer/business/bills"],
+    queryFn: () => api.bills() as Promise<{ outstandingTotal: string; outstandingCount: number }>,
+  });
   const bookings = useQuery({
     queryKey: ["/api/customer/bookings", token],
     queryFn: async () => {
@@ -82,6 +133,17 @@ export function ProHome({
       if (!res.ok) throw new Error("Could not load shipments");
       return (await res.json()) as BookingRow[];
     },
+  });
+  const quotes = useQuery({
+    queryKey: ["/api/customer/quotations", token],
+    queryFn: async () => {
+      const res = await fetch("/api/customer/quotations", {
+        headers: { "x-customer-token": token },
+      });
+      if (!res.ok) return [] as PendingQuote[];
+      return (await res.json()) as PendingQuote[];
+    },
+    refetchInterval: 15_000,
   });
   const notifications = useQuery({
     queryKey: ["/api/customer/notifications", token],
@@ -96,135 +158,286 @@ export function ProHome({
   });
 
   const items = bookings.data || [];
+  const orders = ordersQuery.data || [];
+  const openOrders = orders.filter((order) => order.status === "open");
   const unread = (notifications.data || []).filter((item) => !item.readAt).length;
+  const pendingQuotes = (quotes.data || []).filter((item) => item.status === "sent");
+  const refreshAfterQuote = () => {
+    void queryClient.invalidateQueries({ queryKey: ["/api/customer/quotations", token] });
+    void queryClient.invalidateQueries({ queryKey: ["/api/customer/bookings", token] });
+    void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/bills"] });
+  };
+  const acceptQuoteById = async (id: string) => {
+    const res = await fetch(`/api/customer/quotations/${id}/accept`, {
+      method: "POST",
+      headers: { "x-customer-token": token },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || "Could not accept quote");
+    return body;
+  };
+  const acceptQuote = useMutation({
+    mutationFn: acceptQuoteById,
+    onSuccess: refreshAfterQuote,
+  });
+  const acceptAllQuotes = useMutation({
+    mutationFn: async () => {
+      for (const quote of pendingQuotes) {
+        await acceptQuoteById(quote.id);
+      }
+    },
+    onSuccess: refreshAfterQuote,
+  });
   const planned = (todayQuery.data?.jobs || []).filter((job) => job.status === "planned").length;
   const submitted = (todayQuery.data?.jobs || []).filter((job) => job.status === "submitted").length;
-  const pickupDay = Boolean(todayQuery.data?.pickupDay);
   const profile = todayQuery.data?.profile;
+  const pickupStyle = todayQuery.data?.pickupStyle || profile?.pickupStyle || "standing";
+  const storeLabel = profile?.storeName || profile?.companyName || XGOO_MODULES.pro.name;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-5 md:px-6">
-      <div className="flex items-start justify-between gap-3">
+    <div className="space-y-6 py-5" data-testid="business-home">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-zinc-500">Good day,</p>
-          <h1 className="text-2xl font-extrabold tracking-tight text-zinc-900">
-            {firstName} 👋
-          </h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#FF4907]">Dashboard</p>
+          <h1 className="mt-1 text-2xl font-bold text-zinc-900">Good day, {firstName}</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            {profile?.companyName || XGOO_MODULES.pro.name} · {XGOO_MODULES.pro.meaning}.
+            {storeLabel}
+            {profile?.storeType ? ` · ${storeTypeLabel(profile.storeType)}` : ""}
+            {profile?.pickupTimeSlot
+              ? ` · ${pickupStyleLabel(pickupStyle)} ${profile.pickupTimeSlot}`
+              : ""}
+            {submitted ? ` · ${submitted} parcel${submitted === 1 ? "" : "s"} already sent` : ""}
           </p>
         </div>
         <button
           type="button"
           onClick={onNotifications}
-          className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700"
+          className="relative inline-flex h-10 w-10 items-center justify-center border border-zinc-200 bg-white text-zinc-700"
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
           {unread ? (
-            <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-[#FF4907] px-1 text-center text-[10px] font-bold text-white">
+            <span className="absolute -right-1 -top-1 min-w-[16px] rounded-full bg-[#FF4907] px-1 text-center text-[10px] font-bold text-white">
               {unread > 9 ? "9+" : unread}
             </span>
           ) : null}
         </button>
       </div>
 
-      <Card className="border-zinc-100 bg-gradient-to-br from-[#FF4907] to-[#ff8a3d] p-5 text-white shadow-none">
-        <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
-          {pickupDay ? "Pickup day" : "Scheduled pickup"}
-        </p>
-        <p className="mt-1 text-lg font-bold">
-          {pickupDay
-            ? `${planned} parcel${planned === 1 ? "" : "s"} ready for collection`
-            : "Today is not a pickup day on your schedule"}
-        </p>
-        <p className="mt-1 text-sm text-white/85">
-          {profile?.pickupTimeSlot
-            ? `Standing pickup ${profile.pickupTimeSlot} · ${storeTypeLabel(profile.storeType)}`
-            : "Set a standing pickup so XGoo can collect from your store."}
-          {submitted ? ` · ${submitted} already sent to XGoo` : ""}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            className="rounded-none bg-white text-[#FF4907] hover:bg-white/90"
-            onClick={pickupDay ? onPickup : onSchedule}
-          >
-            {pickupDay ? "Request pickup" : "Edit schedule"}
-          </Button>
-          <Button
-            variant="ghost"
-            className="rounded-none text-white hover:bg-white/10 hover:text-white"
-            onClick={onCustomers}
-          >
-            Manage customers
-          </Button>
-        </div>
-      </Card>
-
-      <div>
-        <p className="mb-3 text-sm font-semibold text-zinc-900">Quick actions</p>
-        <div className="flex flex-wrap gap-4">
-          <QuickAction icon={Package} label="Request pickup" onClick={onPickup} accent />
-          <QuickAction icon={Users} label="Customers" onClick={onCustomers} />
-          <QuickAction icon={Truck} label="Shipments" onClick={onShipments} />
-          <QuickAction icon={Clock3} label="Schedule" onClick={onSchedule} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard value={customersQuery.data?.length || 0} label="Customers" />
-        <StatCard value={inTransitCount(items)} label="In transit" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <StatCard label="Open orders" value={openOrders.length} onClick={onOrders} />
+        <StatCard label="Today's pickup" value={planned} onClick={onPickup} />
+        <StatCard label="In transit" value={inTransitCount(items)} onClick={onShipments} />
         <StatCard
-          value={items.filter((item) => item.status === "delivered").length}
-          label="Delivered"
+          label="Due to XGoo"
+          value={`₹${Number(billsQuery.data?.outstandingTotal || 0).toLocaleString("en-IN")}`}
+          onClick={onBills}
+        />
+        <StatCard
+          label="Customers"
+          value={customersQuery.data?.length || 0}
+          onClick={onCustomers}
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-zinc-900">All shipments</p>
-        <button
-          type="button"
-          onClick={onShipments}
-          className="inline-flex items-center gap-1 text-xs font-bold text-[#FF4907]"
-        >
-          Track all
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-zinc-900">Quick actions</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <QuickAction icon={ClipboardList} label="Record an order" onClick={onOrders} accent />
+          <QuickAction icon={Package} label="Request pickup" onClick={onPickup} />
+          <QuickAction icon={Users} label="Customers" onClick={onCustomers} />
+          <QuickAction icon={Truck} label="Shipments" onClick={onShipments} />
+          <QuickAction icon={Receipt} label="Bills" onClick={onBills} />
+          <QuickAction icon={Clock3} label="Schedule" onClick={onSchedule} />
+        </div>
+      </section>
 
-      <div className="space-y-3">
-        {items.slice(0, 5).map((booking) => (
-          <button
-            key={booking.id}
-            type="button"
-            onClick={() => onOpenBooking(booking.id)}
-            className="w-full rounded-2xl border border-zinc-100 bg-white p-4 text-left shadow-sm"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-mono text-sm font-bold text-zinc-900">{booking.requestNumber}</p>
-              <span className="text-xs font-medium text-zinc-500">
-                {booking.tracking?.overallStatusLabel || booking.status.replace(/_/g, " ")}
-              </span>
+      {pendingQuotes.length > 0 ? (
+        <section className="overflow-auto border border-[#FF4907]/30 bg-white">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#FF4907]/20 px-3 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Final quotations</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Approve these inspected amounts to add them to Bills. The partner packs only after you accept.
+              </p>
             </div>
-            <p className="mt-1 text-sm text-zinc-600">
-              {booking.receiverName || "Customer"} · {booking.receiverCity || "Destination"}
-            </p>
+            {pendingQuotes.length > 1 ? (
+              <Button
+                size="sm"
+                className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                disabled={acceptAllQuotes.isPending || acceptQuote.isPending}
+                onClick={() => acceptAllQuotes.mutate()}
+              >
+                {acceptAllQuotes.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accept all to Bills"}
+              </Button>
+            ) : null}
+          </div>
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead className="bg-[#FFF7F3] text-left text-xs font-semibold uppercase tracking-wide text-[#FF4907]">
+              <tr className="border-b border-[#FF4907]/20">
+                <th className="px-3 py-2.5 font-semibold">Quote ready</th>
+                <th className="px-3 py-2.5 font-semibold">Route</th>
+                <th className="px-3 py-2.5 font-semibold">Amount</th>
+                <th className="px-3 py-2.5 font-semibold"> </th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingQuotes.map((quote) => (
+                <tr key={quote.id} className="border-b border-zinc-100">
+                  <td className="px-3 py-2 font-semibold text-zinc-900">{quote.quotationNumber}</td>
+                  <td className="px-3 py-2 text-zinc-600">
+                    {[quote.senderCity, quote.receiverCity].filter(Boolean).join(" → ") || "Pickup quote"}
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-zinc-900">₹{quote.totalAmount}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                        disabled={acceptQuote.isPending}
+                        onClick={() => acceptQuote.mutate(quote.id)}
+                      >
+                        {acceptQuote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accept to Bills"}
+                      </Button>
+                      {quote.acceptToken ? (
+                        <Button size="sm" variant="outline" className="rounded-none" asChild>
+                          <a href={`/quote/${quote.acceptToken}`}>Review</a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-900">Store orders</h2>
+          <button type="button" onClick={onOrders} className="text-xs font-bold text-[#FF4907]">
+            Record or view all
           </button>
-        ))}
-        {!bookings.isLoading && items.length === 0 ? (
-          <Card className="flex flex-col items-center border-zinc-100 p-8 text-center shadow-none">
-            <PackageCheck className="h-8 w-8 text-[#FF4907]" />
-            <p className="mt-3 font-semibold text-zinc-900">No shipments yet</p>
-            <p className="mt-1 text-sm text-zinc-500">
-              Add parcels on Pickup for a saved customer or a new customer, then request collection.
-            </p>
-            <Button className="mt-4 rounded-none bg-[#FF4907] hover:bg-[#e03d00]" onClick={onPickup}>
-              Request pickup
-            </Button>
-          </Card>
-        ) : null}
-      </div>
+        </div>
+        <div className="overflow-auto border border-zinc-200 bg-white">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <tr className="border-b border-zinc-200">
+                <th className="px-3 py-2.5 font-semibold">Via</th>
+                <th className="px-3 py-2.5 font-semibold">Customer</th>
+                <th className="px-3 py-2.5 font-semibold">Phone</th>
+                <th className="px-3 py-2.5 font-semibold">City</th>
+                <th className="px-3 py-2.5 font-semibold">Item</th>
+                <th className="px-3 py-2.5 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.slice(0, 8).map((order) => (
+                <tr
+                  key={order.id}
+                  className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                  onClick={onOrders}
+                >
+                  <td className="px-3 py-2 text-zinc-600">{channelLabel(order.channel)}</td>
+                  <td className="px-3 py-2 font-medium text-zinc-900">{order.receiverName}</td>
+                  <td className="px-3 py-2 text-zinc-600">{order.receiverPhone}</td>
+                  <td className="px-3 py-2 text-zinc-600">{order.receiverCity || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-600">{order.contentDescription || "Store order"}</td>
+                  <td className="px-3 py-2 text-xs font-semibold text-[#FF4907]">
+                    {ORDER_STATUS[order.status] || order.status}
+                  </td>
+                </tr>
+              ))}
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center">
+                    <p className="font-medium text-zinc-900">No courier orders yet</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      Record WhatsApp, call, or DM orders so they are ready for pickup.
+                    </p>
+                    <Button className="mt-4 rounded-none bg-[#FF4907] hover:bg-[#e03d00]" onClick={onOrders}>
+                      Record an order
+                    </Button>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-900">Shipments</h2>
+          <button type="button" onClick={onShipments} className="text-xs font-bold text-[#FF4907]">
+            Track all
+          </button>
+        </div>
+        <div className="overflow-auto border border-zinc-200 bg-white">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <tr className="border-b border-zinc-200">
+                <th className="px-3 py-2.5 font-semibold">Booking</th>
+                <th className="px-3 py-2.5 font-semibold">Customer</th>
+                <th className="px-3 py-2.5 font-semibold">From</th>
+                <th className="px-3 py-2.5 font-semibold">To</th>
+                <th className="px-3 py-2.5 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.slice(0, 8).map((booking) => (
+                <tr
+                  key={booking.id}
+                  className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                  onClick={() => onOpenBooking(booking.id)}
+                >
+                  <td className="px-3 py-2 font-mono font-semibold text-zinc-900">{booking.requestNumber}</td>
+                  <td className="px-3 py-2 text-zinc-700">{booking.receiverName || "Customer"}</td>
+                  <td className="px-3 py-2 text-zinc-600">{booking.senderCity || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-600">{booking.receiverCity || "—"}</td>
+                  <td className="px-3 py-2 text-xs font-medium text-zinc-500">
+                    {booking.tracking?.overallStatusLabel || booking.status.replace(/_/g, " ")}
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center">
+                    <PackageCheck className="mx-auto h-7 w-7 text-[#FF4907]" />
+                    <p className="mt-3 font-medium text-zinc-900">No shipments yet</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      After pickup and quote acceptance, bookings appear here.
+                    </p>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="border border-zinc-200 bg-white px-4 py-4 text-left hover:border-[#FF4907]/40"
+    >
+      <p className="text-2xl font-extrabold text-zinc-900">{value}</p>
+      <p className="mt-1 text-xs font-medium text-zinc-500">{label}</p>
+    </button>
   );
 }
 
@@ -240,26 +453,21 @@ function QuickAction({
   accent?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-24 flex-col items-center gap-2">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 border border-zinc-200 bg-white px-3 py-3 text-left hover:border-[#FF4907]/40"
+    >
       <span
         className={
           accent
-            ? "flex h-14 w-14 items-center justify-center rounded-full bg-[#FF4907] text-white"
-            : "flex h-14 w-14 items-center justify-center rounded-full bg-[#FF4907]/10 text-[#FF4907]"
+            ? "flex h-10 w-10 shrink-0 items-center justify-center bg-[#FF4907] text-white"
+            : "flex h-10 w-10 shrink-0 items-center justify-center bg-[#FFF7F3] text-[#FF4907]"
         }
       >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
       </span>
-      <span className="text-center text-xs font-semibold text-zinc-800">{label}</span>
+      <span className="text-sm font-semibold text-zinc-800">{label}</span>
     </button>
-  );
-}
-
-function StatCard({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-100 bg-white p-3">
-      <p className="text-xl font-extrabold text-zinc-900">{value}</p>
-      <p className="text-[11px] font-medium text-zinc-500">{label}</p>
-    </div>
   );
 }

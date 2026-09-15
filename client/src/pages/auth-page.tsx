@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
 import { XGOO_BRAND, XGOO_CUSTOMER_MODULES, XGOO_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { SEO_PAGES } from "@/lib/seo";
+import { setOpsWorkspace } from "@/lib/ops-workspace";
+import { useAuth } from "@/hooks/use-auth";
 
 const PARTNERS = ["DTDC", "FedEx", "Blue Dart", "Delhivery", "Ecom Express"];
 
@@ -88,10 +90,11 @@ function VisualPanel() {
           <h2 className="text-3xl xl:text-[2.75rem] font-bold text-white leading-tight tracking-tight">
             One platform
             <br />
-            for all shipments
+            for all movement
           </h2>
           <p className="mt-4 max-w-md text-base text-white/85 leading-relaxed">
-            Single dashboard for booking, tracking, billing, and courier partner management.
+            XGoo Command controls every app and store. XGoo Hub runs one location — bookings,
+            customers, and store staff.
           </p>
 
           <div className="mt-10 pt-8 border-t border-white/20">
@@ -115,7 +118,16 @@ export default function AuthPage() {
   const search = useSearch();
   const moduleParam = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("module");
   const opsModule = moduleParam === "command" ? XGOO_MODULES.command : XGOO_MODULES.hub;
+  const { isAuthenticated } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
+  }, [opsModule.id]);
+
+  useEffect(() => {
+    if (isAuthenticated) setLocation("/dashboard");
+  }, [isAuthenticated, setLocation]);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -128,6 +140,7 @@ export default function AuthPage() {
     if (error) {
       toast({ title: "Error signing in", description: error.message, variant: "destructive" });
     } else {
+      setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
       setLocation("/dashboard");
     }
     setLoading(false);
@@ -156,6 +169,7 @@ export default function AuthPage() {
 
   async function handleGoogleSignIn() {
     setLoading(true);
+    setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -242,8 +256,8 @@ export default function AuthPage() {
 
               <p className="text-center text-sm text-stone-600 pt-4 pb-1">
               {opsModule.id === "command"
-                ? "XGoo Command is invitation-only. Contact the Super Admin for central access."
-                : "XGoo Hub access is invitation-only. Contact the Super Admin to join your branch."}
+                ? "XGoo Command is Super Admin only. It controls every XGoo app, store, staff access, and store revenue."
+                : "XGoo Hub is for one store. Book shipments, manage customers, and assign staff for this location only."}
               </p>
 
               <Button

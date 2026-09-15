@@ -16,10 +16,14 @@ import {
   Copy,
   Check,
   Calculator,
+  Building2,
+  Store,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useAuth } from "@/hooks/use-auth";
+import { clearOpsWorkspace } from "@/lib/ops-workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -37,19 +41,91 @@ import {
 } from "@/components/ui/sidebar";
 import type { Office, BookingRequest } from "@shared/schema";
 
-const mainNavItems = [
+const hubNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
   { title: "Shipments", url: "/shipments", icon: Package },
   { title: "Documents", url: "/documents", icon: Files },
-  { title: "Booking Requests", url: "/booking-requests", icon: Inbox },
+  { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
-  { title: "Courier Partners", url: "/partners", icon: Truck },
-  { title: "Price Estimator", url: "/pricing", icon: Calculator },
   { title: "Reports", url: "/reports", icon: FileText },
 ];
 
-const settingsNavItems = [{ title: "Settings", url: "/settings", icon: Settings }];
+const commandControlItems = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Stores", url: "/stores", icon: Building2 },
+  { title: "Pro accounts", url: "/pro-accounts", icon: Store },
+  { title: "Staff", url: "/staff", icon: Users },
+  { title: "Reports", url: "/reports", icon: FileText },
+  { title: "Settings", url: "/settings", icon: Settings },
+];
+
+type NavDef = { title: string; url: string; icon: typeof LayoutDashboard };
+
+function navIsActive(url: string, location: string) {
+  if (url === "/" || url === "/dashboard") {
+    return location === "/" || location === "/dashboard";
+  }
+  if (url === "/documents") return location.startsWith("/documents");
+  if (url === "/enquiries") return location === "/enquiries" || location === "/booking-requests";
+  return location === url;
+}
+
+function NavItem({
+  item,
+  location,
+  pendingRequestCount,
+  pendingProCount = 0,
+}: {
+  item: NavDef;
+  location: string;
+  pendingRequestCount: number;
+  pendingProCount?: number;
+}) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip={item.title}
+        isActive={navIsActive(item.url, location)}
+      >
+        <Link
+          href={item.url}
+          data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+          className="relative"
+        >
+          <item.icon className="size-4 shrink-0" />
+          <span>{item.title}</span>
+          {item.url === "/enquiries" && pendingRequestCount > 0 && (
+            <span
+              className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
+              data-testid="badge-pending-booking-requests"
+            >
+              {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
+            </span>
+          )}
+          {item.url === "/pro-accounts" && pendingProCount > 0 && (
+            <span
+              className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
+              data-testid="badge-pending-pro-accounts"
+            >
+              {pendingProCount > 99 ? "99+" : pendingProCount}
+            </span>
+          )}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+const commandOpsItems = [
+  { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
+  { title: "Shipments", url: "/shipments", icon: Package },
+  { title: "Enquiries", url: "/enquiries", icon: Inbox },
+  { title: "Customers", url: "/customers", icon: Users },
+  { title: "Courier Partners", url: "/partners", icon: Truck },
+  { title: "Price Estimator", url: "/pricing", icon: Calculator },
+];
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
@@ -59,9 +135,7 @@ export function AppSidebar() {
   const { data: office } = useQuery<Office | null>({
     queryKey: ["/api/office"],
   });
-  const { data: staffAccess } = useQuery<{ isSuperAdmin: boolean }>({
-    queryKey: ["/api/staff/me"],
-  });
+  const { isCommandWorkspace, canManageHubStaff } = useStaffAccess();
 
   const { data: bookingRequests } = useQuery<BookingRequest[]>({
     queryKey: ["/api/booking-requests"],
@@ -70,8 +144,17 @@ export function AppSidebar() {
     refetchInterval: 20_000,
   });
 
+  const { data: proAccounts } = useQuery<{ accounts: Array<{ verificationStatus: string }> }>({
+    queryKey: ["/api/command/pro-accounts"],
+    enabled: isCommandWorkspace,
+    staleTime: 0,
+    refetchInterval: 20_000,
+  });
+
   const pendingRequestCount =
     bookingRequests?.filter((r) => r.status === "pending" || r.status === "reviewed").length ?? 0;
+  const pendingProCount =
+    proAccounts?.accounts.filter((account) => account.verificationStatus === "pending").length ?? 0;
 
   const getInitials = (name?: string | null) => {
     if (!name) return "U";
@@ -109,6 +192,7 @@ export function AppSidebar() {
   };
 
   const handleLogout = async () => {
+    clearOpsWorkspace();
     await logout();
     setLocation("/");
   };
@@ -121,18 +205,16 @@ export function AppSidebar() {
             <SidebarMenuButton
               size="lg"
               asChild
-              tooltip={staffAccess?.isSuperAdmin ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
+              tooltip={isCommandWorkspace ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
             >
               <Link href="/" data-testid="link-home">
                 <img src={xgooLogo} alt="XGoo" className="size-8 shrink-0 object-contain" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">
-                    {staffAccess?.isSuperAdmin ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
+                    {isCommandWorkspace ? XGOO_MODULES.command.name : XGOO_MODULES.hub.name}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {staffAccess?.isSuperAdmin
-                      ? XGOO_MODULES.command.meaning
-                      : XGOO_MODULES.hub.meaning}
+                    {isCommandWorkspace ? XGOO_MODULES.command.meaning : XGOO_MODULES.hub.meaning}
                   </span>
                 </div>
               </Link>
@@ -144,43 +226,65 @@ export function AppSidebar() {
       <SidebarSeparator />
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Operations</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={item.title}
-                    isActive={
-                      item.url === "/documents"
-                        ? location.startsWith("/documents")
-                        : location === item.url
-                    }
-                  >
-                    <Link
-                      href={item.url}
-                      data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                      className="relative"
-                    >
-                      <item.icon className="size-4 shrink-0" />
-                      <span>{item.title}</span>
-                      {item.url === "/booking-requests" && pendingRequestCount > 0 && (
-                        <span
-                          className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
-                          data-testid="badge-pending-booking-requests"
-                        >
-                          {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
-                        </span>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {isCommandWorkspace ? (
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel>Command</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {commandControlItems.map((item) => (
+                    <NavItem
+                      key={item.title}
+                      item={item}
+                      location={location}
+                      pendingRequestCount={pendingRequestCount}
+                      pendingProCount={pendingProCount}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Store operations</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {commandOpsItems.map((item) => (
+                    <NavItem
+                      key={item.title}
+                      item={item}
+                      location={location}
+                      pendingRequestCount={pendingRequestCount}
+                      pendingProCount={pendingProCount}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        ) : (
+          <SidebarGroup>
+            <SidebarGroupLabel>Store</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {hubNavItems.map((item) => (
+                  <NavItem
+                    key={item.title}
+                    item={item}
+                    location={location}
+                    pendingRequestCount={pendingRequestCount}
+                  />
+                ))}
+                {canManageHubStaff ? (
+                  <NavItem
+                    item={{ title: "Staff", url: "/staff", icon: Users }}
+                    location={location}
+                    pendingRequestCount={pendingRequestCount}
+                  />
+                ) : null}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>{XGOO_MODULES.go.name} / {XGOO_MODULES.pro.shortName}</SidebarGroupLabel>
@@ -213,28 +317,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {staffAccess?.isSuperAdmin ? (
-          <SidebarGroup>
-            <SidebarGroupLabel>Settings</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {settingsNavItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild tooltip={item.title} isActive={location === item.url}>
-                      <Link
-                        href={item.url}
-                        data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        <item.icon className="size-4 shrink-0" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ) : null}
       </SidebarContent>
 
       <SidebarFooter>

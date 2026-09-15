@@ -11,7 +11,9 @@
     "db:push": "drizzle-kit push",
     "mobile": "npm --prefix mobile start",
     "mobile:android": "npm --prefix mobile run android",
-    "mobile:ios": "npm --prefix mobile run ios"
+    "mobile:ios": "npm --prefix mobile run ios",
+    "pickup": "npm --prefix mobile-partner start",
+    "pickup:android": "npm --prefix mobile-partner run android"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

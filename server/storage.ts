@@ -19,6 +19,10 @@ import {
   customerNotifications,
   bookingJobs,
   bookingEvents,
+  pickupPartners,
+  pickupPartnerSessions,
+  pickupPartnerPushTokens,
+  pickupJobs,
   type Office,
   type InsertOffice,
   type Branch,
@@ -59,6 +63,13 @@ import {
   type InsertBookingJob,
   type BookingEvent,
   type InsertBookingEvent,
+  type PickupPartner,
+  type InsertPickupPartner,
+  type PickupPartnerSession,
+  type InsertPickupPartnerSession,
+  type PickupPartnerPushToken,
+  type PickupJob,
+  type InsertPickupJob,
   type ShipmentWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -118,6 +129,13 @@ export function ensureBookingPackageColumns() {
       `);
       await db.execute(sql`
         ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS package_items text[]
+      `);
+      await db.execute(sql`
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS sender_address_line2 text;
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS receiver_address_line2 text;
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS sender_address_line2 text;
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS receiver_address_line2 text;
+        ALTER TABLE customer_addresses ADD COLUMN IF NOT EXISTS address_line2 text;
       `);
     });
   }
@@ -229,6 +247,8 @@ export interface IStorage {
   // Payment operations
   createPayment(payment: InsertPayment): Promise<Payment>;
   getPaymentByShipment(shipmentId: string): Promise<Payment | undefined>;
+  getPaymentByQuotation(quotationId: string): Promise<Payment | undefined>;
+  getLatestQuotationForBooking(bookingRequestId: string): Promise<Quotation | undefined>;
 
   // Invoice operations
   createInvoice(invoice: InsertInvoice): Promise<Invoice>;
@@ -250,9 +270,9 @@ export interface IStorage {
   getBookingRequestByShipmentId(shipmentId: string): Promise<BookingRequest | undefined>;
 
   // Customer User operations
-  getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined>;
-  getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined>;
-  getCustomerUserByGoogleId(officeId: string, googleId: string): Promise<CustomerUser | undefined>;
+  getCustomerUserByPhone(officeId: string, phone: string, accountType?: string): Promise<CustomerUser | undefined>;
+  getCustomerUserByEmail(officeId: string, email: string, accountType?: string): Promise<CustomerUser | undefined>;
+  getCustomerUserByGoogleId(officeId: string, googleId: string, accountType?: string): Promise<CustomerUser | undefined>;
   getCustomerUser(id: string): Promise<CustomerUser | undefined>;
   createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser>;
   updateCustomerUser(id: string, data: Partial<InsertCustomerUser>): Promise<CustomerUser | undefined>;
@@ -306,6 +326,19 @@ export interface IStorage {
     todayBookingRequests: number;
     statusCounts: Record<string, number>;
   }>;
+  getStoreRevenueSummaries(officeId: string): Promise<Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    isActive: boolean | null;
+    isPrimary: boolean | null;
+    todayBookings: number;
+    todayRevenue: string;
+    weekBookings: number;
+    weekRevenue: string;
+    monthBookings: number;
+    monthRevenue: string;
+  }>>;
 
   // Reports
   getReportData(officeId: string, from: string, to: string): Promise<{
@@ -328,6 +361,26 @@ export interface IStorage {
   }>;
   seedData(officeId: string): Promise<void>;
   clearDemoData(officeId: string): Promise<void>;
+
+  getPickupPartnersByOffice(officeId: string, branchId?: string | null): Promise<PickupPartner[]>;
+  getPickupPartner(id: string): Promise<PickupPartner | undefined>;
+  getPickupPartnerByPhone(officeId: string, phone: string): Promise<PickupPartner | undefined>;
+  createPickupPartner(partner: InsertPickupPartner): Promise<PickupPartner>;
+  updatePickupPartner(id: string, data: Partial<InsertPickupPartner>): Promise<PickupPartner | undefined>;
+  createPickupPartnerSession(session: InsertPickupPartnerSession): Promise<PickupPartnerSession>;
+  getPickupPartnerSessionByToken(token: string): Promise<PickupPartnerSession | undefined>;
+  deletePickupPartnerSession(token: string): Promise<boolean>;
+  upsertPickupPartnerPushToken(partnerId: string, token: string, platform: string): Promise<PickupPartnerPushToken>;
+  getPickupPartnerPushTokens(partnerId: string): Promise<PickupPartnerPushToken[]>;
+  getPickupJob(id: string): Promise<PickupJob | undefined>;
+  getPickupJobByBookingRequest(bookingRequestId: string): Promise<PickupJob | undefined>;
+  getPickupJobsByPartner(partnerId: string): Promise<PickupJob[]>;
+  getPickupJobsByOffice(officeId: string, branchId?: string | null): Promise<PickupJob[]>;
+  createPickupJob(job: InsertPickupJob): Promise<PickupJob>;
+  updatePickupJob(id: string, data: Partial<InsertPickupJob>): Promise<PickupJob | undefined>;
+  getQuotationByAcceptToken(token: string): Promise<Quotation | undefined>;
+  getPendingQuotationsForCustomer(customerUserId: string): Promise<Quotation[]>;
+  getLatestSentQuotationByPhone(officeId: string, phone: string): Promise<Quotation | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -924,6 +977,21 @@ export class DatabaseStorage implements IStorage {
     return payment;
   }
 
+  async getPaymentByQuotation(quotationId: string): Promise<Payment | undefined> {
+    const [payment] = await db.select().from(payments).where(eq(payments.quotationId, quotationId));
+    return payment;
+  }
+
+  async getLatestQuotationForBooking(bookingRequestId: string): Promise<Quotation | undefined> {
+    const [quotation] = await db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.bookingRequestId, bookingRequestId))
+      .orderBy(desc(quotations.createdAt))
+      .limit(1);
+    return quotation;
+  }
+
   // Invoice operations
   async createInvoice(invoice: InsertInvoice): Promise<Invoice> {
     const [created] = await db.insert(invoices).values(invoice).returning();
@@ -1064,7 +1132,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Customer User operations
-  async getCustomerUserByPhone(officeId: string, phone: string): Promise<CustomerUser | undefined> {
+  async getCustomerUserByPhone(officeId: string, phone: string, accountType?: string): Promise<CustomerUser | undefined> {
     await ensureCustomerAccountTypeColumn();
     const digits = phone.replace(/\D/g, "");
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
@@ -1076,23 +1144,32 @@ export class DatabaseStorage implements IStorage {
           eq(customerUsers.phone, last10),
           eq(customerUsers.phone, digits),
         ),
+        accountType ? eq(customerUsers.accountType, accountType) : undefined,
       )
     );
     return user;
   }
 
-  async getCustomerUserByEmail(officeId: string, email: string): Promise<CustomerUser | undefined> {
+  async getCustomerUserByEmail(officeId: string, email: string, accountType?: string): Promise<CustomerUser | undefined> {
     await ensureCustomerAccountTypeColumn();
     const [user] = await db.select().from(customerUsers).where(
-      and(eq(customerUsers.officeId, officeId), eq(customerUsers.email, email))
+      and(
+        eq(customerUsers.officeId, officeId),
+        eq(customerUsers.email, email),
+        accountType ? eq(customerUsers.accountType, accountType) : undefined,
+      )
     );
     return user;
   }
 
-  async getCustomerUserByGoogleId(officeId: string, googleId: string): Promise<CustomerUser | undefined> {
+  async getCustomerUserByGoogleId(officeId: string, googleId: string, accountType?: string): Promise<CustomerUser | undefined> {
     await ensureCustomerAccountTypeColumn();
     const [user] = await db.select().from(customerUsers).where(
-      and(eq(customerUsers.officeId, officeId), eq(customerUsers.googleId, googleId))
+      and(
+        eq(customerUsers.officeId, officeId),
+        eq(customerUsers.googleId, googleId),
+        accountType ? eq(customerUsers.accountType, accountType) : undefined,
+      )
     );
     return user;
   }
@@ -1771,6 +1848,86 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  async getStoreRevenueSummaries(officeId: string) {
+    const storeList = await this.getBranchesByOffice(officeId);
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 6);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const periodTotals = async (from: Date) =>
+      db
+        .select({
+          branchId: shipments.branchId,
+          bookings: count(),
+          revenue: sum(shipments.totalAmount),
+        })
+        .from(shipments)
+        .where(
+          and(
+            eq(shipments.officeId, officeId),
+            gte(shipments.bookedAt, from),
+            lte(shipments.bookedAt, todayEnd),
+          ),
+        )
+        .groupBy(shipments.branchId);
+
+    const [todayRows, weekRows, monthRows] = await Promise.all([
+      periodTotals(todayStart),
+      periodTotals(weekStart),
+      periodTotals(monthStart),
+    ]);
+
+    const toMap = (rows: typeof todayRows) => {
+      const map = new Map<string, { bookings: number; revenue: string }>();
+      for (const row of rows) {
+        map.set(row.branchId || "__unassigned__", {
+          bookings: row.bookings,
+          revenue: row.revenue || "0",
+        });
+      }
+      return map;
+    };
+
+    const todayMap = toMap(todayRows);
+    const weekMap = toMap(weekRows);
+    const monthMap = toMap(monthRows);
+    const primaryId = storeList.find((store) => store.isPrimary)?.id;
+
+    const pick = (
+      map: Map<string, { bookings: number; revenue: string }>,
+      storeId: string,
+    ) => {
+      const direct = map.get(storeId);
+      if (direct) return direct;
+      if (storeId === primaryId) return map.get("__unassigned__") || { bookings: 0, revenue: "0" };
+      return { bookings: 0, revenue: "0" };
+    };
+
+    return storeList.map((store) => {
+      const today = pick(todayMap, store.id);
+      const week = pick(weekMap, store.id);
+      const month = pick(monthMap, store.id);
+      return {
+        id: store.id,
+        name: store.name,
+        city: store.city,
+        isActive: store.isActive,
+        isPrimary: store.isPrimary,
+        todayBookings: today.bookings,
+        todayRevenue: today.revenue,
+        weekBookings: week.bookings,
+        weekRevenue: week.revenue,
+        monthBookings: month.bookings,
+        monthRevenue: month.revenue,
+      };
+    });
+  }
+
   // Reports
   async getReportData(officeId: string, from: string, to: string): Promise<{
     dateWise: Array<{ date: string; bookings: number; revenue: string }>;
@@ -2338,6 +2495,177 @@ export class DatabaseStorage implements IStorage {
     for (const request of bookingRequestsData) {
       await this.createBookingRequest(request);
     }
+  }
+
+  async getPickupPartnersByOffice(officeId: string, branchId?: string | null): Promise<PickupPartner[]> {
+    return db
+      .select()
+      .from(pickupPartners)
+      .where(
+        branchId
+          ? and(eq(pickupPartners.officeId, officeId), eq(pickupPartners.branchId, branchId))
+          : eq(pickupPartners.officeId, officeId),
+      )
+      .orderBy(asc(pickupPartners.name));
+  }
+
+  async getPickupPartner(id: string): Promise<PickupPartner | undefined> {
+    const [partner] = await db.select().from(pickupPartners).where(eq(pickupPartners.id, id));
+    return partner;
+  }
+
+  async getPickupPartnerByPhone(officeId: string, phone: string): Promise<PickupPartner | undefined> {
+    const digits = phone.replace(/\D/g, "");
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    const [partner] = await db.select().from(pickupPartners).where(
+      and(
+        eq(pickupPartners.officeId, officeId),
+        or(
+          eq(pickupPartners.phone, phone),
+          eq(pickupPartners.phone, last10),
+          eq(pickupPartners.phone, digits),
+        ),
+      ),
+    );
+    return partner;
+  }
+
+  async createPickupPartner(partner: InsertPickupPartner): Promise<PickupPartner> {
+    const [created] = await db.insert(pickupPartners).values(partner).returning();
+    return created;
+  }
+
+  async updatePickupPartner(id: string, data: Partial<InsertPickupPartner>): Promise<PickupPartner | undefined> {
+    const [updated] = await db
+      .update(pickupPartners)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(pickupPartners.id, id))
+      .returning();
+    return updated;
+  }
+
+  async createPickupPartnerSession(session: InsertPickupPartnerSession): Promise<PickupPartnerSession> {
+    const [created] = await db.insert(pickupPartnerSessions).values(session).returning();
+    return created;
+  }
+
+  async getPickupPartnerSessionByToken(token: string): Promise<PickupPartnerSession | undefined> {
+    const [session] = await db.select().from(pickupPartnerSessions).where(
+      and(eq(pickupPartnerSessions.token, token), gte(pickupPartnerSessions.expiresAt, new Date())),
+    );
+    return session;
+  }
+
+  async deletePickupPartnerSession(token: string): Promise<boolean> {
+    await db.delete(pickupPartnerSessions).where(eq(pickupPartnerSessions.token, token));
+    return true;
+  }
+
+  async upsertPickupPartnerPushToken(
+    partnerId: string,
+    token: string,
+    platform: string,
+  ): Promise<PickupPartnerPushToken> {
+    const [saved] = await db
+      .insert(pickupPartnerPushTokens)
+      .values({ partnerId, token, platform })
+      .onConflictDoUpdate({
+        target: pickupPartnerPushTokens.token,
+        set: { partnerId, platform, updatedAt: new Date() },
+      })
+      .returning();
+    return saved;
+  }
+
+  async getPickupPartnerPushTokens(partnerId: string): Promise<PickupPartnerPushToken[]> {
+    return db.select().from(pickupPartnerPushTokens).where(eq(pickupPartnerPushTokens.partnerId, partnerId));
+  }
+
+  async getPickupJob(id: string): Promise<PickupJob | undefined> {
+    const [job] = await db.select().from(pickupJobs).where(eq(pickupJobs.id, id));
+    return job;
+  }
+
+  async getPickupJobByBookingRequest(bookingRequestId: string): Promise<PickupJob | undefined> {
+    const [job] = await db
+      .select()
+      .from(pickupJobs)
+      .where(eq(pickupJobs.bookingRequestId, bookingRequestId))
+      .orderBy(desc(pickupJobs.createdAt))
+      .limit(1);
+    return job;
+  }
+
+  async getPickupJobsByPartner(partnerId: string): Promise<PickupJob[]> {
+    return db
+      .select()
+      .from(pickupJobs)
+      .where(eq(pickupJobs.partnerId, partnerId))
+      .orderBy(desc(pickupJobs.createdAt));
+  }
+
+  async getPickupJobsByOffice(officeId: string, branchId?: string | null): Promise<PickupJob[]> {
+    return db
+      .select()
+      .from(pickupJobs)
+      .where(
+        branchId
+          ? and(eq(pickupJobs.officeId, officeId), eq(pickupJobs.branchId, branchId))
+          : eq(pickupJobs.officeId, officeId),
+      )
+      .orderBy(desc(pickupJobs.createdAt));
+  }
+
+  async createPickupJob(job: InsertPickupJob): Promise<PickupJob> {
+    const [created] = await db.insert(pickupJobs).values(job).returning();
+    return created;
+  }
+
+  async updatePickupJob(id: string, data: Partial<InsertPickupJob>): Promise<PickupJob | undefined> {
+    const [updated] = await db
+      .update(pickupJobs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(pickupJobs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getQuotationByAcceptToken(token: string): Promise<Quotation | undefined> {
+    const [quotation] = await db.select().from(quotations).where(eq(quotations.acceptToken, token));
+    return quotation;
+  }
+
+  async getLatestSentQuotationByPhone(officeId: string, phone: string): Promise<Quotation | undefined> {
+    const digits = phone.replace(/\D/g, "");
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    const [quotation] = await db
+      .select()
+      .from(quotations)
+      .where(
+        and(
+          eq(quotations.officeId, officeId),
+          eq(quotations.status, "sent"),
+          or(
+            eq(quotations.customerPhone, phone),
+            eq(quotations.customerPhone, last10),
+            eq(quotations.customerPhone, digits),
+          ),
+        ),
+      )
+      .orderBy(desc(quotations.createdAt))
+      .limit(1);
+    return quotation;
+  }
+
+  async getPendingQuotationsForCustomer(customerUserId: string): Promise<Quotation[]> {
+    const requests = await this.getBookingRequestsByCustomerUser(customerUserId);
+    const requestIds = requests.map((request) => request.id);
+    if (requestIds.length === 0) return [];
+    return db
+      .select()
+      .from(quotations)
+      .where(and(inArray(quotations.bookingRequestId, requestIds), eq(quotations.status, "sent")))
+      .orderBy(desc(quotations.createdAt));
   }
 }
 

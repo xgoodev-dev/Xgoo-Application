@@ -11,33 +11,33 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-type StaffAccess = {
-  officeId: string;
-  role: string;
-  branchId: string | null;
-  isSuperAdmin: boolean;
-};
+import { useStaffAccess } from "@/hooks/use-staff-access";
+import { XGOO_MODULES } from "@/components/marketing/site-info";
 
 const unassignedBranch = "__all__";
 
 export function StaffManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { access, isCommandWorkspace, canManageHubStaff, branchId: managerStoreId } = useStaffAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("staff");
-  const [branchId, setBranchId] = useState(unassignedBranch);
+  const [branchId, setBranchId] = useState(managerStoreId || unassignedBranch);
 
-  const { data: access } = useQuery<StaffAccess>({ queryKey: ["/api/staff/me"] });
   const { data: members = [], isLoading } = useQuery<OfficeMember[]>({
     queryKey: ["/api/staff-members"],
-    enabled: access?.isSuperAdmin === true,
+    enabled: canManageHubStaff,
   });
   const { data: branches = [] } = useQuery<BranchWithServiceAreas[]>({
     queryKey: ["/api/branches"],
+    enabled: isCommandWorkspace,
   });
+
+  const visibleMembers = isCommandWorkspace
+    ? members
+    : members.filter((member) => member.role !== "super_admin");
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["/api/staff-members"] });
@@ -47,13 +47,17 @@ export function StaffManagement() {
       apiRequest("POST", "/api/staff-members", {
         email,
         displayName,
-        role,
-        branchId: branchId === unassignedBranch ? null : branchId,
+        role: isCommandWorkspace ? role : "staff",
+        branchId: isCommandWorkspace
+          ? branchId === unassignedBranch ? null : branchId
+          : managerStoreId,
       }),
     onSuccess: () => {
       toast({
         title: "Staff member added",
-        description: "Access is linked to the XGoo organization. An invitation was sent when required.",
+        description: isCommandWorkspace
+          ? "Access is linked across XGoo Command. An invitation was sent when required."
+          : `Access is limited to this ${XGOO_MODULES.hub.name} store.`,
       });
       refresh();
       setDialogOpen(false);
@@ -84,13 +88,14 @@ export function StaffManagement() {
       toast({ title: "Could not remove staff", description: error.message, variant: "destructive" }),
   });
 
-  if (access && !access.isSuperAdmin) {
+  if (access && !canManageHubStaff) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Staff access</CardTitle>
           <CardDescription>
-            Only the XGoo Command Super Admin can manage XGoo Hub staff and branch assignments.
+            Ask your {XGOO_MODULES.hub.name} store manager or {XGOO_MODULES.command.name} Super
+            Admin to add staff for this store.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -104,10 +109,12 @@ export function StaffManagement() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              XGoo Hub staff
+              {isCommandWorkspace ? `${XGOO_MODULES.command.name} staff` : `${XGOO_MODULES.hub.name} staff`}
             </CardTitle>
             <CardDescription>
-              Add staff to this organization and assign their operating branch.
+              {isCommandWorkspace
+                ? `Control staff across every ${XGOO_MODULES.hub.name} store.`
+                : `Add staff for this ${XGOO_MODULES.hub.name} store only.`}
             </CardDescription>
           </div>
           <Button onClick={() => setDialogOpen(true)}>
@@ -121,8 +128,14 @@ export function StaffManagement() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading staff…
             </div>
+          ) : visibleMembers.length === 0 ? (
+            <p className="py-6 text-sm text-muted-foreground">
+              {isCommandWorkspace
+                ? "No Command staff yet."
+                : `No staff assigned to this ${XGOO_MODULES.hub.name} store yet.`}
+            </p>
           ) : (
-            members.map((member) => {
+            visibleMembers.map((member) => {
               const isOwner = member.role === "super_admin";
               return (
                 <div
@@ -144,6 +157,7 @@ export function StaffManagement() {
                   </div>
                   {!isOwner ? (
                     <>
+                      {isCommandWorkspace ? (
                       <Select
                         value={member.role}
                         onValueChange={(value) =>
@@ -155,9 +169,13 @@ export function StaffManagement() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="staff">Staff</SelectItem>
-                          <SelectItem value="branch_manager">Branch manager</SelectItem>
+                          <SelectItem value="branch_manager">Store manager</SelectItem>
                         </SelectContent>
                       </Select>
+                      ) : (
+                        <Badge variant="secondary">Store staff</Badge>
+                      )}
+                      {isCommandWorkspace ? (
                       <Select
                         value={member.branchId || unassignedBranch}
                         onValueChange={(value) =>
@@ -171,7 +189,7 @@ export function StaffManagement() {
                           <SelectValue placeholder="All branches" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={unassignedBranch}>All branches</SelectItem>
+                          <SelectItem value={unassignedBranch}>All stores</SelectItem>
                           {branches.map((branch) => (
                             <SelectItem key={branch.id} value={branch.id}>
                               {branch.name}
@@ -179,6 +197,7 @@ export function StaffManagement() {
                           ))}
                         </SelectContent>
                       </Select>
+                      ) : null}
                       <Button
                         variant="outline"
                         size="icon"
@@ -193,7 +212,7 @@ export function StaffManagement() {
                       </Button>
                     </>
                   ) : (
-                    <span className="text-sm text-muted-foreground">All branches</span>
+                    <span className="text-sm text-muted-foreground">{XGOO_MODULES.command.name}</span>
                   )}
                 </div>
               );
@@ -205,7 +224,9 @@ export function StaffManagement() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add XGoo staff member</DialogTitle>
+            <DialogTitle>
+              {isCommandWorkspace ? "Add Command staff" : `Add ${XGOO_MODULES.hub.name} staff`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -221,6 +242,7 @@ export function StaffManagement() {
                 onChange={(event) => setEmail(event.target.value)}
               />
             </div>
+            {isCommandWorkspace ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Role</Label>
@@ -228,16 +250,16 @@ export function StaffManagement() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="branch_manager">Branch manager</SelectItem>
+                    <SelectItem value="branch_manager">Store manager</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Branch</Label>
+                <Label>Store</Label>
                 <Select value={branchId} onValueChange={setBranchId}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={unassignedBranch}>All branches</SelectItem>
+                    <SelectItem value={unassignedBranch}>All stores</SelectItem>
                     {branches.map((branch) => (
                       <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
                     ))}
@@ -245,6 +267,7 @@ export function StaffManagement() {
                 </Select>
               </div>
             </div>
+            ) : null}
             <Button
               className="w-full"
               disabled={!displayName.trim() || !email.trim() || addMember.isPending}

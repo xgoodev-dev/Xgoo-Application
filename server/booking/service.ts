@@ -13,6 +13,7 @@ import type { BookingWorkflowStep } from "@shared/world-first";
 import { issueAutofillToken } from "./autofill-token";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { getDelhiveryConfigFromEnv, cancelDelhiveryShipment } from "../integrations/delhivery";
+import { notifyAwbCreated } from "../pickup-service";
 
 export class BookingEngineError extends Error {
   constructor(
@@ -257,13 +258,18 @@ export async function startBooking(input: {
         nextAction: "none",
         completedAt: new Date(),
       });
-      await storage.updateShipmentPartnerSync(shipment.id, {
+      const updatedShipment = await storage.updateShipmentPartnerSync(shipment.id, {
         partnerSyncStatus: "synced",
         externalAwb: result.awb || null,
         awbNumber: shipment.awbNumber?.trim() ? shipment.awbNumber : result.awb || null,
         partnerSyncError: null,
         partnerSyncedAt: new Date(),
       });
+      if (!shipment.awbNumber?.trim() && !shipment.externalAwb?.trim() && updatedShipment) {
+        void notifyAwbCreated(updatedShipment).catch((error) => {
+          console.error("AWB WhatsApp notify failed:", error);
+        });
+      }
       await log("complete", `Booked with AWB ${result.awb || "n/a"}`);
       return getBookingSnapshot(input.officeId, shipment.id);
     }

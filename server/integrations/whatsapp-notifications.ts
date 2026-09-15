@@ -32,13 +32,23 @@ type BookingRequestNotify = Pick<
 type ShipmentNotify = Pick<
   Shipment,
   "senderName" | "senderPhone" | "bookingNumber" | "senderCity" | "receiverCity" | "serviceType"
->;
+> & {
+  awbNumber?: string | null;
+  externalAwb?: string | null;
+};
 
 async function sendAutomatedWhatsApp(
   whatsappSettingsRaw: unknown,
   ruleKey: WhatsAppMessageTypeKey,
   toPhone: string,
-  values: { name: string; requestNumber: string; route?: string; bookingNumber?: string },
+  values: {
+    name: string;
+    requestNumber: string;
+    route?: string;
+    bookingNumber?: string;
+    trackUrl?: string;
+    invoiceNumber?: string;
+  },
   fallbackText: string,
 ): Promise<void> {
   const settings = mergeWhatsAppSettings(whatsappSettingsRaw);
@@ -152,6 +162,161 @@ export function triggerBookingSuccessWhatsApp(
   void sendBookingSuccessWhatsApp(whatsappSettingsRaw, shipment).catch((error) => {
     console.error("[WhatsApp booking_success] Failed", formatMetaGraphError(error));
   });
+}
+
+export async function sendTrackingWhatsApp(
+  whatsappSettingsRaw: unknown,
+  shipment: ShipmentNotify,
+  trackUrl: string,
+): Promise<void> {
+  const awb = (shipment.awbNumber || shipment.externalAwb || shipment.bookingNumber).trim();
+  const route =
+    [shipment.senderCity, shipment.receiverCity].filter(Boolean).join(" → ") || "your route";
+  await sendAutomatedWhatsApp(
+    whatsappSettingsRaw,
+    "tracking",
+    shipment.senderPhone,
+    {
+      name: shipment.senderName,
+      requestNumber: awb,
+      bookingNumber: shipment.bookingNumber,
+      route,
+      trackUrl,
+    },
+    `Hi ${shipment.senderName}, your shipment ${shipment.bookingNumber} is booked. Track it here: ${trackUrl}`,
+  );
+}
+
+export async function sendInvoiceWhatsApp(
+  whatsappSettingsRaw: unknown,
+  shipment: ShipmentNotify,
+  invoiceNumber: string,
+  invoiceUrl: string,
+): Promise<void> {
+  await sendAutomatedWhatsApp(
+    whatsappSettingsRaw,
+    "invoice",
+    shipment.senderPhone,
+    {
+      name: shipment.senderName,
+      requestNumber: invoiceNumber,
+      bookingNumber: shipment.bookingNumber,
+      trackUrl: invoiceUrl,
+      invoiceNumber,
+    },
+    `Hi ${shipment.senderName}, invoice ${invoiceNumber} for shipment ${shipment.bookingNumber} is ready: ${invoiceUrl}`,
+  );
+}
+
+export function triggerTrackingWhatsApp(
+  whatsappSettingsRaw: unknown,
+  shipment: ShipmentNotify,
+  trackUrl: string,
+): void {
+  void sendTrackingWhatsApp(whatsappSettingsRaw, shipment, trackUrl).catch((error) => {
+    console.error("[WhatsApp tracking] Failed", formatMetaGraphError(error));
+  });
+}
+
+export function triggerInvoiceWhatsApp(
+  whatsappSettingsRaw: unknown,
+  shipment: ShipmentNotify,
+  invoiceNumber: string,
+  invoiceUrl: string,
+): void {
+  void sendInvoiceWhatsApp(whatsappSettingsRaw, shipment, invoiceNumber, invoiceUrl).catch((error) => {
+    console.error("[WhatsApp invoice] Failed", formatMetaGraphError(error));
+  });
+}
+
+export async function sendQuoteWhatsApp(
+  whatsappSettingsRaw: unknown,
+  toPhone: string,
+  customerName: string,
+  quoteUrl: string,
+  totalAmount: string,
+): Promise<void> {
+  const settings = mergeWhatsAppSettings(whatsappSettingsRaw);
+  if (!settings.enabled) return;
+  const config = configForMessaging(settings);
+  if (!config) return;
+  const to = normalizeWhatsAppPhone(toPhone);
+  if (to.length < 10) return;
+  await sendWhatsAppTextMessage(config, {
+    to,
+    text: `Hi ${customerName}, your XGoo Pickup quote is ready (₹${totalAmount}). Review and accept here: ${quoteUrl}\n\nReply ACCEPT to confirm.`,
+  });
+}
+
+async function sendEnabledWhatsAppText(
+  whatsappSettingsRaw: unknown,
+  toPhone: string,
+  text: string,
+): Promise<void> {
+  const settings = mergeWhatsAppSettings(whatsappSettingsRaw);
+  if (!settings.enabled) return;
+  const config = configForMessaging(settings);
+  if (!config) return;
+  const to = normalizeWhatsAppPhone(toPhone);
+  if (to.length < 10) return;
+  await sendWhatsAppTextMessage(config, { to, text });
+}
+
+export function triggerShipmentPartyWhatsApp(
+  whatsappSettingsRaw: unknown,
+  input: {
+    senderName: string;
+    senderPhone: string;
+    receiverName: string;
+    receiverPhone: string;
+    bookingNumber: string;
+    route: string;
+    amount?: string | null;
+    trackUrl: string;
+  },
+): void {
+  const amountLine = input.amount ? `Amount: ₹${input.amount}. ` : "";
+  void sendEnabledWhatsAppText(
+    whatsappSettingsRaw,
+    input.senderPhone,
+    `Hi ${input.senderName}, XGoo booking ${input.bookingNumber} is confirmed (${input.route}). ${amountLine}Track: ${input.trackUrl}`,
+  ).catch((error) => {
+    console.error("[WhatsApp shipment sender] Failed", formatMetaGraphError(error));
+  });
+  void sendEnabledWhatsAppText(
+    whatsappSettingsRaw,
+    input.receiverPhone,
+    `Hi ${input.receiverName}, your XGoo booking ${input.bookingNumber} is on the way. Track it here: ${input.trackUrl}`,
+  ).catch((error) => {
+    console.error("[WhatsApp shipment receiver] Failed", formatMetaGraphError(error));
+  });
+}
+
+export function triggerReceiverTrackingWhatsApp(
+  whatsappSettingsRaw: unknown,
+  input: { receiverName: string; receiverPhone: string; bookingNumber: string; trackUrl: string },
+): void {
+  void sendEnabledWhatsAppText(
+    whatsappSettingsRaw,
+    input.receiverPhone,
+    `Hi ${input.receiverName}, track XGoo booking ${input.bookingNumber} here: ${input.trackUrl}`,
+  ).catch((error) => {
+    console.error("[WhatsApp receiver tracking] Failed", formatMetaGraphError(error));
+  });
+}
+
+export function triggerQuoteWhatsApp(
+  whatsappSettingsRaw: unknown,
+  toPhone: string,
+  customerName: string,
+  quoteUrl: string,
+  totalAmount: string,
+): void {
+  void sendQuoteWhatsApp(whatsappSettingsRaw, toPhone, customerName, quoteUrl, totalAmount).catch(
+    (error) => {
+      console.error("[WhatsApp quote] Failed", formatMetaGraphError(error));
+    },
+  );
 }
 
 export async function sendInboundWelcomeMessage(

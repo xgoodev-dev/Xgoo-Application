@@ -43,6 +43,8 @@ import { PickupSlotSettings } from "@/components/settings/PickupSlotSettings";
 import { AppBannerSettings } from "@/components/settings/AppBannerSettings";
 import { DelhiveryApiSettings } from "@/components/settings/DelhiveryApiSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useLocation } from "wouter";
 
 const officeSchema = z.object({
   name: z.string().min(1, "Office name is required"),
@@ -60,6 +62,12 @@ type OfficeFormData = z.infer<typeof officeSchema>;
 export default function SettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  const { isCommandWorkspace, isLoading: accessLoading } = useStaffAccess();
+
+  useEffect(() => {
+    if (!accessLoading && !isCommandWorkspace) setLocation("/dashboard");
+  }, [accessLoading, isCommandWorkspace, setLocation]);
 
   const { data: office, isLoading } = useQuery<Office>({
     queryKey: ["/api/office"],
@@ -118,12 +126,14 @@ export default function SettingsPage() {
     updateMutation.mutate(data);
   };
 
+  if (accessLoading || !isCommandWorkspace) return null;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-bold">XGoo Command settings</h1>
         <p className="text-muted-foreground">
-          Manage your organization profile, app banners, pickup slots, branches, and WhatsApp Business automation
+          Control organization profile, stores, WhatsApp, and every XGoo application from Command.
         </p>
       </div>
 

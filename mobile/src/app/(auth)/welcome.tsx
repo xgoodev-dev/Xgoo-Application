@@ -4,6 +4,7 @@ import { ArrowRight, Box, MapPin, PackageCheck, Truck } from 'lucide-react-nativ
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Card, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
+import { LegalLinks } from '@/components/legal-links';
 import { XGOO_GO } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
@@ -59,6 +60,7 @@ export default function WelcomeScreen() {
           </Text>
         </Card>
         <TechPartnerCredit style={styles.credit} />
+        <LegalLinks prefix="By continuing you agree to our" />
       </View>
     </Screen>
   );

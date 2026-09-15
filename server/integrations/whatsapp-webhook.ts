@@ -2,12 +2,16 @@ import type { Request, Response } from "express";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { db } from "../db";
 import { offices, bookingRequests } from "@shared/schema";
-import { mergeWhatsAppSettings } from "@shared/whatsapp";
+import { mergeWhatsAppSettings, normalizeWhatsAppPhone } from "@shared/whatsapp";
 import {
   recordWhatsAppDeliveryStatus,
   recordWhatsAppWebhookDebug,
 } from "./whatsapp-delivery";
 import { handleInboundWhatsAppMessage } from "./whatsapp-notifications";
+import { configForMessaging, sendWhatsAppTextMessage } from "./whatsapp";
+import { acceptPickupQuotation, rejectPickupQuotation } from "../pickup-service";
+import { ensurePickupTables } from "../pickup-dispatch";
+import { storage } from "../storage";
 
 type WebhookMessage = {
   from?: string;
@@ -235,6 +239,38 @@ export async function handleWhatsAppWebhookPost(req: Request, res: Response): Pr
           });
 
           const contactName = value.contacts?.find((c) => c.wa_id === message.from)?.profile?.name;
+          const quoteReply = intent.text.trim().toUpperCase();
+          if (quoteReply === "ACCEPT" || quoteReply === "REJECT") {
+            await ensurePickupTables();
+            const quotation = await storage.getLatestSentQuotationByPhone(office.id, message.from);
+            const config = configForMessaging(settings);
+            if (quotation && config) {
+              try {
+                if (quoteReply === "ACCEPT") {
+                  const result = await acceptPickupQuotation(quotation);
+                  await sendWhatsAppTextMessage(config, {
+                    to: normalizeWhatsAppPhone(message.from),
+                    text: result.shipment?.bookingNumber
+                      ? `Quote accepted. Shipment ${result.shipment.bookingNumber} is being packed.`
+                      : "Quote accepted. XGoo will pack the parcel and raise the shipment after it reaches the store.",
+                  });
+                } else {
+                  await rejectPickupQuotation(quotation);
+                  await sendWhatsAppTextMessage(config, {
+                    to: normalizeWhatsAppPhone(message.from),
+                    text: "Quote declined. The pickup partner will send an updated quote if needed.",
+                  });
+                }
+              } catch (error) {
+                const msg = error instanceof Error ? error.message : "Could not update the quote.";
+                await sendWhatsAppTextMessage(config, {
+                  to: normalizeWhatsAppPhone(message.from),
+                  text: msg,
+                });
+              }
+              continue;
+            }
+          }
 
           void handleInboundWhatsAppMessage(
             settings,

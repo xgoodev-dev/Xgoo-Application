@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Bell,
@@ -38,6 +38,16 @@ type AppBanner = {
   linkUrl?: string;
 };
 
+type PendingQuote = {
+  id: string;
+  quotationNumber: string;
+  totalAmount: string;
+  acceptToken?: string | null;
+  senderCity?: string | null;
+  receiverCity?: string | null;
+  status: string;
+};
+
 function inTransitCount(items: GoBooking[]) {
   return items.filter((item) =>
     ["converted", "picked_up", "in_transit", "out_for_delivery"].includes(item.status),
@@ -71,6 +81,7 @@ export function GoHome({
   onNotifications: () => void;
   onOpenBooking: (id: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const firstName = userName?.trim().split(/\s+/)[0] || "Mover";
   const product = module === "pro" ? XGOO_MODULES.pro : XGOO_MODULES.go;
   const bookings = useQuery({
@@ -94,6 +105,17 @@ export function GoHome({
     },
     refetchInterval: 15_000,
   });
+  const quotes = useQuery({
+    queryKey: ["/api/customer/quotations", token],
+    queryFn: async () => {
+      const res = await fetch("/api/customer/quotations", {
+        headers: { "x-customer-token": token },
+      });
+      if (!res.ok) return [] as PendingQuote[];
+      return (await res.json()) as PendingQuote[];
+    },
+    refetchInterval: 15_000,
+  });
   const banners = useQuery({
     queryKey: ["/api/public/office", slug, "app-banners"],
     queryFn: async () => {
@@ -106,6 +128,22 @@ export function GoHome({
   const items = bookings.data || [];
   const unread = (notifications.data || []).filter((item) => !item.readAt).length;
   const hero = banners.data?.banners?.[0];
+  const pendingQuotes = (quotes.data || []).filter((item) => item.status === "sent");
+  const acceptQuote = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/customer/quotations/${id}/accept`, {
+        method: "POST",
+        headers: { "x-customer-token": token },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || "Could not accept quote");
+      return body;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/customer/quotations", token] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/customer/bookings", token] });
+    },
+  });
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-5 md:px-6">
@@ -160,6 +198,40 @@ export function GoHome({
           </p>
         </Card>
       )}
+
+      {pendingQuotes.length > 0 ? (
+        <div className="space-y-3">
+          {pendingQuotes.map((quote) => {
+            const route = [quote.senderCity, quote.receiverCity].filter(Boolean).join(" → ");
+            return (
+              <Card key={quote.id} className="border-[#FF4907]/30 bg-[#FFF0EA] p-4 shadow-none">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#FF4907]">
+                  Pickup quote ready
+                </p>
+                <p className="mt-1 text-sm font-semibold text-zinc-900">
+                  {quote.quotationNumber} · ₹{quote.totalAmount}
+                </p>
+                {route ? <p className="mt-1 text-xs text-zinc-500">{route}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    className="bg-[#FF4907] text-white hover:bg-[#e54206]"
+                    disabled={acceptQuote.isPending}
+                    onClick={() => acceptQuote.mutate(quote.id)}
+                  >
+                    Accept quote
+                  </Button>
+                  {quote.acceptToken ? (
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={`/quote/${quote.acceptToken}`}>Review</a>
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div>
         <p className="mb-3 text-sm font-semibold text-zinc-900">Quick actions</p>

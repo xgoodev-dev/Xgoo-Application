@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "XGoo Pickup",
+    "slug": "xgoo-pickup",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/xgoo-logo.png",
+    "scheme": "xgoopickup",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/xgoo-logo.png",
+      "bundleIdentifier": "com.murthyenterprises.xgoopickup",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "XGoo Pickup uses your location when you tap Live so you can confirm where you are while collecting a parcel."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#17181B",
+        "foregroundImage": "./assets/images/xgoo-logo.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.murthyenterprises.xgoopickup",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0E0F11",
+          "image": "./assets/images/xgoo-logo.png",
+          "imageWidth": 112
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/xgoo-logo.png",
+          "color": "#FF4907"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/with-cleartext-traffic.js"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    }
+  }
+}

@@ -298,17 +298,19 @@ export const shipments = pgTable("shipments", {
   senderName: varchar("sender_name", { length: 255 }).notNull(),
   senderPhone: varchar("sender_phone", { length: 20 }).notNull(),
   senderAddress: text("sender_address").notNull(),
+  senderAddressLine2: text("sender_address_line2"),
   senderCity: varchar("sender_city", { length: 100 }),
   senderState: varchar("sender_state", { length: 100 }),
-  senderPincode: varchar("sender_pincode", { length: 10 }),
+  senderPincode: varchar("sender_pincode", { length: 20 }),
   
   // Receiver details
   receiverName: varchar("receiver_name", { length: 255 }).notNull(),
   receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
   receiverAddress: text("receiver_address").notNull(),
+  receiverAddressLine2: text("receiver_address_line2"),
   receiverCity: varchar("receiver_city", { length: 100 }),
   receiverState: varchar("receiver_state", { length: 100 }),
-  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  receiverPincode: varchar("receiver_pincode", { length: 20 }),
   
   // Package details
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
@@ -435,17 +437,21 @@ export const bookingEventsRelations = relations(bookingEvents, ({ one }) => ({
 // Payments table
 export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  shipmentId: varchar("shipment_id").references(() => shipments.id),
+  quotationId: varchar("quotation_id"),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   paymentMode: varchar("payment_mode", { length: 30 }).notNull(), // cash, upi, bank_transfer, credit
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"), // pending, completed, failed
   transactionReference: varchar("transaction_reference", { length: 100 }),
+  settlementId: varchar("settlement_id"),
   notes: text("notes"),
   paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_payments_shipment").on(table.shipmentId),
+  index("idx_payments_quotation").on(table.quotationId),
   index("idx_payments_status").on(table.paymentStatus),
+  index("idx_payments_settlement").on(table.settlementId),
 ]);
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
@@ -518,6 +524,10 @@ export const quotations = pgTable("quotations", {
   validUntil: timestamp("valid_until"),
   notes: text("notes"),
   isDemo: boolean("is_demo").default(false),
+  bookingRequestId: varchar("booking_request_id"),
+  pickupJobId: varchar("pickup_job_id"),
+  acceptToken: varchar("accept_token", { length: 255 }),
+  acceptedAt: timestamp("accepted_at"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -525,6 +535,9 @@ export const quotations = pgTable("quotations", {
   index("idx_quotations_office").on(table.officeId),
   index("idx_quotations_number").on(table.quotationNumber),
   index("idx_quotations_status").on(table.status),
+  uniqueIndex("uq_quotations_accept_token").on(table.acceptToken),
+  index("idx_quotations_booking_request").on(table.bookingRequestId),
+  index("idx_quotations_pickup_job").on(table.pickupJobId),
 ]);
 
 export const quotationsRelations = relations(quotations, ({ one }) => ({
@@ -550,17 +563,19 @@ export const bookingRequests = pgTable("booking_requests", {
   senderPhone: varchar("sender_phone", { length: 20 }).notNull(),
   senderEmail: varchar("sender_email", { length: 255 }),
   senderAddress: text("sender_address").notNull(),
+  senderAddressLine2: text("sender_address_line2"),
   senderCity: varchar("sender_city", { length: 100 }),
   senderState: varchar("sender_state", { length: 100 }),
-  senderPincode: varchar("sender_pincode", { length: 10 }),
+  senderPincode: varchar("sender_pincode", { length: 20 }),
   
   // Receiver details
   receiverName: varchar("receiver_name", { length: 255 }).notNull(),
   receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
   receiverAddress: text("receiver_address").notNull(),
+  receiverAddressLine2: text("receiver_address_line2"),
   receiverCity: varchar("receiver_city", { length: 100 }),
   receiverState: varchar("receiver_state", { length: 100 }),
-  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  receiverPincode: varchar("receiver_pincode", { length: 20 }),
   
   // Package details
   weight: decimal("weight", { precision: 10, scale: 2 }),
@@ -665,9 +680,10 @@ export const customerAddresses = pgTable("customer_addresses", {
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   address: text("address").notNull(),
+  addressLine2: text("address_line2"),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 100 }),
-  pincode: varchar("pincode", { length: 10 }),
+  pincode: varchar("pincode", { length: 20 }),
   lat: decimal("lat", { precision: 10, scale: 7 }),
   lng: decimal("lng", { precision: 10, scale: 7 }),
   addressType: varchar("address_type", { length: 20 }).notNull().default("sender"),
@@ -688,8 +704,13 @@ export const businessProfiles = pgTable("business_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
   companyName: varchar("company_name", { length: 255 }).notNull().default(""),
+  storeName: varchar("store_name", { length: 255 }).notNull().default(""),
   storeType: varchar("store_type", { length: 50 }).notNull().default(""),
   gstNumber: varchar("gst_number", { length: 20 }),
+  verificationStatus: varchar("verification_status", { length: 20 }).notNull().default("pending"),
+  verificationNote: text("verification_note"),
+  verifiedAt: timestamp("verified_at"),
+  verifiedByUserId: varchar("verified_by_user_id"),
   pickupAddress: text("pickup_address").notNull().default(""),
   pickupCity: varchar("pickup_city", { length: 100 }),
   pickupState: varchar("pickup_state", { length: 100 }),
@@ -698,6 +719,8 @@ export const businessProfiles = pgTable("business_profiles", {
   pickupLng: decimal("pickup_lng", { precision: 10, scale: 7 }),
   pickupTimeSlot: varchar("pickup_time_slot", { length: 40 }),
   pickupPhone: varchar("pickup_phone", { length: 20 }),
+  pickupStyle: varchar("pickup_style", { length: 20 }).notNull().default("standing"),
+  billingCycle: varchar("billing_cycle", { length: 20 }).notNull().default("weekly"),
   weekdays: jsonb("weekdays").notNull().default(sql`'{"sun":false,"mon":true,"tue":true,"wed":true,"thu":true,"fri":true,"sat":true}'::jsonb`),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -711,9 +734,12 @@ export const businessDestinations = pgTable("business_destinations", {
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   address: text("address").notNull(),
+  addressLine2: text("address_line2"),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 100 }),
-  pincode: varchar("pincode", { length: 10 }),
+  pincode: varchar("pincode", { length: 20 }),
+  shipmentType: varchar("shipment_type", { length: 30 }).notNull().default("domestic"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
   notes: text("notes"),
   recurring: boolean("recurring").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -730,9 +756,12 @@ export const businessDailyJobs = pgTable("business_daily_jobs", {
   receiverName: varchar("receiver_name", { length: 255 }).notNull(),
   receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
   receiverAddress: text("receiver_address").notNull(),
+  receiverAddressLine2: text("receiver_address_line2"),
   receiverCity: varchar("receiver_city", { length: 100 }),
   receiverState: varchar("receiver_state", { length: 100 }),
-  receiverPincode: varchar("receiver_pincode", { length: 10 }),
+  receiverPincode: varchar("receiver_pincode", { length: 20 }),
+  shipmentType: varchar("shipment_type", { length: 30 }).notNull().default("domestic"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
   weight: decimal("weight", { precision: 10, scale: 2 }).default("1"),
   numberOfPieces: integer("number_of_pieces").notNull().default(1),
   contentDescription: text("content_description").notNull().default("Daily courier"),
@@ -742,6 +771,52 @@ export const businessDailyJobs = pgTable("business_daily_jobs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_business_daily_jobs_user_date").on(table.customerUserId, table.jobDate),
+]);
+
+export const businessOrders = pgTable("business_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  destinationId: varchar("destination_id").references(() => businessDestinations.id),
+  channel: varchar("channel", { length: 20 }).notNull().default("whatsapp"),
+  receiverName: varchar("receiver_name", { length: 255 }).notNull(),
+  receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
+  receiverAddress: text("receiver_address").notNull(),
+  receiverAddressLine2: text("receiver_address_line2"),
+  receiverCity: varchar("receiver_city", { length: 100 }),
+  receiverState: varchar("receiver_state", { length: 100 }),
+  receiverPincode: varchar("receiver_pincode", { length: 20 }),
+  shipmentType: varchar("shipment_type", { length: 30 }).notNull().default("domestic"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  contentDescription: text("content_description").notNull().default("Store order"),
+  weight: decimal("weight", { precision: 10, scale: 2 }).default("1"),
+  numberOfPieces: integer("number_of_pieces").notNull().default(1),
+  notes: text("notes"),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  dailyJobId: varchar("daily_job_id").references(() => businessDailyJobs.id),
+  bookingRequestId: varchar("booking_request_id").references(() => bookingRequests.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_business_orders_user").on(table.customerUserId),
+  index("idx_business_orders_status").on(table.status),
+]);
+
+export const businessSettlements = pgTable("business_settlements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id),
+  billingCycle: varchar("billing_cycle", { length: 20 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  shipmentCount: integer("shipment_count").notNull().default(0),
+  paymentMode: varchar("payment_mode", { length: 30 }).notNull(),
+  paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("completed"),
+  transactionReference: varchar("transaction_reference", { length: 100 }),
+  notes: text("notes"),
+  paidAt: timestamp("paid_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_business_settlements_user").on(table.customerUserId),
 ]);
 
 export const businessProfilesRelations = relations(businessProfiles, ({ one }) => ({
@@ -843,6 +918,162 @@ export const customerNotificationsRelations = relations(customerNotifications, (
   customerUser: one(customerUsers, {
     fields: [customerNotifications.customerUserId],
     references: [customerUsers.id],
+  }),
+}));
+
+export const PICKUP_JOB_STATUSES = [
+  "unassigned",
+  "assigned",
+  "accepted",
+  "en_route",
+  "arrived",
+  "inspected",
+  "quote_sent",
+  "quote_accepted",
+  "packed",
+  "at_hub",
+  "awb_created",
+  "completed",
+  "declined",
+  "cancelled",
+] as const;
+
+export type PickupJobStatus = (typeof PICKUP_JOB_STATUSES)[number];
+
+export const PICKUP_GOVT_ID_TYPES = ["aadhaar", "pan", "driving_license", "voter_id"] as const;
+export type PickupGovtIdType = (typeof PICKUP_GOVT_ID_TYPES)[number];
+
+export const PICKUP_SIGNUP_SOURCES = ["hub", "self"] as const;
+export type PickupSignupSource = (typeof PICKUP_SIGNUP_SOURCES)[number];
+
+export const pickupPartners = pgTable("pickup_partners", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  branchId: varchar("branch_id").references(() => branches.id, { onDelete: "set null" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }),
+  address: text("address"),
+  govtIdType: varchar("govt_id_type", { length: 40 }),
+  govtIdNumber: varchar("govt_id_number", { length: 80 }),
+  govtIdDocumentUrl: text("govt_id_document_url"),
+  signupSource: varchar("signup_source", { length: 20 }).notNull().default("hub"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  availability: varchar("availability", { length: 20 }).notNull().default("offline"),
+  lastAssignedAt: timestamp("last_assigned_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_pickup_partners_office_phone").on(table.officeId, table.phone),
+  index("idx_pickup_partners_office").on(table.officeId),
+  index("idx_pickup_partners_branch").on(table.branchId),
+  index("idx_pickup_partners_availability").on(table.officeId, table.status, table.availability),
+]);
+
+export const pickupPartnerSessions = pgTable("pickup_partner_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar("partner_id").notNull().references(() => pickupPartners.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_pickup_partner_sessions_token").on(table.token),
+  index("idx_pickup_partner_sessions_partner").on(table.partnerId),
+]);
+
+export const pickupPartnerPushTokens = pgTable("pickup_partner_push_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  partnerId: varchar("partner_id").notNull().references(() => pickupPartners.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 255 }).notNull(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_pickup_partner_push_tokens_token").on(table.token),
+  index("idx_pickup_partner_push_tokens_partner").on(table.partnerId),
+]);
+
+export const pickupJobs = pgTable("pickup_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  branchId: varchar("branch_id").references(() => branches.id, { onDelete: "set null" }),
+  bookingRequestId: varchar("booking_request_id").notNull().references(() => bookingRequests.id, { onDelete: "cascade" }),
+  partnerId: varchar("partner_id").references(() => pickupPartners.id, { onDelete: "set null" }),
+  quotationId: varchar("quotation_id"),
+  shipmentId: varchar("shipment_id").references(() => shipments.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 30 }).notNull().default("unassigned"),
+  actualWeight: decimal("actual_weight", { precision: 10, scale: 2 }),
+  actualPieces: integer("actual_pieces"),
+  actualContents: text("actual_contents"),
+  inspectionNotes: text("inspection_notes"),
+  inspectionPhotoUrls: text("inspection_photo_urls").array(),
+  awbNumber: varchar("awb_number", { length: 100 }),
+  assignedAt: timestamp("assigned_at"),
+  acceptedAt: timestamp("accepted_at"),
+  enRouteAt: timestamp("en_route_at"),
+  arrivedAt: timestamp("arrived_at"),
+  inspectedAt: timestamp("inspected_at"),
+  quoteSentAt: timestamp("quote_sent_at"),
+  quoteAcceptedAt: timestamp("quote_accepted_at"),
+  packedAt: timestamp("packed_at"),
+  awbCreatedAt: timestamp("awb_created_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_pickup_jobs_office").on(table.officeId),
+  index("idx_pickup_jobs_partner").on(table.partnerId),
+  index("idx_pickup_jobs_booking_request").on(table.bookingRequestId),
+  index("idx_pickup_jobs_status").on(table.status),
+]);
+
+export const pickupPartnersRelations = relations(pickupPartners, ({ one, many }) => ({
+  office: one(offices, {
+    fields: [pickupPartners.officeId],
+    references: [offices.id],
+  }),
+  branch: one(branches, {
+    fields: [pickupPartners.branchId],
+    references: [branches.id],
+  }),
+  sessions: many(pickupPartnerSessions),
+  jobs: many(pickupJobs),
+}));
+
+export const pickupPartnerSessionsRelations = relations(pickupPartnerSessions, ({ one }) => ({
+  partner: one(pickupPartners, {
+    fields: [pickupPartnerSessions.partnerId],
+    references: [pickupPartners.id],
+  }),
+}));
+
+export const pickupPartnerPushTokensRelations = relations(pickupPartnerPushTokens, ({ one }) => ({
+  partner: one(pickupPartners, {
+    fields: [pickupPartnerPushTokens.partnerId],
+    references: [pickupPartners.id],
+  }),
+}));
+
+export const pickupJobsRelations = relations(pickupJobs, ({ one }) => ({
+  office: one(offices, {
+    fields: [pickupJobs.officeId],
+    references: [offices.id],
+  }),
+  branch: one(branches, {
+    fields: [pickupJobs.branchId],
+    references: [branches.id],
+  }),
+  bookingRequest: one(bookingRequests, {
+    fields: [pickupJobs.bookingRequestId],
+    references: [bookingRequests.id],
+  }),
+  partner: one(pickupPartners, {
+    fields: [pickupJobs.partnerId],
+    references: [pickupPartners.id],
+  }),
+  shipment: one(shipments, {
+    fields: [pickupJobs.shipmentId],
+    references: [shipments.id],
   }),
 }));
 
@@ -970,6 +1201,17 @@ export const insertBusinessDailyJobSchema = createInsertSchema(businessDailyJobs
   updatedAt: true,
 });
 
+export const insertBusinessOrderSchema = createInsertSchema(businessOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBusinessSettlementSchema = createInsertSchema(businessSettlements).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertBookingJobSchema = createInsertSchema(bookingJobs).omit({
   id: true,
   createdAt: true,
@@ -979,6 +1221,23 @@ export const insertBookingJobSchema = createInsertSchema(bookingJobs).omit({
 export const insertBookingEventSchema = createInsertSchema(bookingEvents).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertPickupPartnerSchema = createInsertSchema(pickupPartners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPickupPartnerSessionSchema = createInsertSchema(pickupPartnerSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPickupJobSchema = createInsertSchema(pickupJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 // Types
@@ -1046,11 +1305,23 @@ export type BusinessDestination = typeof businessDestinations.$inferSelect;
 export type InsertBusinessDestination = z.infer<typeof insertBusinessDestinationSchema>;
 export type BusinessDailyJob = typeof businessDailyJobs.$inferSelect;
 export type InsertBusinessDailyJob = z.infer<typeof insertBusinessDailyJobSchema>;
+export type BusinessOrder = typeof businessOrders.$inferSelect;
+export type InsertBusinessOrder = z.infer<typeof insertBusinessOrderSchema>;
+export type BusinessSettlement = typeof businessSettlements.$inferSelect;
+export type InsertBusinessSettlement = z.infer<typeof insertBusinessSettlementSchema>;
 
 export type BookingJob = typeof bookingJobs.$inferSelect;
 export type InsertBookingJob = z.infer<typeof insertBookingJobSchema>;
 export type BookingEvent = typeof bookingEvents.$inferSelect;
 export type InsertBookingEvent = z.infer<typeof insertBookingEventSchema>;
+
+export type PickupPartner = typeof pickupPartners.$inferSelect;
+export type InsertPickupPartner = z.infer<typeof insertPickupPartnerSchema>;
+export type PickupPartnerSession = typeof pickupPartnerSessions.$inferSelect;
+export type InsertPickupPartnerSession = z.infer<typeof insertPickupPartnerSessionSchema>;
+export type PickupPartnerPushToken = typeof pickupPartnerPushTokens.$inferSelect;
+export type PickupJob = typeof pickupJobs.$inferSelect;
+export type InsertPickupJob = z.infer<typeof insertPickupJobSchema>;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

@@ -10,3 +10,8 @@ export const XGOO_GO = {
   shortName: 'Go',
   meaning: 'Send something and go',
 } as const;
+
+export const XGOO_LEGAL_URLS = {
+  privacy: 'https://www.xgoo.in/privacy',
+  terms: 'https://www.xgoo.in/terms',
+} as const;
