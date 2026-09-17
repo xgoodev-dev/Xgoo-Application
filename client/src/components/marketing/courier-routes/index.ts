@@ -31,7 +31,7 @@ export function parseCourierRouteSlug(pathname: string): string | undefined {
 export function relatedCourierRoutes(route: CourierRoute): CourierRoute[] {
   const fromConfig = route.relatedSlugs
     .map((slug) => getCourierRoute(slug))
-    .filter((item): item is CourierRoute => Boolean(item) && item.slug !== route.slug);
+    .filter((item): item is CourierRoute => item !== undefined && item.slug !== route.slug);
 
   if (fromConfig.length >= 2) return fromConfig.slice(0, 4);
 

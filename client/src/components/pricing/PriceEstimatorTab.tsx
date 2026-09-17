@@ -175,8 +175,8 @@ export function PriceEstimatorTab({ partners }: Props) {
   }, [estimate, courierFilter]);
 
   const hasRun = runEstimate > 0;
-  const tariffMatched = quotes.filter((q) => q.source === "tariff");
-  const fallbackOnly = quotes.length > 0 && tariffMatched.length === 0;
+  const realQuotesMatched = quotes.filter((q) => q.source === "tariff" || q.source === "api");
+  const fallbackOnly = quotes.length > 0 && realQuotesMatched.length === 0;
 
   return (
     <Card>
@@ -199,11 +199,11 @@ export function PriceEstimatorTab({ partners }: Props) {
           </div>
           <div className="space-y-2">
             <Label>From pincode</Label>
-            <Input value={estFrom} onChange={(e) => setEstFrom(e.target.value)} placeholder="Optional" />
+            <Input value={estFrom} onChange={(e) => setEstFrom(e.target.value)} placeholder="e.g. 500081 (Delhivery API)" />
           </div>
           <div className="space-y-2">
             <Label>To pincode</Label>
-            <Input value={estTo} onChange={(e) => setEstTo(e.target.value)} placeholder="Optional" />
+            <Input value={estTo} onChange={(e) => setEstTo(e.target.value)} placeholder="e.g. 560001 (Delhivery API)" />
           </div>
           <div className="space-y-2">
             <Label>Shipment type</Label>
@@ -359,8 +359,11 @@ export function PriceEstimatorTab({ partners }: Props) {
                     {q.sellPrice.toFixed(2)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={q.source === "tariff" ? "default" : "secondary"}>
-                      {q.source === "tariff" ? "Tariff" : "Fallback"}
+                    <Badge
+                      variant={q.source === "api" ? "default" : q.source === "tariff" ? "outline" : "secondary"}
+                      className={q.source === "api" ? "bg-emerald-600 text-white hover:bg-emerald-700" : ""}
+                    >
+                      {q.source === "api" ? "Live API" : q.source === "tariff" ? "Tariff" : "Fallback"}
                     </Badge>
                   </TableCell>
                   <TableCell>{q.transitDays != null ? `${q.transitDays}d` : "—"}</TableCell>

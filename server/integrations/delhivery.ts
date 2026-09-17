@@ -439,3 +439,90 @@ export async function fetchDelhiveryPackingSlipUrl(
     return null;
   }
 }
+
+export interface DelhiveryCostEstimateInput {
+  md: "E" | "S";
+  cgm: number;
+  o_pin: string | number;
+  d_pin: string | number;
+  ss?: string;
+  pt?: string;
+  l?: number;
+  b?: number;
+  h?: number;
+  ipkg_type?: string;
+}
+
+export interface DelhiveryCostEstimateResult {
+  totalAmount: number;
+  grossAmount?: number;
+  freightCharge?: number;
+  raw: unknown;
+}
+
+export async function calculateDelhiveryShippingCost(
+  config: DelhiveryConfig,
+  input: DelhiveryCostEstimateInput,
+): Promise<DelhiveryCostEstimateResult> {
+  const params = new URLSearchParams({
+    md: input.md,
+    cgm: String(Math.round(input.cgm || 0)),
+    o_pin: String(input.o_pin).trim(),
+    d_pin: String(input.d_pin).trim(),
+    ss: input.ss || "Delivered",
+    pt: input.pt || "Pre-paid",
+  });
+
+  if (input.l != null && input.l > 0) params.append("l", String(Math.round(input.l)));
+  if (input.b != null && input.b > 0) params.append("b", String(Math.round(input.b)));
+  if (input.h != null && input.h > 0) params.append("h", String(Math.round(input.h)));
+  if (input.ipkg_type) params.append("ipkg_type", input.ipkg_type);
+
+  const url = `${config.baseUrl}/api/kinko/v1/invoice/charges/.json?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: authHeaders(config),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  let parsed: any;
+  try {
+    const text = await res.text();
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Delhivery cost API returned non-JSON response (HTTP ${res.status})`);
+  }
+
+  if (!res.ok) {
+    throw new Error(`Delhivery rate API error (${res.status}): ${delhiveryErrorMessage(parsed, "Failed to get rate")}`);
+  }
+
+  const item = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!item || typeof item !== "object") {
+    throw new Error("Delhivery rate API returned empty or invalid response");
+  }
+
+  const totalAmount = Number(
+    item.total_amount ??
+      item.gross_amount ??
+      item.total ??
+      item.rate ??
+      item.charge_breakup?.total_amount ??
+      0,
+  );
+
+  const grossAmount = item.gross_amount != null ? Number(item.gross_amount) : undefined;
+  const freightCharge =
+    item.charge_breakup?.freight_charge != null ? Number(item.charge_breakup.freight_charge) : undefined;
+
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    throw new Error("Delhivery rate API returned invalid or zero total amount");
+  }
+
+  return {
+    totalAmount,
+    grossAmount,
+    freightCharge,
+    raw: parsed,
+  };
+}
+

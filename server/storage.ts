@@ -143,7 +143,64 @@ export function ensureBookingPackageColumns() {
 }
 import { randomUUID } from "crypto";
 import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
-import { buildQuote, type PricingQuoteInput, type PricingQuoteResult } from "@shared/pricing";
+import { buildQuote, applyMargin, chargeableWeight, resolveBilledWeight, type PricingQuoteInput, type PricingQuoteResult } from "@shared/pricing";
+import { isDelhiveryPartner } from "@shared/delhivery";
+import { getDelhiveryConfigFromEnv, calculateDelhiveryShippingCost } from "./integrations/delhivery";
+
+async function tryDelhiveryLiveQuote(
+  partner: CourierPartner,
+  input: PricingQuoteInput,
+): Promise<PricingQuoteResult | null> {
+  if (!isDelhiveryPartner(partner.code, partner.name)) return null;
+
+  const originPin = (input.senderPincode ?? "").trim();
+  const destPin = (input.receiverPincode ?? "").trim();
+  if (!/^\d{6}$/.test(originPin) || !/^\d{6}$/.test(destPin)) return null;
+
+  const config = getDelhiveryConfigFromEnv();
+  if (!config) return null;
+
+  const weightInfo = chargeableWeight(input.weight, input.length, input.width, input.height);
+  const { billedWeight, rounded } = resolveBilledWeight(
+    weightInfo.chargeable,
+    input.weightRoundOff,
+  );
+  const cgm = Math.max(1, Math.round(billedWeight * 1000));
+
+  try {
+    const cost = await calculateDelhiveryShippingCost(config, {
+      md: input.serviceType === "air" ? "E" : "S",
+      cgm,
+      o_pin: originPin,
+      d_pin: destPin,
+      ss: "Delivered",
+      pt: "Pre-paid",
+      l: input.length ?? undefined,
+      b: input.width ?? undefined,
+      h: input.height ?? undefined,
+      ipkg_type: input.packageType === "document" ? "flyer" : "box",
+    });
+
+    const margin = applyMargin(cost.totalAmount, partner);
+    return {
+      courierPartnerId: partner.id,
+      serviceType: input.serviceType,
+      chargeableWeight: weightInfo.chargeable,
+      billedWeight,
+      actualWeight: weightInfo.actual,
+      volumetricWeight: weightInfo.volumetric,
+      tariffAmount: cost.totalAmount,
+      ...margin,
+      transitDays: null,
+      source: "api",
+      weightRoundOffApplied: rounded,
+      message: `Live Delhivery API rate from ${originPin} to ${destPin}`,
+    };
+  } catch (error) {
+    console.warn(`[storage] Delhivery live quote failed for ${originPin} -> ${destPin}:`, error);
+    return null;
+  }
+}
 
 export interface IStorage {
   // Office operations
@@ -803,6 +860,8 @@ export class DatabaseStorage implements IStorage {
   async quotePrice(officeId: string, input: PricingQuoteInput): Promise<PricingQuoteResult | null> {
     const partner = await this.getPartner(input.courierPartnerId);
     if (!partner || partner.officeId !== officeId || !partner.isActive) return null;
+    const liveQuote = await tryDelhiveryLiveQuote(partner, input);
+    if (liveQuote) return liveQuote;
     const rows = await this.getActiveTariffRows(officeId, input.courierPartnerId);
     return buildQuote(partner, rows, input);
   }
@@ -815,8 +874,11 @@ export class DatabaseStorage implements IStorage {
     const results: Array<PricingQuoteResult & { partnerName: string; partnerCode: string }> = [];
 
     for (const partner of partners) {
-      const rows = await this.getActiveTariffRows(officeId, partner.id);
-      const quote = buildQuote(partner, rows, { ...input, courierPartnerId: partner.id });
+      const fullInput: PricingQuoteInput = { ...input, courierPartnerId: partner.id };
+      const liveQuote = await tryDelhiveryLiveQuote(partner, fullInput);
+      const quote =
+        liveQuote ||
+        buildQuote(partner, await this.getActiveTariffRows(officeId, partner.id), fullInput);
       results.push({
         ...quote,
         partnerName: partner.name,

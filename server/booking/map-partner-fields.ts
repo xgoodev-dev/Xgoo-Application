@@ -234,7 +234,7 @@ function mergeMappings(base: FieldMapping[], overlay: FieldMapping[]): FieldMapp
   for (const row of overlay) {
     if (row.fieldId && row.value) byId.set(row.fieldId, row.value);
   }
-  return [...byId.entries()].map(([fieldId, value]) => ({ fieldId, value }));
+  return Array.from(byId.entries()).map(([fieldId, value]) => ({ fieldId, value }));
 }
 
 async function aiMap(

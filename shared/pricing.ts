@@ -36,7 +36,7 @@ export type PricingQuoteResult = {
   marginTotal: number;
   sellPrice: number;
   transitDays?: number | null;
-  source: "tariff" | "legacy";
+  source: "tariff" | "legacy" | "api";
   matchedRowId?: string;
   message?: string;
   weightRoundOffApplied?: boolean;
