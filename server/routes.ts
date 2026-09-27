@@ -23,7 +23,15 @@ import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settin
 import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
-import { getDelhiveryConfigFromEnv, trackDelhiveryShipment, delhiveryConfigPublicStatus } from "./integrations/delhivery";
+import {
+  getDelhiveryConfigFromEnv,
+  trackDelhiveryShipment,
+  delhiveryConfigPublicStatus,
+  getDelhiveryTat,
+  updateDelhiveryEwayBill,
+  cancelDelhiveryShipment,
+  editDelhiveryShipment,
+} from "./integrations/delhivery";
 import {
   BookingEngineError,
   getBookingSnapshot,
@@ -3053,6 +3061,116 @@ export async function registerRoutes(
     } catch (error) {
       const message = error instanceof Error ? error.message : "Delhivery tracking failed";
       console.error("Delhivery tracking error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/integrations/delhivery/tat", isAuthenticated, async (req: any, res) => {
+    try {
+      const originPin = String(req.query.origin_pin || req.query.origin || "").trim();
+      const destPin = String(req.query.destination_pin || req.query.dest || "").trim();
+      if (!originPin || !destPin) {
+        return res.status(400).json({ message: "origin_pin and destination_pin are required" });
+      }
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "Delhivery API is not configured on the server." });
+      }
+      const result = await getDelhiveryTat(config, {
+        originPin,
+        destPin,
+        mot: (req.query.mot as "S" | "E" | "N") || "S",
+        pdt: (req.query.pdt as "B2B" | "B2C") || "B2C",
+        expectedPickupDate: req.query.expected_pickup_date as string,
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to calculate Delhivery TAT";
+      res.status(502).json({ message });
+    }
+  });
+
+  app.post("/api/shipments/:id/delhivery-cancel", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const partner = shipment.courierPartnerId
+        ? await storage.getPartner(shipment.courierPartnerId)
+        : shipment.courierPartner;
+      if (!partner || !isDelhiveryPartner(partner.code, partner.name)) {
+        return res.status(400).json({ message: "This shipment is not assigned to Delhivery" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "No active Delhivery waybill found on this shipment" });
+      }
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "Delhivery API is not configured on the server." });
+      }
+      await cancelDelhiveryShipment(config, waybill);
+      await storage.updateShipmentStatus(shipment.id, "cancelled");
+      res.json({ success: true, message: `Delhivery shipment ${waybill} cancelled successfully.` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to cancel Delhivery shipment";
+      res.status(502).json({ message });
+    }
+  });
+
+  app.post("/api/shipments/:id/delhivery-ewaybill", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "No active Delhivery waybill found on this shipment" });
+      }
+      const { ewbn, dcn } = req.body;
+      if (!ewbn) {
+        return res.status(400).json({ message: "E-Way Bill Number (ewbn) is required" });
+      }
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "Delhivery API is not configured on the server." });
+      }
+      const result = await updateDelhiveryEwayBill(config, waybill, [
+        {
+          dcn: String(dcn || shipment.bookingNumber),
+          ewbn: String(ewbn).trim(),
+        },
+      ]);
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update E-Way Bill on Delhivery";
+      res.status(502).json({ message });
+    }
+  });
+
+  app.post("/api/shipments/:id/delhivery-edit", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "No active Delhivery waybill found on this shipment" });
+      }
+      const config = getDelhiveryConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "Delhivery API is not configured on the server." });
+      }
+      const result = await editDelhiveryShipment(config, waybill, req.body);
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to edit Delhivery shipment";
       res.status(502).json({ message });
     }
   });

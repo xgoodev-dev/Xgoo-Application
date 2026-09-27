@@ -4,6 +4,10 @@ import {
   DELHIVERY_PRODUCTION_BASE_URL,
   DELHIVERY_STAGING_BASE_URL,
   type DelhiveryCreateInput,
+  type DelhiveryTatInput,
+  type DelhiveryTatResult,
+  type DelhiveryEwayBillItem,
+  type DelhiveryEditShipmentInput,
 } from "@shared/delhivery";
 
 export interface DelhiveryConfig {
@@ -525,4 +529,188 @@ export async function calculateDelhiveryShippingCost(
     raw: parsed,
   };
 }
+
+export async function getDelhiveryTat(
+  config: DelhiveryConfig,
+  input: DelhiveryTatInput,
+): Promise<DelhiveryTatResult> {
+  const originPin = String(input.originPin ?? "").trim();
+  const destPin = String(input.destPin ?? "").trim();
+
+  if (!originPin || !destPin) {
+    throw new Error("Origin and destination pincodes are required for Delhivery TAT calculation.");
+  }
+
+  const params = new URLSearchParams({
+    origin_pin: originPin,
+    destination_pin: destPin,
+    mot: input.mot || "S",
+    pdt: input.pdt || "B2C",
+  });
+
+  if (input.expectedPickupDate) {
+    params.append("expected_pickup_date", input.expectedPickupDate);
+  }
+
+  const url = `${config.baseUrl}/api/dc/expected_tat?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: authHeaders(config),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const parsed = await readJson(res);
+  if (!res.ok || parsed.success === false) {
+    const errorMsg = String(parsed.msg || parsed.message || `HTTP ${res.status}`);
+    throw new Error(`Delhivery TAT error: ${errorMsg}`);
+  }
+
+  const data = (parsed.data as Record<string, unknown>) || {};
+  const tat = Number(data.tat ?? 0);
+  const expectedDeliveryDate = (data.expected_delivery_date as string) || null;
+
+  return {
+    tat,
+    expectedDeliveryDate,
+    raw: parsed,
+  };
+}
+
+export async function updateDelhiveryEwayBill(
+  config: DelhiveryConfig,
+  waybill: string,
+  items: DelhiveryEwayBillItem[],
+): Promise<{ success: boolean; message: string; raw: unknown }> {
+  const wbn = waybill.trim();
+  if (!wbn) throw new Error("Waybill number is required for E-Way Bill update.");
+
+  const url = `${config.baseUrl}/api/rest/ewaybill/${encodeURIComponent(wbn)}/`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: authHeaders(config, true),
+    body: JSON.stringify({ data: items }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const parsed = await readJson(res);
+  const success = res.ok && parsed.success !== false;
+  const message = String(parsed.message || (success ? "E-Way Bill updated successfully" : "E-Way Bill update failed"));
+
+  if (!success) {
+    throw new Error(`Delhivery E-Way Bill update error: ${message}`);
+  }
+
+  return {
+    success: true,
+    message,
+    raw: parsed,
+  };
+}
+
+export async function editDelhiveryShipment(
+  config: DelhiveryConfig,
+  waybill: string,
+  updates: DelhiveryEditShipmentInput,
+): Promise<{ success: boolean; raw: unknown }> {
+  const wbn = waybill.trim();
+  if (!wbn) throw new Error("Waybill number is required to edit shipment.");
+
+  const body: Record<string, unknown> = {
+    waybill: wbn,
+  };
+
+  if (updates.name) body.name = updates.name.trim();
+  if (updates.add) body.add = updates.add.trim();
+  if (updates.phone) {
+    body.phone = Array.isArray(updates.phone)
+      ? updates.phone
+      : [String(updates.phone).replace(/\D/g, "").slice(-10)];
+  }
+  if (updates.pin) body.pin = updates.pin.trim();
+  if (updates.weight != null) body.weight = Number(updates.weight);
+  if (updates.shipmentLength != null) body.shipment_length = Number(updates.shipmentLength);
+  if (updates.shipmentWidth != null) body.shipment_width = Number(updates.shipmentWidth);
+  if (updates.shipmentHeight != null) body.shipment_height = Number(updates.shipmentHeight);
+
+  const res = await fetch(`${config.baseUrl}/api/p/edit`, {
+    method: "POST",
+    headers: authHeaders(config, true),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const parsed = await readJson(res);
+  const failed = !res.ok || parsed.success === false || parsed.status === false || parsed.error === true;
+
+  if (failed) {
+    throw new Error(`Delhivery edit shipment failed for ${wbn}: ${delhiveryErrorMessage(parsed, `HTTP ${res.status}`)}`);
+  }
+
+  return {
+    success: true,
+    raw: parsed,
+  };
+}
+
+export async function fetchDelhiveryBulkWaybills(
+  config: DelhiveryConfig,
+  count = 1,
+): Promise<{ waybills: string[]; raw: unknown }> {
+  const safeCount = Math.min(Math.max(1, count), 500);
+  const url = `${config.baseUrl}/waybill/api/bulk/json/?token=${encodeURIComponent(config.apiToken)}&count=${safeCount}`;
+
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  const parsed = await readJson(res);
+  if (!res.ok) {
+    throw new Error(`Delhivery bulk waybill request failed: ${delhiveryErrorMessage(parsed, `HTTP ${res.status}`)}`);
+  }
+
+  // Response can be array of waybill numbers or object containing waybills
+  let waybills: string[] = [];
+  if (Array.isArray(parsed)) {
+    waybills = parsed.map(String);
+  } else if (Array.isArray(parsed.packages)) {
+    waybills = parsed.packages.map((pkg: any) => String(pkg.waybill || pkg));
+  }
+
+  return {
+    waybills,
+    raw: parsed,
+  };
+}
+
+export async function downloadDelhiveryDocument(
+  config: DelhiveryConfig,
+  waybills: string[],
+): Promise<{ url?: string; raw: unknown }> {
+  const wbns = waybills.map((w) => w.trim()).filter(Boolean).join(",");
+  if (!wbns) throw new Error("At least one waybill is required to download document.");
+
+  const url = `${config.baseUrl}/api/p/packing_slip?wbns=${encodeURIComponent(wbns)}`;
+  const res = await fetch(url, {
+    headers: authHeaders(config),
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to download Delhivery document (HTTP ${res.status})`);
+  }
+
+  const parsed = await readJson(res);
+  const packages = parsed.packages as Array<Record<string, unknown>> | undefined;
+  const link =
+    (packages?.[0]?.pdf_download_lnk as string) ||
+    (packages?.[0]?.pdf_download_link as string) ||
+    (parsed.pdf_download_lnk as string) ||
+    undefined;
+
+  return {
+    url: link,
+    raw: parsed,
+  };
+}
+
 
