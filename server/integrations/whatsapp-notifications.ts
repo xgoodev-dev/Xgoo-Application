@@ -294,14 +294,42 @@ export function triggerShipmentPartyWhatsApp(
 
 export function triggerReceiverTrackingWhatsApp(
   whatsappSettingsRaw: unknown,
-  input: { receiverName: string; receiverPhone: string; bookingNumber: string; trackUrl: string },
+  input: {
+    receiverName: string;
+    receiverPhone: string;
+    bookingNumber: string;
+    trackUrl: string;
+    storeName?: string | null;
+  },
 ): void {
-  void sendEnabledWhatsAppText(
-    whatsappSettingsRaw,
-    input.receiverPhone,
-    `Hi ${input.receiverName}, track XGoo booking ${input.bookingNumber} here: ${input.trackUrl}`,
-  ).catch((error) => {
+  const store = input.storeName?.trim();
+  const text = store
+    ? `Hi ${input.receiverName}, your order from ${store} is booked with XGoo Courier. Track it here: ${input.trackUrl}`
+    : `Hi ${input.receiverName}, track XGoo booking ${input.bookingNumber} here: ${input.trackUrl}`;
+  void sendEnabledWhatsAppText(whatsappSettingsRaw, input.receiverPhone, text).catch((error) => {
     console.error("[WhatsApp receiver tracking] Failed", formatMetaGraphError(error));
+  });
+}
+
+export function triggerReceiverOrderAckWhatsApp(
+  whatsappSettingsRaw: unknown,
+  input: { receiverName: string; receiverPhone: string; storeName: string },
+): void {
+  const store = input.storeName.trim() || "the store";
+  const fallback = `Hi ${input.receiverName}, your order from ${store} is with XGoo Courier. We will share tracking here once the shipment is booked. Thank you.`;
+  void sendAutomatedWhatsApp(
+    whatsappSettingsRaw,
+    "receiver_ack",
+    input.receiverPhone,
+    {
+      name: input.receiverName,
+      requestNumber: store,
+      bookingNumber: store,
+      route: store,
+    },
+    fallback,
+  ).catch((error) => {
+    console.error("[WhatsApp receiver_ack] Failed", formatMetaGraphError(error));
   });
 }
 

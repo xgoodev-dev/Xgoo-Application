@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/xgoo-logo.png",
-      "bundleIdentifier": "com.murthyenterprises.xgoo",
+      "bundleIdentifier": "com.xgoo.go",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "XGoo Go uses your location when you choose live location to set the parcel pickup address."
       }
@@ -21,7 +21,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.murthyenterprises.xgoo",
+      "package": "com.xgoo.go",
       "usesCleartextTraffic": true,
       "permissions": [
         "ACCESS_COARSE_LOCATION",

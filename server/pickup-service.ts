@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
-import { offices, payments, type BookingRequest, type PickupJob, type Quotation, type Shipment } from "@shared/schema";
+import { offices, payments, businessProfiles, type BookingRequest, type PickupJob, type Quotation, type Shipment } from "@shared/schema";
 import { websiteTrackPath } from "@shared/track-links";
 import { db } from "./db";
 import { triggerCustomerNotification } from "./customer-notifications";
@@ -35,6 +35,36 @@ export function publicQuoteUrl(acceptToken: string, whatsappSettings?: unknown) 
 
 export function publicTrackUrl(ref: string, whatsappSettings?: unknown) {
   return `${publicOrigin(whatsappSettings).replace(/\/$/, "")}${websiteTrackPath(ref)}`;
+}
+
+async function proStoreNameForRequest(request?: BookingRequest | null) {
+  if (!request) return undefined;
+  if (!(await isProBooking(request))) return undefined;
+  if (request.customerUserId) {
+    const [profile] = await db
+      .select()
+      .from(businessProfiles)
+      .where(eq(businessProfiles.customerUserId, request.customerUserId))
+      .limit(1);
+    const named = profile?.storeName?.trim() || profile?.companyName?.trim();
+    if (named) return named;
+  }
+  return request.senderName?.trim() || undefined;
+}
+
+export async function notifyReceiverOfShipment(shipment: Shipment) {
+  const office = await officeById(shipment.officeId);
+  const ref = (shipment.awbNumber || shipment.externalAwb || shipment.bookingNumber || "").trim();
+  if (!ref || !shipment.receiverPhone) return;
+  const request = await storage.getBookingRequestByShipmentId(shipment.id);
+  const storeName = await proStoreNameForRequest(request);
+  triggerReceiverTrackingWhatsApp(office?.whatsappSettings, {
+    receiverName: shipment.receiverName,
+    receiverPhone: shipment.receiverPhone,
+    bookingNumber: shipment.bookingNumber,
+    trackUrl: publicTrackUrl(ref, office?.whatsappSettings),
+    storeName,
+  });
 }
 
 const STORE_VISIT_OPEN_STATUSES = new Set([
@@ -369,6 +399,7 @@ export async function raisePickupShipmentAtHub(job: PickupJob) {
     declaredValue: request.declaredValue,
     packagePhotoUrls: job.inspectionPhotoUrls || request.packagePhotoUrls,
     serviceType: request.serviceType === "air" ? "air" : "surface",
+    xgooOrderId: request.xgooOrderId,
     baseAmount: quotation.baseAmount,
     additionalCharges: quotation.additionalCharges,
     gstAmount: quotation.gstAmount,
@@ -468,10 +499,5 @@ export async function notifyAwbCreated(shipment: Shipment) {
   const trackUrl = publicTrackUrl(awb, settings);
   triggerTrackingWhatsApp(settings, shipment, trackUrl);
   triggerInvoiceWhatsApp(settings, shipment, invoice.invoiceNumber, trackUrl);
-  triggerReceiverTrackingWhatsApp(settings, {
-    receiverName: shipment.receiverName,
-    receiverPhone: shipment.receiverPhone,
-    bookingNumber: shipment.bookingNumber,
-    trackUrl,
-  });
+  await notifyReceiverOfShipment(shipment);
 }

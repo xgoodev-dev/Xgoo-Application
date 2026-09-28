@@ -19,6 +19,7 @@ const STAFF_PATH_PREFIXES = [
   "/pricing",
   "/reports",
   "/settings",
+  "/s",
 ];
 
 function resolveWhatsAppNumber(): string {

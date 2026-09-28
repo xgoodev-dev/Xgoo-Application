@@ -129,6 +129,12 @@ export default function ShipmentDetailPage() {
             <Badge variant="outline">{PARTNER_SYNC_STATUS_LABELS[syncStatus]}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
+            {shipment.xgooOrderId ? (
+              <>
+                XGoo ID <span className="font-mono font-semibold text-foreground">{shipment.xgooOrderId}</span>
+                {" · "}
+              </>
+            ) : null}
             {shipment.courierPartner?.name ?? "No partner"} ·{" "}
             {shipment.bookedAt
               ? format(new Date(shipment.bookedAt), "dd MMM yyyy, HH:mm")
@@ -169,6 +175,12 @@ export default function ShipmentDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
+              {shipment.xgooOrderId ? (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">XGoo ID</span>
+                  <p className="font-mono font-semibold tracking-wide">{shipment.xgooOrderId}</p>
+                </div>
+              ) : null}
               <div>
                 <span className="text-muted-foreground">Weight</span>
                 <p className="font-medium">{shipment.weight} kg</p>

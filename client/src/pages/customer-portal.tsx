@@ -3638,6 +3638,8 @@ function AccountTab({
   onLogout,
   showAddresses = true,
   showLogout = true,
+  title = "My Account",
+  nameLabel = "Full Name",
 }: {
   token: string;
   user: CustomerUserInfo;
@@ -3645,6 +3647,8 @@ function AccountTab({
   onLogout: () => void;
   showAddresses?: boolean;
   showLogout?: boolean;
+  title?: string;
+  nameLabel?: string;
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -3682,13 +3686,13 @@ function AccountTab({
 
   return (
     <div className="mx-auto max-w-lg py-4">
-      <h2 className="text-xl font-bold mb-4" data-testid="text-account-title">My Account</h2>
+      <h2 className="text-xl font-bold mb-4" data-testid="text-account-title">{title}</h2>
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="name" render={({ field }) => (
-                <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} data-testid="input-profile-name" /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>{nameLabel}</FormLabel><FormControl><Input {...field} data-testid="input-profile-name" /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <FormField control={form.control} name="phone" render={({ field }) => (
@@ -3757,7 +3761,7 @@ export default function CustomerPortalPage() {
   );
   const businessProfileQuery = useQuery({
     queryKey: ["/api/customer/business/profile"],
-    queryFn: () => businessApi(auth.token!).profile(),
+    queryFn: ({ signal }) => businessApi(auth.token!).profile(signal),
     enabled: Boolean(isBusiness && auth.token),
   });
   const [editingProApplication, setEditingProApplication] = useState(false);
@@ -4102,9 +4106,22 @@ export default function CustomerPortalPage() {
           showAccount={auth.isAuthenticated}
           isBusiness={isBusiness}
           officePhone={office.phone}
+          businessName={
+            isBusiness
+              ? businessProfile?.storeName?.trim() || businessProfile?.companyName?.trim() || ""
+              : undefined
+          }
           locationFallback={
             isBusiness
-              ? [businessProfile?.pickupAddress, businessProfile?.pickupCity].filter(Boolean).join(", ")
+              ? [
+                  businessProfile?.pickupAddress,
+                  businessProfile?.pickupCity,
+                  businessProfile?.pickupState,
+                  businessProfile?.pickupPincode,
+                ]
+                  .map((part) => part?.trim())
+                  .filter(Boolean)
+                  .join(", ")
               : [auth.user?.address, auth.user?.city].filter(Boolean).join(", ")
           }
           onLogout={auth.logout}
@@ -4118,11 +4135,7 @@ export default function CustomerPortalPage() {
               : undefined
           }
         >
-          {isBusiness && auth.token && auth.user && businessProfileQuery.isLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-[#FF4907]" />
-            </div>
-          ) : isBusiness && auth.token && auth.user ? (
+          {isBusiness && auth.token && auth.user ? (
             <>
               {activeTab === "home" && (
                 <div className="h-full min-h-0 overflow-y-auto px-4 md:px-6">
@@ -4220,6 +4233,8 @@ export default function CustomerPortalPage() {
                     userName={auth.user.name}
                     userPhone={auth.user.phone}
                     userEmail={auth.user.email}
+                    storeName={businessProfile?.storeName}
+                    storeProfile={businessProfile}
                     module="pro"
                     view={goProfileView}
                     onViewChange={setGoProfileView}
@@ -4234,6 +4249,8 @@ export default function CustomerPortalPage() {
                       <AccountTab
                         token={auth.token}
                         user={auth.user}
+                        title="Owner"
+                        nameLabel="Owner name"
                         showAddresses={false}
                         showLogout={false}
                         onUserUpdate={(u) => {

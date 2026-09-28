@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Plus, Printer, SkipForward } from "lucide-react";
+import { Check, Loader2, Plus, Printer, SkipForward, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -52,6 +52,7 @@ type BusinessDailyJob = {
   weight?: string | number | null;
   numberOfPieces?: number | null;
   contentDescription?: string | null;
+  xgooOrderId?: string | null;
   status: "planned" | "skipped" | "submitted";
   bookingRequestId?: string | null;
 };
@@ -78,6 +79,24 @@ const JOB_STATUS: Record<BusinessDailyJob["status"], string> = {
   submitted: "Sent",
 };
 
+function isPickupDraftDirty(draft: typeof EMPTY_DRAFT) {
+  return Boolean(
+    draft.destinationId ||
+      draft.name.trim() ||
+      draft.phone.trim() ||
+      draft.address.trim() ||
+      draft.addressLine2.trim() ||
+      draft.city.trim() ||
+      draft.state.trim() ||
+      draft.pincode.trim() ||
+      draft.destinationCountry.trim() ||
+      draft.contents.trim() ||
+      draft.shipmentType !== EMPTY_DRAFT.shipmentType ||
+      draft.weight !== EMPTY_DRAFT.weight ||
+      draft.pieces !== EMPTY_DRAFT.pieces,
+  );
+}
+
 export function PickupPanel({
   token,
   onOpenCustomers,
@@ -99,6 +118,17 @@ export function PickupPanel({
   const date = todayIsoDate();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLTableCellElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const close = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return;
+      setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [pickerOpen]);
 
   const todayQuery = useQuery({
     queryKey: ["/api/customer/business/today", date],
@@ -161,6 +191,11 @@ export function PickupPanel({
       shipmentType: customer.shipmentType === "international" ? "international" : "domestic",
       destinationCountry: customer.destinationCountry || "",
     }));
+    setPickerOpen(false);
+  };
+
+  const clearDraft = () => {
+    setDraft(EMPTY_DRAFT);
     setPickerOpen(false);
   };
 
@@ -279,6 +314,7 @@ export function PickupPanel({
       <ProTableFrame minWidth="1360px">
         <ProTableHead
           columns={[
+            { label: "XGoo ID", width: "10rem" },
             { label: "Customer" },
             { label: "Phone" },
             { label: "Type", width: "8rem" },
@@ -290,12 +326,21 @@ export function PickupPanel({
             { label: "Kg", width: "4rem" },
             { label: "Pcs", width: "4rem" },
             { label: "Status", width: "6rem" },
-            { label: " ", width: "8rem" },
+            { label: " ", width: "10rem" },
           ]}
         />
         <tbody>
           <tr className="border-b border-[#FF4907]/30 bg-[#FFF7F3]">
-            <td className="relative px-1 py-1">
+            <td className="px-2 py-1 text-xs text-zinc-400">Assigned on add</td>
+            <td
+              className="relative px-1 py-1"
+              ref={pickerRef}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setPickerOpen(false);
+                }
+              }}
+            >
               <input
                 className={proCellClass}
                 placeholder="Name or pick saved"
@@ -424,20 +469,37 @@ export function PickupPanel({
             </td>
             <td className="px-2 py-1 text-xs text-zinc-400">New</td>
             <td className="px-1 py-1">
-              <Button
-                size="sm"
-                className="h-8 rounded-none bg-[#FF4907] px-3 text-white hover:bg-[#e03d00]"
-                disabled={addJob.isPending}
-                onClick={() => addJob.mutate()}
-                data-testid="button-add-parcel"
-              >
-                {addJob.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
-                Add
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  className="h-8 rounded-none bg-[#FF4907] px-3 text-white hover:bg-[#e03d00]"
+                  disabled={addJob.isPending}
+                  onClick={() => addJob.mutate()}
+                  data-testid="button-add-parcel"
+                >
+                  {addJob.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
+                  Add
+                </Button>
+                {isPickupDraftDirty(draft) ? (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center px-2 text-xs font-semibold text-zinc-500 hover:text-zinc-900"
+                    title="Clear this row"
+                    onClick={clearDraft}
+                    data-testid="button-clear-pickup-draft"
+                  >
+                    <X className="mr-1 h-4 w-4" />
+                    Clear
+                  </button>
+                ) : null}
+              </div>
             </td>
           </tr>
           {(data?.jobs || []).map((job) => (
             <tr key={job.id} className="border-b border-zinc-100" data-testid={`today-job-${job.id}`}>
+              <td className="px-2 py-2 font-mono text-xs font-semibold text-zinc-900">
+                {job.xgooOrderId || "—"}
+              </td>
               <td className="px-2 py-2 font-medium text-zinc-900">{job.receiverName}</td>
               <td className="px-2 py-2 text-zinc-600">{job.receiverPhone || "—"}</td>
               <td className="px-2 py-2 text-zinc-600">{shipmentScopeLabel(job.shipmentType)}</td>
@@ -522,6 +584,7 @@ export function PickupPanel({
                         pieces: job.numberOfPieces,
                         weight: job.weight,
                         bookingRef: job.bookingRequestId || undefined,
+                        xgooOrderId: job.xgooOrderId,
                       });
                     }}
                   >

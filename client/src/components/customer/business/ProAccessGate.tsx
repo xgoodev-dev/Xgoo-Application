@@ -15,6 +15,7 @@ import {
 import { businessApi } from "./business-api";
 
 export type ProProfileStatus = {
+  id?: string | null;
   companyName?: string | null;
   storeName?: string | null;
   storeType?: string | null;

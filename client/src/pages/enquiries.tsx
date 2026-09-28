@@ -312,6 +312,7 @@ export default function EnquiriesPage() {
     const matchesSearch =
       search === "" ||
       request.requestNumber.toLowerCase().includes(search.toLowerCase()) ||
+      request.xgooOrderId?.toLowerCase().includes(search.toLowerCase()) ||
       request.senderName.toLowerCase().includes(search.toLowerCase()) ||
       request.receiverName.toLowerCase().includes(search.toLowerCase()) ||
       request.senderPhone.includes(search) ||
@@ -356,7 +357,7 @@ export default function EnquiriesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search enquiry #, sender, receiver, phone..."
+                placeholder="Search XGoo ID, enquiry #, sender, receiver, phone..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
@@ -421,6 +422,7 @@ export default function EnquiriesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Enquiry #</TableHead>
+                    <TableHead>XGoo ID</TableHead>
                     <TableHead>Sender</TableHead>
                     <TableHead>Receiver</TableHead>
                     <TableHead>Channel</TableHead>
@@ -441,6 +443,9 @@ export default function EnquiriesPage() {
                       onClick={() => handleViewDetails(request)}
                     >
                       <TableCell className="font-medium">{request.requestNumber}</TableCell>
+                      <TableCell className="font-mono text-xs font-semibold">
+                        {request.xgooOrderId || "—"}
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="text-sm font-medium">{request.senderName}</div>
@@ -570,7 +575,11 @@ export default function EnquiriesPage() {
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Enquiry details</DialogTitle>
-            <DialogDescription>Enquiry #{selectedRequest?.requestNumber}</DialogDescription>
+            <DialogDescription>
+              {selectedRequest?.xgooOrderId
+                ? `XGoo ID ${selectedRequest.xgooOrderId}`
+                : `Enquiry #${selectedRequest?.requestNumber}`}
+            </DialogDescription>
           </DialogHeader>
 
           {selectedRequest && (
@@ -709,6 +718,10 @@ export default function EnquiriesPage() {
                     Package
                   </h4>
                   <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">XGoo ID</span>
+                      <span className="font-mono font-semibold">{selectedRequest.xgooOrderId || "—"}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Weight</span>
                       <span>{selectedRequest.weight ? `${selectedRequest.weight} kg` : "-"}</span>

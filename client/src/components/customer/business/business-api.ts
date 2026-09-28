@@ -6,6 +6,13 @@ async function parseJson(res: Response) {
   return json;
 }
 
+function requestSignal(signal?: AbortSignal, ms = 12_000) {
+  const timeout = AbortSignal.timeout(ms);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+  return timeout;
+}
+
 export function businessApi(token: string) {
   const headers = {
     "Content-Type": "application/json",
@@ -13,8 +20,11 @@ export function businessApi(token: string) {
   };
 
   return {
-    profile: () =>
-      fetch("/api/customer/business/profile", { headers }).then(parseJson),
+    profile: (signal?: AbortSignal) =>
+      fetch("/api/customer/business/profile", {
+        headers,
+        signal: requestSignal(signal),
+      }).then(parseJson),
     saveProfile: (body: Record<string, unknown>) =>
       fetch("/api/customer/business/profile", {
         method: "PATCH",

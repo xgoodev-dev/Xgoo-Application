@@ -7,6 +7,7 @@ import {
   LogOut,
   MapPinned,
   ShieldCheck,
+  Store,
   UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,13 @@ import { SavedAddressesManager } from "@/components/customer/SavedAddresses";
 import { GoHelpSupport } from "./GoHelpSupport";
 import { GoNotifications } from "./GoHome";
 import { GoPrivacySecurity } from "./GoPrivacySecurity";
+import { StoreDetailsPanel } from "@/components/customer/business/StoreDetailsPanel";
+import type { ProProfileStatus } from "@/components/customer/business/ProAccessGate";
 
 export type GoProfileView =
   | "menu"
   | "personal"
+  | "store"
   | "addresses"
   | "privacy"
   | "notifications"
@@ -38,6 +42,8 @@ export function GoProfile({
   userName,
   userPhone,
   userEmail,
+  storeName,
+  storeProfile,
   view,
   onViewChange,
   personalPanel,
@@ -51,6 +57,8 @@ export function GoProfile({
   userName?: string;
   userPhone?: string | null;
   userEmail?: string | null;
+  storeName?: string | null;
+  storeProfile?: ProProfileStatus | null;
   view: GoProfileView;
   onViewChange: (view: GoProfileView) => void;
   personalPanel: ReactNode;
@@ -101,6 +109,14 @@ export function GoProfile({
       );
     case "help":
       return <GoHelpSupport module={module} onBack={() => onViewChange("menu")} />;
+    case "store":
+      return (
+        <StoreDetailsPanel
+          token={token}
+          onBack={() => onViewChange("menu")}
+          initialProfile={storeProfile}
+        />
+      );
     case "menu":
       break;
     default: {
@@ -118,7 +134,12 @@ export function GoProfile({
           {initialsFromName(userName)}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-lg font-bold text-zinc-900">{userName}</p>
+          <p className="truncate text-lg font-bold text-zinc-900">
+            {module === "pro" && storeName?.trim() ? storeName.trim() : userName}
+          </p>
+          {module === "pro" && storeName?.trim() ? (
+            <p className="text-sm text-zinc-500">Owner · {userName}</p>
+          ) : null}
           {userPhone ? <p className="text-sm text-zinc-500">{userPhone}</p> : null}
           {userEmail ? <p className="text-sm text-zinc-500">{userEmail}</p> : null}
         </div>
@@ -128,7 +149,7 @@ export function GoProfile({
       <Card className="mt-2 divide-y divide-zinc-100 border-zinc-100 p-0 shadow-none">
         <MenuRow
           icon={UserRound}
-          label="Personal information"
+          label={module === "pro" ? "Owner information" : "Personal information"}
           onClick={() => onViewChange("personal")}
         />
         <MenuRow
@@ -147,6 +168,11 @@ export function GoProfile({
         <>
           <p className="mt-6 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Business</p>
           <Card className="mt-2 divide-y divide-zinc-100 border-zinc-100 p-0 shadow-none">
+            <MenuRow
+              icon={Store}
+              label="Store details"
+              onClick={() => onViewChange("store")}
+            />
             <MenuRow
               icon={Clock}
               label="Pickup schedule"

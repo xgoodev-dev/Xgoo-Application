@@ -293,6 +293,7 @@ export const shipments = pgTable("shipments", {
   partnerSyncStatus: varchar("partner_sync_status", { length: 20 }).notNull().default("pending"),
   partnerSyncError: text("partner_sync_error"),
   partnerSyncedAt: timestamp("partner_synced_at"),
+  xgooOrderId: varchar("xgoo_order_id", { length: 32 }),
 
   // Sender details
   senderName: varchar("sender_name", { length: 255 }).notNull(),
@@ -349,6 +350,7 @@ export const shipments = pgTable("shipments", {
   index("idx_shipments_awb").on(table.awbNumber),
   index("idx_shipments_status").on(table.status),
   index("idx_shipments_booked_at").on(table.bookedAt),
+  index("idx_shipments_xgoo_order_id").on(table.xgooOrderId),
 ]);
 
 export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
@@ -557,6 +559,7 @@ export const bookingRequests = pgTable("booking_requests", {
   officeId: varchar("office_id").notNull().references(() => offices.id),
   branchId: varchar("branch_id").references(() => branches.id),
   requestNumber: varchar("request_number", { length: 50 }).notNull(),
+  xgooOrderId: varchar("xgoo_order_id", { length: 32 }),
   
   // Sender details
   senderName: varchar("sender_name", { length: 255 }).notNull(),
@@ -623,6 +626,7 @@ export const bookingRequests = pgTable("booking_requests", {
   index("idx_booking_requests_status").on(table.status),
   index("idx_booking_requests_number").on(table.requestNumber),
   index("idx_booking_requests_customer_user").on(table.customerUserId),
+  index("idx_booking_requests_xgoo_order_id").on(table.xgooOrderId),
 ]);
 
 export const bookingRequestsRelations = relations(bookingRequests, ({ one }) => ({
@@ -765,6 +769,7 @@ export const businessDailyJobs = pgTable("business_daily_jobs", {
   weight: decimal("weight", { precision: 10, scale: 2 }).default("1"),
   numberOfPieces: integer("number_of_pieces").notNull().default(1),
   contentDescription: text("content_description").notNull().default("Daily courier"),
+  xgooOrderId: varchar("xgoo_order_id", { length: 32 }),
   status: varchar("status", { length: 20 }).notNull().default("planned"),
   bookingRequestId: varchar("booking_request_id").references(() => bookingRequests.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -791,6 +796,7 @@ export const businessOrders = pgTable("business_orders", {
   weight: decimal("weight", { precision: 10, scale: 2 }).default("1"),
   numberOfPieces: integer("number_of_pieces").notNull().default(1),
   notes: text("notes"),
+  xgooOrderId: varchar("xgoo_order_id", { length: 32 }),
   status: varchar("status", { length: 20 }).notNull().default("open"),
   dailyJobId: varchar("daily_job_id").references(() => businessDailyJobs.id),
   bookingRequestId: varchar("booking_request_id").references(() => bookingRequests.id),
@@ -799,6 +805,7 @@ export const businessOrders = pgTable("business_orders", {
 }, (table) => [
   index("idx_business_orders_user").on(table.customerUserId),
   index("idx_business_orders_status").on(table.status),
+  index("idx_business_orders_xgoo_order_id").on(table.xgooOrderId),
 ]);
 
 export const businessSettlements = pgTable("business_settlements", {

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Printer, Trash2, Truck } from "lucide-react";
+import { Copy, Link2, Loader2, Plus, Printer, Trash2, Truck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -8,6 +8,7 @@ import {
   BUSINESS_SHIPMENT_SCOPES,
   joinAddressLines,
   shipmentScopeLabel,
+  storeCustomerOrderPath,
   todayIsoDate,
   type BusinessOrderChannelId,
   type BusinessShipmentScope,
@@ -16,6 +17,7 @@ import { businessApi } from "./business-api";
 import { printProParcelSlip, type ProParcelSlipParty } from "./ProParcelSlip";
 
 type BusinessProfile = {
+  id?: string;
   companyName?: string;
   storeName?: string;
   pickupAddress?: string;
@@ -54,6 +56,7 @@ type BusinessOrder = {
   weight?: string | number | null;
   numberOfPieces?: number | null;
   notes?: string | null;
+  xgooOrderId?: string | null;
   status: string;
   bookingRequestId?: string | null;
 };
@@ -96,6 +99,24 @@ function channelLabel(channel: string) {
   return BUSINESS_ORDER_CHANNELS.find((item) => item.id === channel)?.label || channel;
 }
 
+function isOrderDraftDirty(draft: typeof EMPTY_DRAFT) {
+  return Boolean(
+    draft.destinationId ||
+      draft.name.trim() ||
+      draft.phone.trim() ||
+      draft.address.trim() ||
+      draft.addressLine2.trim() ||
+      draft.city.trim() ||
+      draft.state.trim() ||
+      draft.pincode.trim() ||
+      draft.destinationCountry.trim() ||
+      draft.contents.trim() ||
+      draft.shipmentType !== EMPTY_DRAFT.shipmentType ||
+      draft.weight !== EMPTY_DRAFT.weight ||
+      draft.pieces !== EMPTY_DRAFT.pieces,
+  );
+}
+
 function fromParty(profile?: BusinessProfile | null): ProParcelSlipParty {
   return {
     name: profile?.storeName || profile?.companyName || "Store",
@@ -126,6 +147,7 @@ function printOrderSlip(profile: BusinessProfile | undefined, order: BusinessOrd
     pieces: order.numberOfPieces,
     weight: order.weight,
     bookingRef: order.bookingRequestId || undefined,
+    xgooOrderId: order.xgooOrderId,
     channel: channelLabel(order.channel),
   });
 }
@@ -142,6 +164,17 @@ export function OrdersPanel({
   const api = businessApi(token);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLTableCellElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const close = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return;
+      setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [pickerOpen]);
 
   const profileQuery = useQuery({
     queryKey: ["/api/customer/business/profile"],
@@ -155,6 +188,29 @@ export function OrdersPanel({
     queryKey: ["/api/customer/business/orders"],
     queryFn: () => api.orders() as Promise<BusinessOrder[]>,
   });
+  const profile = profileQuery.data;
+  const storeDisplayName = profile?.storeName || profile?.companyName || "our store";
+  const customerOrderLink = profile?.id
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}${storeCustomerOrderPath(profile.id)}`
+    : "";
+
+  const shareCustomerLink = async (via: BusinessOrderChannelId = "whatsapp") => {
+    if (!customerOrderLink) return;
+    const url = `${customerOrderLink}?via=${via}`;
+    const text = `Please add your delivery address for your order from ${storeDisplayName}: ${url}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: "Customer link copied",
+        description: "Send it on WhatsApp, Instagram, your website, or app.",
+      });
+    } catch {
+      toast({ title: "Copy this link", description: url });
+    }
+    if (via === "whatsapp") {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const customers = destinationsQuery.data || [];
   const orders = useMemo(() => {
@@ -189,6 +245,11 @@ export function OrdersPanel({
       shipmentType: customer.shipmentType === "international" ? "international" : "domestic",
       destinationCountry: customer.destinationCountry || "",
     }));
+    setPickerOpen(false);
+  };
+
+  const clearDraft = () => {
+    setDraft({ ...EMPTY_DRAFT, channel: draft.channel });
     setPickerOpen(false);
   };
 
@@ -291,10 +352,32 @@ export function OrdersPanel({
         <div>
           <h2 className="text-xl font-bold">Orders</h2>
           <p className="text-sm text-zinc-500">
-            Type a row for each WhatsApp, call, or DM. Your store is From.
+            Share a link so customers send their address, or type a row. Write the XGoo ID on the
+            package so Hub and Command can identify it.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {customerOrderLink ? (
+            <>
+              <Button
+                variant="outline"
+                className="rounded-none"
+                onClick={() => void shareCustomerLink("whatsapp")}
+                data-testid="button-share-order-link-whatsapp"
+              >
+                <Link2 className="mr-2 h-4 w-4" />
+                Share WhatsApp link
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-none"
+                onClick={() => void shareCustomerLink("instagram")}
+                data-testid="button-copy-order-link"
+              >
+                Copy link
+              </Button>
+            </>
+          ) : null}
           <Button
             variant="outline"
             className="rounded-none"
@@ -310,9 +393,10 @@ export function OrdersPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-none border border-zinc-200 bg-white">
-        <table className="w-full min-w-[1360px] border-collapse text-sm">
+        <table className="w-full min-w-[1520px] border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <tr className="border-b border-zinc-200">
+              <th className="w-40 px-2 py-2.5 font-semibold">XGoo ID</th>
               <th className="px-2 py-2.5 font-semibold">Via</th>
               <th className="px-2 py-2.5 font-semibold">Customer</th>
               <th className="px-2 py-2.5 font-semibold">Phone</th>
@@ -325,11 +409,12 @@ export function OrdersPanel({
               <th className="w-16 px-2 py-2.5 font-semibold">Kg</th>
               <th className="w-16 px-2 py-2.5 font-semibold">Pcs</th>
               <th className="w-24 px-2 py-2.5 font-semibold">Status</th>
-              <th className="w-36 px-2 py-2.5 font-semibold"> </th>
+              <th className="w-44 px-2 py-2.5 font-semibold"> </th>
             </tr>
           </thead>
           <tbody>
             <tr className="border-b border-[#FF4907]/30 bg-[#FFF7F3]">
+              <td className="px-2 py-1 text-xs text-zinc-400">Assigned on add</td>
               <td className="px-1 py-1">
                 <select
                   className="h-9 w-full bg-transparent px-1 text-sm outline-none"
@@ -346,7 +431,15 @@ export function OrdersPanel({
                   ))}
                 </select>
               </td>
-              <td className="relative px-1 py-1">
+              <td
+                className="relative px-1 py-1"
+                ref={pickerRef}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setPickerOpen(false);
+                  }
+                }}
+              >
                 <input
                   className={cellClass}
                   placeholder="Name or pick saved"
@@ -521,26 +614,63 @@ export function OrdersPanel({
               </td>
               <td className="px-2 py-1 text-xs text-zinc-400">New</td>
               <td className="px-1 py-1">
-                <Button
-                  size="sm"
-                  className="h-8 rounded-none bg-[#FF4907] px-3 text-white hover:bg-[#e03d00]"
-                  disabled={createOrder.isPending}
-                  onClick={() => createOrder.mutate()}
-                  data-testid="button-save-order"
-                >
-                  {createOrder.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Plus className="mr-1 h-4 w-4" />
-                      Add
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    className="h-8 rounded-none bg-[#FF4907] px-3 text-white hover:bg-[#e03d00]"
+                    disabled={createOrder.isPending}
+                    onClick={() => createOrder.mutate()}
+                    data-testid="button-save-order"
+                  >
+                    {createOrder.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add
+                      </>
+                    )}
+                  </Button>
+                  {isOrderDraftDirty(draft) ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-8 items-center px-2 text-xs font-semibold text-zinc-500 hover:text-zinc-900"
+                      title="Clear this row"
+                      onClick={clearDraft}
+                      data-testid="button-clear-order-draft"
+                    >
+                      <X className="mr-1 h-4 w-4" />
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
               </td>
             </tr>
             {orders.map((order) => (
               <tr key={order.id} className="border-b border-zinc-100" data-testid={`store-order-${order.id}`}>
+                <td className="px-2 py-2">
+                  {order.xgooOrderId ? (
+                    <button
+                      type="button"
+                      className="font-mono text-xs font-semibold tracking-wide text-zinc-900 hover:text-[#FF4907]"
+                      title="Copy XGoo ID"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(order.xgooOrderId || "").then(
+                          () =>
+                            toast({
+                              title: "XGoo ID copied",
+                              description: "Write it on the package.",
+                            }),
+                          () => toast({ title: "XGoo ID", description: order.xgooOrderId || "" }),
+                        );
+                      }}
+                    >
+                      {order.xgooOrderId}
+                    </button>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </td>
                 <td className="px-2 py-2 text-zinc-600">{channelLabel(order.channel)}</td>
                 <td className="px-2 py-2 font-medium text-zinc-900">{order.receiverName}</td>
                 <td className="px-2 py-2 text-zinc-600">{order.receiverPhone}</td>
@@ -574,6 +704,25 @@ export function OrdersPanel({
                 </td>
                 <td className="px-1 py-1">
                   <div className="flex items-center gap-1">
+                    {order.xgooOrderId ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center text-zinc-500 hover:text-zinc-900"
+                        title="Copy XGoo ID"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(order.xgooOrderId || "").then(
+                            () =>
+                              toast({
+                                title: "XGoo ID copied",
+                                description: "Write it on the package.",
+                              }),
+                            () => toast({ title: "XGoo ID", description: order.xgooOrderId || "" }),
+                          );
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center text-zinc-500 hover:text-zinc-900"

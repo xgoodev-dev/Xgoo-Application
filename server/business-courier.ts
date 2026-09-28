@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   businessDailyJobs,
@@ -25,23 +25,48 @@ import {
   mergeBusinessWeekdays,
   normalizeBillingCycle,
   todayIsoDate,
+  formatXgooOrderId,
+  xgooOrderIdPrefix,
   type BusinessBillingCycle,
   type BusinessSettlementMode,
   type BusinessVerificationStatus,
   type BusinessWeekdays,
 } from "@shared/business-courier";
 import { db } from "./db";
-import { storage } from "./storage";
+import { storage, ensureXgooOrderIdColumns } from "./storage";
 import { triggerCustomerNotification } from "./customer-notifications";
-import { triggerBookingRequestWhatsApp } from "./integrations/whatsapp-notifications";
+import { triggerBookingRequestWhatsApp, triggerReceiverOrderAckWhatsApp } from "./integrations/whatsapp-notifications";
 import { offices } from "@shared/schema";
 import { assignPickupJob } from "./pickup-dispatch";
 
 let tablesReady: Promise<void> | null = null;
+const TABLE_SETUP_TIMEOUT_MS = 12_000;
+const PROFILE_READ_TIMEOUT_MS = 8_000;
 
-export async function ensureBusinessCourierTables() {
-  if (!tablesReady) {
-    tablesReady = db.execute(sql`
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function isMissingRelationError(error: unknown) {
+  const err = error as { code?: string; message?: string };
+  const message = String(err?.message || "");
+  return err?.code === "42P01" || err?.code === "42703" || /does not exist/i.test(message);
+}
+
+async function runBusinessCourierTableSetup() {
+  await db.execute(sql`
       CREATE TABLE IF NOT EXISTS business_profiles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
         customer_user_id varchar NOT NULL UNIQUE REFERENCES customer_users(id),
@@ -101,6 +126,7 @@ export async function ensureBusinessCourierTables() {
           weight decimal(10, 2) DEFAULT 1,
           number_of_pieces integer NOT NULL DEFAULT 1,
           content_description text NOT NULL DEFAULT 'Daily courier',
+          xgoo_order_id varchar(32),
           status varchar(20) NOT NULL DEFAULT 'planned',
           booking_request_id varchar REFERENCES booking_requests(id),
           created_at timestamp DEFAULT now(),
@@ -122,12 +148,10 @@ export async function ensureBusinessCourierTables() {
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS address_line2 text;
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS destination_country varchar(100);
-        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS receiver_address_line2 text;
-        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
-        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS destination_country varchar(100);
         ALTER TABLE business_daily_jobs ADD COLUMN IF NOT EXISTS receiver_address_line2 text;
         ALTER TABLE business_daily_jobs ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
         ALTER TABLE business_daily_jobs ADD COLUMN IF NOT EXISTS destination_country varchar(100);
+        ALTER TABLE business_daily_jobs ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32);
       `);
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS business_settlements (
@@ -171,6 +195,7 @@ export async function ensureBusinessCourierTables() {
           weight decimal(10, 2) DEFAULT 1,
           number_of_pieces integer NOT NULL DEFAULT 1,
           notes text,
+          xgoo_order_id varchar(32),
           status varchar(20) NOT NULL DEFAULT 'open',
           daily_job_id varchar REFERENCES business_daily_jobs(id),
           booking_request_id varchar REFERENCES booking_requests(id),
@@ -180,6 +205,12 @@ export async function ensureBusinessCourierTables() {
       `);
       await db.execute(sql`
         CREATE INDEX IF NOT EXISTS idx_business_orders_user ON business_orders (customer_user_id)
+      `);
+      await db.execute(sql`
+        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS receiver_address_line2 text;
+        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
+        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS destination_country varchar(100);
+        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32);
       `);
       await db.execute(sql`
         UPDATE business_profiles
@@ -195,8 +226,78 @@ export async function ensureBusinessCourierTables() {
           AND created_at < TIMESTAMPTZ '2026-09-13 00:00:00+00'
       `);
     });
+}
+
+export async function ensureBusinessCourierTables() {
+  if (!tablesReady) {
+    tablesReady = withTimeout(
+      runBusinessCourierTableSetup(),
+      TABLE_SETUP_TIMEOUT_MS,
+      "Business table setup",
+    ).catch((error) => {
+      tablesReady = null;
+      throw error;
+    });
   }
   await tablesReady;
+}
+
+function isUniqueViolation(error: unknown) {
+  return (error as { code?: string })?.code === "23505";
+}
+
+function sequenceFromXgooOrderId(id: string | null | undefined, prefix: string): number {
+  if (!id || !id.startsWith(prefix)) return 0;
+  const seq = Number(id.slice(prefix.length));
+  return Number.isFinite(seq) ? seq : 0;
+}
+
+async function highestXgooOrderSequence(prefix: string): Promise<number> {
+  const pattern = `${prefix}%`;
+  const [order] = await db
+    .select({ id: businessOrders.xgooOrderId })
+    .from(businessOrders)
+    .where(like(businessOrders.xgooOrderId, pattern))
+    .orderBy(desc(businessOrders.xgooOrderId))
+    .limit(1);
+  const [job] = await db
+    .select({ id: businessDailyJobs.xgooOrderId })
+    .from(businessDailyJobs)
+    .where(like(businessDailyJobs.xgooOrderId, pattern))
+    .orderBy(desc(businessDailyJobs.xgooOrderId))
+    .limit(1);
+  return Math.max(
+    sequenceFromXgooOrderId(order?.id, prefix),
+    sequenceFromXgooOrderId(job?.id, prefix),
+  );
+}
+
+async function allocateXgooOrderId(storeName: string, at = new Date()): Promise<string> {
+  await ensureXgooOrderIdColumns();
+  const prefix = xgooOrderIdPrefix(storeName, at);
+  return formatXgooOrderId(storeName, (await highestXgooOrderSequence(prefix)) + 1, at);
+}
+
+async function backfillMissingXgooOrderIds(customerUserId: string) {
+  await ensureXgooOrderIdColumns();
+  const missing = await db
+    .select()
+    .from(businessOrders)
+    .where(and(eq(businessOrders.customerUserId, customerUserId), isNull(businessOrders.xgooOrderId)));
+  if (missing.length === 0) return;
+  const { storeName } = await storefrontForCustomer(customerUserId);
+  for (const order of missing) {
+    const at = order.createdAt ? new Date(order.createdAt) : new Date();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const xgooOrderId = await allocateXgooOrderId(storeName, at);
+      try {
+        await db.update(businessOrders).set({ xgooOrderId }).where(eq(businessOrders.id, order.id));
+        break;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+    }
+  }
 }
 
 function serializeProfile(profile: BusinessProfile) {
@@ -211,8 +312,7 @@ function serializeProfile(profile: BusinessProfile) {
   };
 }
 
-export async function getOrCreateBusinessProfile(customerUserId: string): Promise<BusinessProfile> {
-  await ensureBusinessCourierTables();
+async function readOrInsertBusinessProfile(customerUserId: string): Promise<BusinessProfile> {
   const [existing] = await db
     .select()
     .from(businessProfiles)
@@ -228,6 +328,24 @@ export async function getOrCreateBusinessProfile(customerUserId: string): Promis
     })
     .returning();
   return created;
+}
+
+export async function getOrCreateBusinessProfile(customerUserId: string): Promise<BusinessProfile> {
+  try {
+    return await withTimeout(
+      readOrInsertBusinessProfile(customerUserId),
+      PROFILE_READ_TIMEOUT_MS,
+      "Load business profile",
+    );
+  } catch (error) {
+    if (!isMissingRelationError(error)) throw error;
+    await ensureBusinessCourierTables();
+    return withTimeout(
+      readOrInsertBusinessProfile(customerUserId),
+      PROFILE_READ_TIMEOUT_MS,
+      "Load business profile",
+    );
+  }
 }
 
 export async function getBusinessProfileDto(customerUserId: string) {
@@ -475,7 +593,7 @@ function jobFromDestination(
   customerUserId: string,
   jobDate: string,
   destination: BusinessDestination,
-  extras?: { weight?: string; numberOfPieces?: number; contentDescription?: string },
+  extras?: { weight?: string; numberOfPieces?: number; contentDescription?: string; xgooOrderId?: string | null },
 ) {
   return {
     customerUserId,
@@ -490,6 +608,7 @@ function jobFromDestination(
     receiverPincode: destination.pincode,
     shipmentType: destination.shipmentType === "international" ? "international" : "domestic",
     destinationCountry: destination.destinationCountry,
+    xgooOrderId: extras?.xgooOrderId || null,
     weight: extras?.weight || "1",
     numberOfPieces: extras?.numberOfPieces || 1,
     contentDescription: extras?.contentDescription?.trim() || "Parcel",
@@ -499,6 +618,7 @@ function jobFromDestination(
 
 export async function listBusinessOrders(customerUserId: string) {
   await ensureBusinessCourierTables();
+  await backfillMissingXgooOrderIds(customerUserId);
   return db
     .select()
     .from(businessOrders)
@@ -509,7 +629,7 @@ export async function listBusinessOrders(customerUserId: string) {
 export async function createBusinessOrder(
   customerUserId: string,
   input: {
-    channel: "whatsapp" | "call" | "instagram" | "other";
+    channel: "whatsapp" | "call" | "instagram" | "website" | "app" | "other";
     destinationId?: string;
     name?: string;
     phone?: string;
@@ -525,6 +645,7 @@ export async function createBusinessOrder(
     numberOfPieces?: number;
     notes?: string | null;
     saveCustomer?: boolean;
+    notifyBuyer?: boolean;
   },
 ) {
   await ensureBusinessCourierTables();
@@ -557,32 +678,152 @@ export async function createBusinessOrder(
     throw Object.assign(new Error("Add the customer name, phone, and address for this order."), { status: 400 });
   }
 
-  const [created] = await db
-    .insert(businessOrders)
-    .values({
-      customerUserId,
-      destinationId: destination?.id || null,
-      channel: input.channel,
-      receiverName,
-      receiverPhone,
-      receiverAddress,
-      receiverAddressLine2: destination?.addressLine2 || input.addressLine2 || null,
-      receiverCity: destination?.city || input.city || null,
-      receiverState: destination?.state || input.state || null,
-      receiverPincode: destination?.pincode || input.pincode || null,
-      shipmentType:
-        destination?.shipmentType === "international" || input.shipmentType === "international"
-          ? "international"
-          : "domestic",
-      destinationCountry: destination?.destinationCountry || input.destinationCountry || null,
-      contentDescription: input.contentDescription?.trim() || "Store order",
-      weight: input.weight || "1",
-      numberOfPieces: input.numberOfPieces || 1,
-      notes: input.notes || null,
-      status: "open",
-    })
-    .returning();
+  const { storeName } = await storefrontForCustomer(customerUserId);
+  const orderValues = {
+    customerUserId,
+    destinationId: destination?.id || null,
+    channel: input.channel,
+    receiverName,
+    receiverPhone,
+    receiverAddress,
+    receiverAddressLine2: destination?.addressLine2 || input.addressLine2 || null,
+    receiverCity: destination?.city || input.city || null,
+    receiverState: destination?.state || input.state || null,
+    receiverPincode: destination?.pincode || input.pincode || null,
+    shipmentType:
+      destination?.shipmentType === "international" || input.shipmentType === "international"
+        ? "international"
+        : "domestic",
+    destinationCountry: destination?.destinationCountry || input.destinationCountry || null,
+    contentDescription: input.contentDescription?.trim() || "Store order",
+    weight: input.weight || "1",
+    numberOfPieces: input.numberOfPieces || 1,
+    notes: input.notes || null,
+    status: "open" as const,
+  };
+
+  let created: BusinessOrder | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const [row] = await db
+        .insert(businessOrders)
+        .values({
+          ...orderValues,
+          xgooOrderId: await allocateXgooOrderId(storeName),
+        })
+        .returning();
+      created = row;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isUniqueViolation(error)) throw error;
+    }
+  }
+  if (!created) {
+    throw lastError instanceof Error ? lastError : new Error("Could not assign an XGoo ID.");
+  }
+  if (input.notifyBuyer) {
+    notifyStoreBuyerOrderReceived(customerUserId, created);
+  }
   return created;
+}
+
+async function storefrontForCustomer(customerUserId: string) {
+  const [customer] = await db
+    .select()
+    .from(customerUsers)
+    .where(eq(customerUsers.id, customerUserId))
+    .limit(1);
+  const [profile] = await db
+    .select()
+    .from(businessProfiles)
+    .where(eq(businessProfiles.customerUserId, customerUserId))
+    .limit(1);
+  const office = customer?.officeId
+    ? (await db.select().from(offices).where(eq(offices.id, customer.officeId)).limit(1))[0]
+    : undefined;
+  const storeName =
+    profile?.storeName?.trim() ||
+    profile?.companyName?.trim() ||
+    customer?.name?.trim() ||
+    "the store";
+  return { customer, profile, office, storeName };
+}
+
+function notifyStoreBuyerOrderReceived(customerUserId: string, order: BusinessOrder) {
+  void storefrontForCustomer(customerUserId)
+    .then(({ office, storeName }) => {
+      triggerReceiverOrderAckWhatsApp(office?.whatsappSettings, {
+        receiverName: order.receiverName,
+        receiverPhone: order.receiverPhone,
+        storeName,
+      });
+    })
+    .catch((error) => {
+      console.error("[WhatsApp receiver_ack] Could not load store for buyer message", error);
+    });
+}
+
+export async function getPublicStorefront(storeId: string) {
+  const [profile] = await db
+    .select()
+    .from(businessProfiles)
+    .where(eq(businessProfiles.id, storeId))
+    .limit(1);
+  if (!profile || !isBusinessVerified(profile)) {
+    throw Object.assign(new Error("This store order link is not available."), { status: 404 });
+  }
+  return {
+    id: profile.id,
+    storeName: profile.storeName?.trim() || profile.companyName?.trim() || "Store",
+  };
+}
+
+export async function createPublicStoreOrder(
+  storeId: string,
+  input: {
+    name: string;
+    phone: string;
+    address: string;
+    addressLine2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    shipmentType?: "domestic" | "international";
+    destinationCountry?: string | null;
+    orderNote?: string | null;
+    item?: string;
+    channel?: "whatsapp" | "call" | "instagram" | "website" | "app" | "other";
+  },
+) {
+  const [profile] = await db
+    .select()
+    .from(businessProfiles)
+    .where(eq(businessProfiles.id, storeId))
+    .limit(1);
+  if (!profile || !isBusinessVerified(profile)) {
+    throw Object.assign(new Error("This store order link is not available."), { status: 404 });
+  }
+  const contents = input.item?.trim() || input.orderNote?.trim() || "Store order";
+  const order = await createBusinessOrder(profile.customerUserId, {
+    channel: input.channel || "other",
+    name: input.name,
+    phone: input.phone,
+    address: input.address,
+    addressLine2: input.addressLine2,
+    city: input.city,
+    state: input.state,
+    pincode: input.pincode,
+    shipmentType: input.shipmentType,
+    destinationCountry: input.destinationCountry,
+    contentDescription: contents,
+    notes: input.orderNote || null,
+    saveCustomer: true,
+    notifyBuyer: true,
+  });
+  const { storeName } = await storefrontForCustomer(profile.customerUserId);
+  return { ok: true as const, storeName, orderId: order.id, xgooOrderId: order.xgooOrderId };
 }
 
 export async function queueBusinessOrderForPickup(customerUserId: string, orderId: string, jobDate = todayIsoDate()) {
@@ -627,6 +868,7 @@ export async function queueBusinessOrderForPickup(customerUserId: string, orderI
     weight: String(order.weight || "1"),
     numberOfPieces: order.numberOfPieces || 1,
     contentDescription: order.contentDescription,
+    xgooOrderId: order.xgooOrderId,
   });
   const [updated] = await db
     .update(businessOrders)
@@ -658,6 +900,7 @@ export async function cancelBusinessOrder(customerUserId: string, orderId: strin
 }
 
 export async function getBusinessToday(customerUserId: string, jobDate = todayIsoDate()) {
+  await ensureXgooOrderIdColumns();
   const profile = await getOrCreateBusinessProfile(customerUserId);
   const weekdays = mergeBusinessWeekdays(profile.weekdays);
   const standingDay = isBusinessPickupDay(weekdays, jobDate);
@@ -696,6 +939,7 @@ export async function addBusinessTodayJob(
     weight?: string;
     numberOfPieces?: number;
     contentDescription?: string;
+    xgooOrderId?: string | null;
   },
 ) {
   let destination: BusinessDestination | undefined;
@@ -714,10 +958,12 @@ export async function addBusinessTodayJob(
     }
   }
 
+  const { storeName } = await storefrontForCustomer(customerUserId);
   const extras = {
     weight: input.weight,
     numberOfPieces: input.numberOfPieces,
     contentDescription: input.contentDescription,
+    xgooOrderId: input.xgooOrderId || (await allocateXgooOrderId(storeName)),
   };
 
   if (destination) {
@@ -747,6 +993,7 @@ export async function addBusinessTodayJob(
       receiverPincode: customer.pincode || null,
       shipmentType: customer.shipmentType === "international" ? "international" : "domestic",
       destinationCountry: customer.destinationCountry || null,
+      xgooOrderId: extras.xgooOrderId,
       weight: extras.weight || "1",
       numberOfPieces: extras.numberOfPieces || 1,
       contentDescription: extras.contentDescription?.trim() || "Parcel",
@@ -837,6 +1084,13 @@ export async function confirmBusinessToday(
       pickupLng: profile.pickupLng,
       senderPincode: profile.pickupPincode,
     });
+    const xgooOrderId = job.xgooOrderId || (await allocateXgooOrderId(senderName));
+    if (!job.xgooOrderId) {
+      await db
+        .update(businessDailyJobs)
+        .set({ xgooOrderId, updatedAt: new Date() })
+        .where(eq(businessDailyJobs.id, job.id));
+    }
     const request = await storage.createBookingRequest({
       senderName,
       senderPhone: senderPhone.slice(-10),
@@ -868,6 +1122,7 @@ export async function confirmBusinessToday(
       customerUserId: customer.id,
       source: "b2b_daily",
       status: "pending",
+      xgooOrderId,
     });
 
     await db

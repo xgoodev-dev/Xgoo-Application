@@ -37,6 +37,7 @@ type StoreOrder = {
   receiverPhone: string;
   receiverCity?: string | null;
   contentDescription?: string | null;
+  xgooOrderId?: string | null;
   status: string;
 };
 
@@ -324,6 +325,7 @@ export function ProHome({
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
               <tr className="border-b border-zinc-200">
+                <th className="px-3 py-2.5 font-semibold">XGoo ID</th>
                 <th className="px-3 py-2.5 font-semibold">Via</th>
                 <th className="px-3 py-2.5 font-semibold">Customer</th>
                 <th className="px-3 py-2.5 font-semibold">Phone</th>
@@ -339,6 +341,9 @@ export function ProHome({
                   className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
                   onClick={onOrders}
                 >
+                  <td className="px-3 py-2 font-mono text-xs font-semibold text-zinc-900">
+                    {order.xgooOrderId || "—"}
+                  </td>
                   <td className="px-3 py-2 text-zinc-600">{channelLabel(order.channel)}</td>
                   <td className="px-3 py-2 font-medium text-zinc-900">{order.receiverName}</td>
                   <td className="px-3 py-2 text-zinc-600">{order.receiverPhone}</td>
@@ -351,7 +356,7 @@ export function ProHome({
               ))}
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center">
+                  <td colSpan={7} className="px-4 py-10 text-center">
                     <p className="font-medium text-zinc-900">No courier orders yet</p>
                     <p className="mt-1 text-sm text-zinc-500">
                       Record WhatsApp, call, or DM orders so they are ready for pickup.

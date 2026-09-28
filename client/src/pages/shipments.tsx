@@ -165,6 +165,7 @@ export default function ShipmentsPage() {
         const matchesSearch =
           search === "" ||
           shipment.bookingNumber.toLowerCase().includes(search.toLowerCase()) ||
+          shipment.xgooOrderId?.toLowerCase().includes(search.toLowerCase()) ||
           shipment.awbNumber?.toLowerCase().includes(search.toLowerCase()) ||
           shipment.senderName.toLowerCase().includes(search.toLowerCase()) ||
           shipment.receiverName.toLowerCase().includes(search.toLowerCase());
@@ -277,7 +278,7 @@ export default function ShipmentsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by booking #, AWB, sender, receiver..."
+                placeholder="Search by XGoo ID, booking #, AWB, sender, receiver..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -371,6 +372,7 @@ export default function ShipmentsPage() {
                       />
                     </TableHead>
                     <TableHead>Booking #</TableHead>
+                    <TableHead>XGoo ID</TableHead>
                     <TableHead>AWB</TableHead>
                     <TableHead>Sender</TableHead>
                     <TableHead>Receiver</TableHead>
@@ -409,6 +411,9 @@ export default function ShipmentsPage() {
                           >
                             {shipment.bookingNumber}
                           </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">
+                          {shipment.xgooOrderId || "—"}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {shipment.externalAwb || shipment.awbNumber || "-"}

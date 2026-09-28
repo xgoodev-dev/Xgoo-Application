@@ -78,16 +78,18 @@ import {
   triggerBookingSuccessWhatsApp,
 } from "./integrations/whatsapp-notifications";
 import { triggerCustomerNotification } from "./customer-notifications";
+import { notifyAwbCreated, notifyReceiverOfShipment } from "./pickup-service";
 import {
   addBusinessTodayJob,
   cancelBusinessOrder,
   confirmBusinessToday,
   createBusinessDestination,
   createBusinessOrder,
+  createPublicStoreOrder,
   deleteBusinessDestination,
-  ensureBusinessCourierTables,
   getBusinessProfileDto,
   getBusinessToday,
+  getPublicStorefront,
   listBusinessAccounts,
   listBusinessBills,
   listBusinessDestinations,
@@ -111,6 +113,7 @@ import {
   businessSettleBillsSchema,
   businessStoreTypeSchema,
   isBusinessVerified,
+  publicStoreOrderSchema,
   todayIsoDate,
 } from "@shared/business-courier";
 import {
@@ -128,6 +131,8 @@ import {
   createOtpCustomerUser,
   issueCustomerSession,
   normalizeCustomerPhone,
+  PLAY_REVIEW_CUSTOMER_OTP,
+  PLAY_REVIEW_CUSTOMER_PHONE,
   sendCustomerOtp,
 } from "./customer-otp";
 import { loginOrRegisterCustomerWithGoogle } from "./customer-google";
@@ -281,6 +286,7 @@ const shipmentCreateSchema = z.object({
   baseAmount: z.string().optional(),
   totalAmount: z.string().min(1),
   bookingRequestId: z.string().uuid().optional(),
+  xgooOrderId: z.string().max(32).optional().nullable(),
 });
 
 const statusUpdateSchema = z.object({
@@ -579,10 +585,6 @@ export async function registerRoutes(
       const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + path.extname(file.originalname));
     },
-  });
-
-  void ensureBusinessCourierTables().catch((error) => {
-    console.error("Failed to ensure business courier tables:", error);
   });
 
   const upload = multer({
@@ -2836,13 +2838,17 @@ export async function registerRoutes(
         }
       }
 
-      const shipmentData = {
-        ...validated,
+      const { paymentMode, bookingRequestId, xgooOrderId: bodyXgooOrderId, ...shipmentFields } = validated;
+
+      const linkedBooking = bookingRequestId
+        ? await storage.getBookingRequest(bookingRequestId)
+        : undefined;
+      const shipment = await storage.createShipment({
+        ...shipmentFields,
         officeId,
         customerId: validated.customerId || null,
-      };
-
-      const shipment = await storage.createShipment(shipmentData);
+        xgooOrderId: linkedBooking?.xgooOrderId || bodyXgooOrderId || null,
+      });
 
       // Create payment record
       if (validated.paymentMode !== "credit") {
@@ -2862,11 +2868,11 @@ export async function registerRoutes(
         });
       }
 
-      if (validated.bookingRequestId) {
-        const bookingRequest = await storage.getBookingRequest(validated.bookingRequestId);
+      if (bookingRequestId) {
+        const bookingRequest = linkedBooking;
         if (bookingRequest && bookingRequest.officeId === officeId) {
           await storage.updateBookingRequestStatus(
-            validated.bookingRequestId,
+            bookingRequestId,
             "converted",
             shipment.id,
           );
@@ -2891,6 +2897,9 @@ export async function registerRoutes(
           shipment,
         );
       }
+      void notifyReceiverOfShipment(shipment).catch((error) => {
+        console.error("[WhatsApp receiver tracking] Failed after Hub booking", error);
+      });
 
       res.json(shipment);
     } catch (error) {
@@ -3010,6 +3019,14 @@ export async function registerRoutes(
 
       if (!shipment) {
         return res.status(404).json({ message: "Shipment not found" });
+      }
+
+      const hadAwb = Boolean((existing.awbNumber || existing.externalAwb || "").trim());
+      const newAwb = (shipment.awbNumber || shipment.externalAwb || "").trim();
+      if (!hadAwb && newAwb) {
+        void notifyAwbCreated(shipment).catch((error) => {
+          console.error("[WhatsApp AWB] Failed after partner sync", error);
+        });
       }
 
       const withRelations = await storage.getShipment(id);
@@ -3808,6 +3825,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/public/store/:storeId", async (req, res) => {
+    try {
+      res.json(await getPublicStorefront(req.params.storeId));
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      if (status >= 500) console.error("Error loading public storefront:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to load store",
+      });
+    }
+  });
+
+  app.post("/api/public/store/:storeId/orders", async (req, res) => {
+    try {
+      const input = publicStoreOrderSchema.parse(req.body || {});
+      res.json(await createPublicStoreOrder(req.params.storeId, input));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Validation error" });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      if (status >= 500) console.error("Error creating public store order:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to save delivery details",
+      });
+    }
+  });
+
   app.post("/api/public/office/:slug/booking-request", async (req, res) => {
     try {
       const { slug } = req.params;
@@ -4202,9 +4251,17 @@ export async function registerRoutes(
       const customerUser = email
         ? await storage.getCustomerUserByEmail(office.id, email)
           || await storage.getCustomerUserByEmail(office.id, validated.email!.trim())
-        : (await storage.getCustomerUserByPhone(office.id, phone))
+        : (await storage.getCustomerUserByPhone(office.id, phone, "individual"))
+          || (await storage.getCustomerUserByPhone(office.id, phone))
           || (validated.phone && phone !== validated.phone.trim()
             ? await storage.getCustomerUserByPhone(office.id, validated.phone.trim())
+            : undefined)
+          || (phone === PLAY_REVIEW_CUSTOMER_PHONE && validated.otp === PLAY_REVIEW_CUSTOMER_OTP
+            ? await createOtpCustomerUser({
+                officeId: office.id,
+                name: "Google Play Reviewer",
+                phone,
+              })
             : undefined);
       if (!customerUser) {
         return res.status(401).json({

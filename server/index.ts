@@ -123,14 +123,28 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   if (!process.env.VERCEL) {
     const port = parseInt(process.env.PORT || "3000", 10);
-    httpServer.listen(
-      {
-        port,
-        host: "0.0.0.0",
-      },
-      () => {
-        log(`serving on port ${port}`);
-      },
-    );
+    const onListening = (label: string) => {
+      log(`serving ${label} on port ${port}`);
+    };
+
+    httpServer.listen({ port, host: "0.0.0.0" }, () => {
+      onListening("http://127.0.0.1");
+    });
+
+    // Windows Chrome resolves `localhost` to IPv6 ::1, which 0.0.0.0 does not accept.
+    const ipv6Loopback = createServer(app);
+    ipv6Loopback.on("upgrade", (req, socket, head) => {
+      httpServer.emit("upgrade", req, socket, head);
+    });
+    ipv6Loopback.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EAFNOSUPPORT" || err.code === "EADDRNOTAVAIL" || err.code === "EADDRINUSE") {
+        log("IPv6 localhost unavailable; use http://127.0.0.1:3000");
+        return;
+      }
+      throw err;
+    });
+    ipv6Loopback.listen({ port, host: "::1", ipv6Only: true }, () => {
+      onListening("http://localhost");
+    });
   }
 })();

@@ -50,6 +50,8 @@ export type CustomerPortalShellProps = {
   onHelp?: () => void;
   officePhone?: string;
   locationFallback?: string | null;
+  /** XGoo Pro store / business name shown next to the logo. */
+  businessName?: string | null;
   children: React.ReactNode;
 };
 
@@ -128,8 +130,9 @@ function SidebarNav({
   );
 }
 
-function SidebarBrand({ isBusiness }: { isBusiness?: boolean }) {
+function SidebarBrand({ isBusiness, businessName }: { isBusiness?: boolean; businessName?: string | null }) {
   const product = isBusiness ? XGOO_MODULES.pro : XGOO_MODULES.go;
+  const storeLabel = businessName?.trim();
   return (
     <div className="flex items-center gap-2.5 px-5 py-6">
       <img src={xgooLogo} alt={product.name} className="h-9 w-9 object-contain shrink-0" />
@@ -137,8 +140,8 @@ function SidebarBrand({ isBusiness }: { isBusiness?: boolean }) {
         <span className="block text-xl font-bold leading-none tracking-tight text-white">
           {product.name}
         </span>
-        <span className="mt-1 block text-[10px] text-zinc-500">
-          {product.meaning}
+        <span className="mt-1 block truncate text-[10px] text-zinc-500" title={storeLabel || product.meaning}>
+          {storeLabel || product.meaning}
         </span>
       </div>
     </div>
@@ -253,11 +256,12 @@ function SidebarBody({
   onSignIn,
   onHelp,
   officePhone,
+  businessName,
   onNavigate,
 }: Omit<CustomerPortalShellProps, "children"> & { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col" style={{ backgroundColor: SIDEBAR_BG }}>
-      <SidebarBrand isBusiness={isBusiness} />
+      <SidebarBrand isBusiness={isBusiness} businessName={businessName} />
       <SidebarNav
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -303,9 +307,11 @@ export function CustomerPortalShell({
   onHelp,
   officePhone,
   locationFallback,
+  businessName,
   children,
 }: CustomerPortalShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const storeLabel = businessName?.trim();
 
   return (
     <div
@@ -332,6 +338,7 @@ export function CustomerPortalShell({
           onSignIn={onSignIn}
           onHelp={onHelp}
           officePhone={officePhone}
+          businessName={businessName}
         />
       </aside>
 
@@ -357,6 +364,7 @@ export function CustomerPortalShell({
             onSignIn={onSignIn}
             onHelp={onHelp}
             officePhone={officePhone}
+            businessName={businessName}
             onNavigate={() => setMobileOpen(false)}
           />
         </SheetContent>
@@ -376,13 +384,24 @@ export function CustomerPortalShell({
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex min-w-0 items-center gap-2 md:hidden">
-            <img src={xgooLogo} alt="" className="h-7 w-7 object-contain" />
-            <span className="text-sm font-bold tracking-tight text-zinc-900">
-              {isBusiness ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
-            </span>
+          <div className="flex min-w-0 shrink items-center gap-2">
+            <img src={xgooLogo} alt="" className="h-7 w-7 object-contain md:hidden" />
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-bold tracking-tight text-zinc-900 md:hidden">
+                {isBusiness ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
+                {isBusiness && storeLabel ? ` · ${storeLabel}` : ""}
+              </span>
+              {isBusiness && storeLabel ? (
+                <span
+                  className="hidden truncate text-sm font-semibold text-zinc-900 md:block"
+                  data-testid="header-business-name"
+                >
+                  {storeLabel}
+                </span>
+              ) : null}
+            </div>
           </div>
-          <LocationChip fallback={locationFallback} className="ml-auto max-w-[70%] md:ml-0 md:max-w-none md:flex-1" />
+          <LocationChip fallback={locationFallback} compact className="ml-auto max-w-[16rem] sm:max-w-xs" />
         </header>
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>

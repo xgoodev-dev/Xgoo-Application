@@ -78,6 +78,7 @@ import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, i
 let customerIntakeColumnsReady: Promise<void> | null = null;
 let customerAccountTypeReady: Promise<void> | null = null;
 let bookingPackageColumnsReady: Promise<void> | null = null;
+let xgooOrderIdColumnsReady: Promise<void> | null = null;
 
 function ensureCustomerIntakeColumns() {
   if (!customerIntakeColumnsReady) {
@@ -140,6 +141,42 @@ export function ensureBookingPackageColumns() {
     });
   }
   return bookingPackageColumnsReady;
+}
+
+export function ensureXgooOrderIdColumns() {
+  if (!xgooOrderIdColumnsReady) {
+    xgooOrderIdColumnsReady = (async () => {
+      await db.execute(sql`
+        ALTER TABLE business_orders ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32)
+      `);
+      await db.execute(sql`
+        ALTER TABLE business_daily_jobs ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32)
+      `);
+      await db.execute(sql`
+        ALTER TABLE booking_requests ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32)
+      `);
+      await db.execute(sql`
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS xgoo_order_id varchar(32)
+      `);
+      await db.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_business_orders_xgoo_order_id
+        ON business_orders (xgoo_order_id)
+        WHERE xgoo_order_id IS NOT NULL
+      `);
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS idx_booking_requests_xgoo_order_id
+        ON booking_requests (xgoo_order_id)
+      `);
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS idx_shipments_xgoo_order_id
+        ON shipments (xgoo_order_id)
+      `);
+    })().catch((error) => {
+      xgooOrderIdColumnsReady = null;
+      throw error;
+    });
+  }
+  return xgooOrderIdColumnsReady;
 }
 import { randomUUID } from "crypto";
 import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
@@ -891,6 +928,7 @@ export class DatabaseStorage implements IStorage {
 
   // Shipment operations
   async getShipmentsByOffice(officeId: string): Promise<ShipmentWithRelations[]> {
+    await ensureXgooOrderIdColumns();
     const results = await db
       .select()
       .from(shipments)
@@ -907,6 +945,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getShipment(id: string): Promise<ShipmentWithRelations | undefined> {
+    await ensureXgooOrderIdColumns();
     const results = await db
       .select()
       .from(shipments)
@@ -925,6 +964,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShipment(shipment: InsertShipment): Promise<Shipment> {
+    await ensureXgooOrderIdColumns();
     const bookingNumber = `XG${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
     const [created] = await db
       .insert(shipments)
@@ -1104,6 +1144,7 @@ export class DatabaseStorage implements IStorage {
     branchId?: string | null,
   ): Promise<BookingRequest[]> {
     await ensureBookingPackageColumns();
+    await ensureXgooOrderIdColumns();
     return db
       .select()
       .from(bookingRequests)
@@ -1120,12 +1161,14 @@ export class DatabaseStorage implements IStorage {
 
   async getBookingRequest(id: string): Promise<BookingRequest | undefined> {
     await ensureBookingPackageColumns();
+    await ensureXgooOrderIdColumns();
     const [request] = await db.select().from(bookingRequests).where(eq(bookingRequests.id, id));
     return request;
   }
 
   async createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest> {
     await ensureBookingPackageColumns();
+    await ensureXgooOrderIdColumns();
     const requestNumber = `BR${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
     const [created] = await db
       .insert(bookingRequests)
@@ -1345,6 +1388,7 @@ export class DatabaseStorage implements IStorage {
     opts?: { officeId?: string; phone?: string | null },
   ): Promise<BookingRequest[]> {
     await ensureBookingPackageColumns();
+    await ensureXgooOrderIdColumns();
     const digits = (opts?.phone || "").replace(/\D/g, "");
     const phone = digits.length >= 10 ? digits.slice(-10) : digits;
     const officeId = opts?.officeId;

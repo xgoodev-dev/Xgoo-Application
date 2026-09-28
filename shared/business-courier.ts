@@ -51,12 +51,25 @@ export const BUSINESS_ORDER_CHANNELS = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "call", label: "Call" },
   { id: "instagram", label: "Instagram / DM" },
+  { id: "website", label: "Website" },
+  { id: "app", label: "Store app" },
   { id: "other", label: "Other" },
 ] as const;
 
 export type BusinessOrderChannelId = (typeof BUSINESS_ORDER_CHANNELS)[number]["id"];
 
-export const businessOrderChannelSchema = z.enum(["whatsapp", "call", "instagram", "other"]);
+export const businessOrderChannelSchema = z.enum([
+  "whatsapp",
+  "call",
+  "instagram",
+  "website",
+  "app",
+  "other",
+]);
+
+export function storeCustomerOrderPath(storeId: string) {
+  return `/s/${encodeURIComponent(storeId)}`;
+}
 
 export const BUSINESS_PICKUP_STYLES = [
   { id: "standing", label: "Daily standing pickup" },
@@ -100,6 +113,22 @@ export const businessOrderSchema = z.object({
   numberOfPieces: z.number().int().positive().optional(),
   notes: z.string().trim().max(500).optional().nullable(),
   saveCustomer: z.boolean().optional(),
+  notifyBuyer: z.boolean().optional(),
+});
+
+export const publicStoreOrderSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(255),
+  phone: z.string().trim().min(10, "Valid phone required").max(20),
+  address: z.string().trim().min(1, "Address is required").max(2000),
+  addressLine2: z.string().trim().max(500).optional().nullable(),
+  city: z.string().trim().max(100).optional().nullable(),
+  state: z.string().trim().max(100).optional().nullable(),
+  pincode: z.string().trim().max(20).optional().nullable(),
+  shipmentType: businessShipmentScopeSchema.optional(),
+  destinationCountry: z.string().trim().max(100).optional().nullable(),
+  orderNote: z.string().trim().max(500).optional().nullable(),
+  item: z.string().trim().max(1000).optional(),
+  channel: businessOrderChannelSchema.optional(),
 });
 
 export const BUSINESS_VERIFICATION_STATUSES = ["pending", "approved", "rejected"] as const;
@@ -352,6 +381,47 @@ export function todayIsoDate(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/** Two-letter store code from the store name. "Harshini Store" → HS. */
+export function storeNameCode(name: string | null | undefined): string {
+  const words = String(name || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "XX";
+  if (words.length === 1) {
+    return `${words[0]}${words[0][1] || "X"}`.slice(0, 2);
+  }
+  return `${words[0][0]}${words[1][0]}`;
+}
+
+/** DDMMYY in Asia/Kolkata so package IDs match the store's working day. */
+export function xgooOrderDateStamp(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "00";
+  return `${value("day")}${value("month")}${value("year")}`;
+}
+
+export function xgooOrderIdPrefix(storeName: string | null | undefined, now = new Date()): string {
+  return `XG${storeNameCode(storeName)}${xgooOrderDateStamp(now)}`;
+}
+
+/** XG + store code + DDMMYY + daily sequence, e.g. XGHS2809260001. */
+export function formatXgooOrderId(
+  storeName: string | null | undefined,
+  sequence: number,
+  now = new Date(),
+): string {
+  const seq = Math.max(1, Math.floor(Number(sequence) || 1));
+  return `${xgooOrderIdPrefix(storeName, now)}${String(seq).padStart(4, "0")}`;
 }
 
 export function storeTypeLabel(id: string | null | undefined): string {

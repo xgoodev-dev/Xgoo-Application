@@ -36,6 +36,12 @@ export const WHATSAPP_MESSAGE_TYPES = [
     description: "Sent when a customer submits a new booking request from the portal.",
   },
   {
+    key: "receiver_ack",
+    label: "Store buyer — details received",
+    description:
+      "Sent to the store's customer after they submit delivery details. Tracking is sent when Hub or Command books the shipment.",
+  },
+  {
     key: "booking_success",
     label: "Booking Success",
     description: "Confirmation after a shipment is booked successfully.",
@@ -166,7 +172,11 @@ const defaultAutomation = (): WhatsAppSettings["automation"] =>
     messageTypeKeys.map((key) => [
       key,
       whatsAppAutomationRuleSchema.parse(
-        key === "welcome" ? { enabled: false, templateName: "", languageCode: "en" } : {},
+        key === "welcome"
+          ? { enabled: false, templateName: "", languageCode: "en" }
+          : key === "receiver_ack"
+            ? { enabled: true, templateName: "", languageCode: "en" }
+            : {},
       ),
     ]),
   ) as WhatsAppSettings["automation"];

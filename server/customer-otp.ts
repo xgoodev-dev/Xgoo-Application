@@ -24,9 +24,16 @@ const MAX_ATTEMPTS = 5;
 const MAX_SENDS_PER_HOUR = 5;
 /** Temporary login/signup code until WhatsApp OTP is configured. */
 export const DUMMY_CUSTOMER_OTP = "123456";
+/** Google Play Console review login for the XGoo Go app only. */
+export const PLAY_REVIEW_CUSTOMER_PHONE = "9160711252";
+export const PLAY_REVIEW_CUSTOMER_OTP = "654321";
 
 function isDummyOtpEnabled() {
   return process.env.CUSTOMER_OTP_DUMMY !== "0";
+}
+
+function isPlayReviewCustomerPhone(phone: string) {
+  return normalizeCustomerPhone(phone) === PLAY_REVIEW_CUSTOMER_PHONE;
 }
 
 let tableReady: Promise<void> | null = null;
@@ -124,6 +131,44 @@ export async function sendCustomerOtp(input: {
   const phone = normalizeCustomerPhone(input.phone);
   if (phone.length < 10) {
     throw Object.assign(new Error("Enter a valid 10-digit mobile number."), { status: 400 });
+  }
+
+  if (isPlayReviewCustomerPhone(phone)) {
+    if (input.purpose === "login") {
+      const existingReviewUser =
+        (await storage.getCustomerUserByPhone(input.office.id, phone, "individual")) ||
+        (await storage.getCustomerUserByPhone(input.office.id, phone));
+      if (!existingReviewUser) {
+        await createOtpCustomerUser({
+          officeId: input.office.id,
+          name: "Google Play Reviewer",
+          phone,
+        });
+      }
+    }
+    const codeHash = await bcrypt.hash(PLAY_REVIEW_CUSTOMER_OTP, 10);
+    await db
+      .delete(customerOtps)
+      .where(
+        and(
+          eq(customerOtps.officeId, input.office.id),
+          eq(customerOtps.phone, phone),
+          eq(customerOtps.purpose, input.purpose),
+        ),
+      );
+    await db.insert(customerOtps).values({
+      officeId: input.office.id,
+      phone,
+      purpose: input.purpose,
+      codeHash,
+      expiresAt: new Date(Date.now() + OTP_TTL_MS),
+    });
+    return {
+      phone,
+      expiresInSec: OTP_TTL_MS / 1000,
+      channel: "dummy" as const,
+      debugOtp: PLAY_REVIEW_CUSTOMER_OTP,
+    };
   }
 
   const existing = await storage.getCustomerUserByPhone(input.office.id, phone);
@@ -224,6 +269,25 @@ export async function consumeCustomerOtp(input: {
   const otp = input.otp.replace(/\D/g, "");
   if (otp.length !== 6) {
     throw Object.assign(new Error("Enter the 6-digit OTP."), { status: 400 });
+  }
+
+  if (isPlayReviewCustomerPhone(phone) && otp === PLAY_REVIEW_CUSTOMER_OTP) {
+    await db
+      .delete(customerOtps)
+      .where(and(eq(customerOtps.officeId, input.officeId), eq(customerOtps.phone, phone)));
+    if (input.purpose === "login") {
+      const existingReviewUser =
+        (await storage.getCustomerUserByPhone(input.officeId, phone, "individual")) ||
+        (await storage.getCustomerUserByPhone(input.officeId, phone));
+      if (!existingReviewUser) {
+        await createOtpCustomerUser({
+          officeId: input.officeId,
+          name: "Google Play Reviewer",
+          phone,
+        });
+      }
+    }
+    return phone;
   }
 
   const [row] = await db
