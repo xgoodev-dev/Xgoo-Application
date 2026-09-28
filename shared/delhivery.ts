@@ -75,6 +75,36 @@ export interface DelhiveryCreateInput {
   hsnCode?: string | null;
 }
 
+export interface DelhiveryTatInput {
+  originPin: string;
+  destPin: string;
+  mot?: "S" | "E" | "N";
+  pdt?: "B2B" | "B2C";
+  expectedPickupDate?: string;
+}
+
+export interface DelhiveryTatResult {
+  tat: number;
+  expectedDeliveryDate: string | null;
+  raw: unknown;
+}
+
+export interface DelhiveryEwayBillItem {
+  dcn: string;
+  ewbn: string;
+}
+
+export interface DelhiveryEditShipmentInput {
+  name?: string;
+  add?: string;
+  phone?: string | string[];
+  pin?: string;
+  weight?: number;
+  shipmentLength?: number;
+  shipmentWidth?: number;
+  shipmentHeight?: number;
+}
+
 export function buildDelhiveryShipmentBody(input: DelhiveryCreateInput) {
   const { shipment, pickupLocation } = input;
   const weightGm = shipmentWeightGrams(shipment);
@@ -131,3 +161,4 @@ export function buildDelhiveryShipmentBody(input: DelhiveryCreateInput) {
     pickup_location: { name: pickupLocation.trim() },
   };
 }
+

@@ -182,7 +182,7 @@ import { randomUUID } from "crypto";
 import { distanceKm, geocodeIndianPincode, normalizePincode } from "./geocode";
 import { buildQuote, applyMargin, chargeableWeight, resolveBilledWeight, type PricingQuoteInput, type PricingQuoteResult } from "@shared/pricing";
 import { isDelhiveryPartner } from "@shared/delhivery";
-import { getDelhiveryConfigFromEnv, calculateDelhiveryShippingCost } from "./integrations/delhivery";
+import { getDelhiveryConfigFromEnv, calculateDelhiveryShippingCost, getDelhiveryTat } from "./integrations/delhivery";
 
 async function tryDelhiveryLiveQuote(
   partner: CourierPartner,
@@ -218,6 +218,21 @@ async function tryDelhiveryLiveQuote(
       ipkg_type: input.packageType === "document" ? "flyer" : "box",
     });
 
+    let transitDays: number | null = null;
+    try {
+      const tatResult = await getDelhiveryTat(config, {
+        originPin,
+        destPin,
+        mot: input.serviceType === "air" ? "E" : "S",
+        pdt: "B2C",
+      });
+      if (tatResult.tat > 0) {
+        transitDays = tatResult.tat;
+      }
+    } catch {
+      // TAT lookup failure is non-fatal for pricing quote
+    }
+
     const margin = applyMargin(cost.totalAmount, partner);
     return {
       courierPartnerId: partner.id,
@@ -228,10 +243,12 @@ async function tryDelhiveryLiveQuote(
       volumetricWeight: weightInfo.volumetric,
       tariffAmount: cost.totalAmount,
       ...margin,
-      transitDays: null,
+      transitDays,
       source: "api",
       weightRoundOffApplied: rounded,
-      message: `Live Delhivery API rate from ${originPin} to ${destPin}`,
+      message: transitDays
+        ? `Live Delhivery API rate (~${transitDays} days) from ${originPin} to ${destPin}`
+        : `Live Delhivery API rate from ${originPin} to ${destPin}`,
     };
   } catch (error) {
     console.warn(`[storage] Delhivery live quote failed for ${originPin} -> ${destPin}:`, error);
