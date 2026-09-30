@@ -48,27 +48,38 @@ function AddressBlock({
   title,
   name,
   phone,
+  email,
   address,
+  addressLine2,
+  landmark,
   city,
   state,
   pincode,
+  country,
 }: {
   title: string;
   name: string;
   phone: string;
+  email?: string | null;
   address: string;
+  addressLine2?: string | null;
+  landmark?: string | null;
   city?: string | null;
   state?: string | null;
   pincode?: string | null;
+  country?: string | null;
 }) {
   return (
     <div>
       <h4 className="mb-2 text-sm font-medium text-muted-foreground">{title}</h4>
       <p className="font-medium">{name}</p>
       <p className="text-sm text-muted-foreground">{phone}</p>
+      {email ? <p className="text-sm text-muted-foreground">{email}</p> : null}
       <p className="mt-1 text-sm">{address}</p>
+      {addressLine2 ? <p className="text-sm">{addressLine2}</p> : null}
+      {landmark ? <p className="text-sm text-muted-foreground">Landmark: {landmark}</p> : null}
       <p className="text-sm text-muted-foreground">
-        {[city, state, pincode].filter(Boolean).join(", ") || "—"}
+        {[city, state, pincode, country].filter(Boolean).join(", ") || "—"}
       </p>
     </div>
   );
@@ -182,6 +193,17 @@ export default function ShipmentDetailPage() {
                 </div>
               ) : null}
               <div>
+                <span className="text-muted-foreground">Scope</span>
+                <p className="font-medium capitalize">
+                  {shipment.shipmentType === "international" ? "International" : "Domestic"}
+                  {shipment.destinationCountry ? ` · ${shipment.destinationCountry}` : ""}
+                </p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Order payment</span>
+                <p className="font-medium capitalize">{shipment.orderPaymentType || "prepaid"}</p>
+              </div>
+              <div>
                 <span className="text-muted-foreground">Weight</span>
                 <p className="font-medium">{shipment.weight} kg</p>
               </div>
@@ -216,19 +238,27 @@ export default function ShipmentDetailPage() {
               title="Sender"
               name={shipment.senderName}
               phone={shipment.senderPhone}
+              email={shipment.senderEmail}
               address={shipment.senderAddress}
+              addressLine2={shipment.senderAddressLine2}
+              landmark={shipment.senderLandmark}
               city={shipment.senderCity}
               state={shipment.senderState}
               pincode={shipment.senderPincode}
+              country={shipment.senderCountry}
             />
             <AddressBlock
               title="Receiver"
               name={shipment.receiverName}
               phone={shipment.receiverPhone}
+              email={shipment.receiverEmail}
               address={shipment.receiverAddress}
+              addressLine2={shipment.receiverAddressLine2}
+              landmark={shipment.receiverLandmark}
               city={shipment.receiverCity}
               state={shipment.receiverState}
               pincode={shipment.receiverPincode}
+              country={shipment.receiverCountry}
             />
           </CardContent>
         </Card>

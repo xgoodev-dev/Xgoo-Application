@@ -183,7 +183,7 @@ export async function sendTrackingWhatsApp(
       route,
       trackUrl,
     },
-    `Hi ${shipment.senderName}, your shipment ${shipment.bookingNumber} is booked. Track it here: ${trackUrl}`,
+    `Hi ${shipment.senderName}, your XGoo shipment ${shipment.bookingNumber} is booked with AWB ${awb}. Track it here: ${trackUrl}`,
   );
 }
 
@@ -298,14 +298,16 @@ export function triggerReceiverTrackingWhatsApp(
     receiverName: string;
     receiverPhone: string;
     bookingNumber: string;
+    awb?: string | null;
     trackUrl: string;
     storeName?: string | null;
   },
 ): void {
   const store = input.storeName?.trim();
+  const awb = input.awb?.trim();
   const text = store
-    ? `Hi ${input.receiverName}, your order from ${store} is booked with XGoo Courier. Track it here: ${input.trackUrl}`
-    : `Hi ${input.receiverName}, track XGoo booking ${input.bookingNumber} here: ${input.trackUrl}`;
+    ? `Hi ${input.receiverName}, your order from ${store} is booked with XGoo Courier${awb ? ` (AWB ${awb})` : ""}. Track it here: ${input.trackUrl}`
+    : `Hi ${input.receiverName}, track XGoo booking ${input.bookingNumber}${awb ? ` (AWB ${awb})` : ""} here: ${input.trackUrl}`;
   void sendEnabledWhatsAppText(whatsappSettingsRaw, input.receiverPhone, text).catch((error) => {
     console.error("[WhatsApp receiver tracking] Failed", formatMetaGraphError(error));
   });

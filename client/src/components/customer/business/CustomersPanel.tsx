@@ -9,7 +9,16 @@ import {
   type BusinessShipmentScope,
 } from "@shared/business-courier";
 import { businessApi } from "./business-api";
-import { ProPageHeader, ProTableFrame, ProTableHead, proCellClass } from "./pro-table";
+import {
+  ProChip,
+  ProField,
+  ProPageHeader,
+  ProSurface,
+  ProTableFrame,
+  ProTableHead,
+  proCellClass,
+  proMobileInputClass,
+} from "./pro-table";
 
 type BusinessDestination = {
   id: string;
@@ -110,12 +119,96 @@ export function CustomersPanel({
         description="People you ship to. Add a row, then use them on Orders or Pickup."
         actions={
           onOpenPickup ? (
-            <Button variant="outline" className="rounded-none" onClick={onOpenPickup}>
+            <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenPickup}>
               Open pickup
             </Button>
           ) : null
         }
       />
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 md:hidden">
+        <ProSurface className="space-y-3 bg-[#FFF7F3]">
+          <p className="text-sm font-semibold text-zinc-900">New customer</p>
+          <ProField label="Name">
+            <input
+              className={proMobileInputClass}
+              placeholder="Customer name"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
+          </ProField>
+          <ProField label="Phone">
+            <input
+              className={proMobileInputClass}
+              placeholder="Phone"
+              value={draft.phone}
+              onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+            />
+          </ProField>
+          <ProField label="Address">
+            <input
+              className={proMobileInputClass}
+              placeholder="House / street"
+              value={draft.address}
+              onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+            />
+          </ProField>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="City">
+              <input
+                className={proMobileInputClass}
+                placeholder="City"
+                value={draft.city}
+                onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+              />
+            </ProField>
+            <ProField label="Pincode">
+              <input
+                className={proMobileInputClass}
+                placeholder="Pin"
+                value={draft.pincode}
+                onChange={(e) => setDraft({ ...draft, pincode: e.target.value })}
+              />
+            </ProField>
+          </div>
+          <Button
+            className="h-11 w-full rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+            disabled={create.isPending}
+            onClick={submit}
+          >
+            {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
+            Add customer
+          </Button>
+        </ProSurface>
+        {customers.map((customer) => (
+          <ProSurface key={customer.id} className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold text-zinc-900">{customer.name}</p>
+              <ProChip>{shipmentScopeLabel(customer.shipmentType)}</ProChip>
+            </div>
+            <p className="text-sm text-zinc-500">{customer.phone}</p>
+            <p className="text-sm text-zinc-600">
+              {[customer.address, customer.city, customer.pincode].filter(Boolean).join(", ")}
+            </p>
+            <div className="flex gap-2 pt-1">
+              {onAddParcel ? (
+                <Button
+                  size="sm"
+                  className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                  onClick={() => onAddParcel(customer.id)}
+                >
+                  <Truck className="mr-1 h-4 w-4" />
+                  Pickup
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" className="rounded-xl" onClick={() => remove.mutate(customer.id)}>
+                <Trash2 className="mr-1 h-4 w-4" />
+                Remove
+              </Button>
+            </div>
+          </ProSurface>
+        ))}
+      </div>
+      <div className="hidden min-h-0 flex-1 md:block">
       <ProTableFrame minWidth="1180px">
         <ProTableHead
           columns={[
@@ -267,6 +360,7 @@ export function CustomersPanel({
           ))}
         </tbody>
       </ProTableFrame>
+      </div>
     </div>
   );
 }

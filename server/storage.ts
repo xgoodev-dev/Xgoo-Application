@@ -79,6 +79,8 @@ let customerIntakeColumnsReady: Promise<void> | null = null;
 let customerAccountTypeReady: Promise<void> | null = null;
 let bookingPackageColumnsReady: Promise<void> | null = null;
 let xgooOrderIdColumnsReady: Promise<void> | null = null;
+let hubServiceAreaColumnsReady: Promise<void> | null = null;
+let hubBookingColumnsReady: Promise<void> | null = null;
 
 function ensureCustomerIntakeColumns() {
   if (!customerIntakeColumnsReady) {
@@ -141,6 +143,72 @@ export function ensureBookingPackageColumns() {
     });
   }
   return bookingPackageColumnsReady;
+}
+
+export function ensureHubBookingColumns() {
+  if (!hubBookingColumnsReady) {
+    hubBookingColumnsReady = (async () => {
+      await db.execute(sql`
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS destination_country varchar(100);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS pickup_location_name varchar(500);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS channel_order_id varchar(100);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS order_date varchar(10);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS sender_email varchar(255);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS sender_alternate_phone varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS sender_landmark text;
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS sender_country varchar(100);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS receiver_email varchar(255);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS receiver_alternate_phone varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS receiver_landmark text;
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS receiver_country varchar(100);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS products jsonb;
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS order_payment_type varchar(20) NOT NULL DEFAULT 'prepaid';
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS collectable_amount decimal(12, 2);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS shipping_charges decimal(12, 2);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS giftwrap_charges decimal(12, 2);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS transaction_charges decimal(12, 2);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS reseller_name varchar(255);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS customs_document_type varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS inco_terms varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS invoice_number varchar(100);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS invoice_date varchar(10);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS currency varchar(10);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS gstin varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS iec varchar(20);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS ioss varchar(40);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS eori varchar(40);
+        ALTER TABLE shipments ADD COLUMN IF NOT EXISTS shipment_purpose varchar(100);
+      `);
+    })().catch((error) => {
+      hubBookingColumnsReady = null;
+      throw error;
+    });
+  }
+  return hubBookingColumnsReady;
+}
+
+export function ensureHubServiceAreaColumns() {
+  if (!hubServiceAreaColumnsReady) {
+    hubServiceAreaColumnsReady = (async () => {
+      await db.execute(sql`
+        ALTER TABLE branches ADD COLUMN IF NOT EXISTS lat numeric(10, 7)
+      `);
+      await db.execute(sql`
+        ALTER TABLE branches ADD COLUMN IF NOT EXISTS lng numeric(10, 7)
+      `);
+      await db.execute(sql`
+        ALTER TABLE branches ADD COLUMN IF NOT EXISTS service_radius_km numeric(8, 2) DEFAULT 13
+      `);
+      await db.execute(sql`
+        UPDATE branches SET service_radius_km = 13 WHERE service_radius_km IS NULL
+      `);
+    })().catch((error) => {
+      hubServiceAreaColumnsReady = null;
+      throw error;
+    });
+  }
+  return hubServiceAreaColumnsReady;
 }
 
 export function ensureXgooOrderIdColumns() {
@@ -946,6 +1014,7 @@ export class DatabaseStorage implements IStorage {
   // Shipment operations
   async getShipmentsByOffice(officeId: string): Promise<ShipmentWithRelations[]> {
     await ensureXgooOrderIdColumns();
+    await ensureHubBookingColumns();
     const results = await db
       .select()
       .from(shipments)
@@ -963,6 +1032,7 @@ export class DatabaseStorage implements IStorage {
 
   async getShipment(id: string): Promise<ShipmentWithRelations | undefined> {
     await ensureXgooOrderIdColumns();
+    await ensureHubBookingColumns();
     const results = await db
       .select()
       .from(shipments)
@@ -982,6 +1052,7 @@ export class DatabaseStorage implements IStorage {
 
   async createShipment(shipment: InsertShipment): Promise<Shipment> {
     await ensureXgooOrderIdColumns();
+    await ensureHubBookingColumns();
     const bookingNumber = `XG${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
     const [created] = await db
       .insert(shipments)
@@ -1552,6 +1623,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBranchesByOffice(officeId: string): Promise<BranchWithServiceAreas[]> {
+    await ensureHubServiceAreaColumns();
     const branchRows = await db
       .select()
       .from(branches)
@@ -1768,6 +1840,23 @@ export class DatabaseStorage implements IStorage {
     const matches: Match[] = [];
 
     for (const branch of activeBranches) {
+      const hubLat = branch.lat != null ? parseFloat(String(branch.lat)) : NaN;
+      const hubLng = branch.lng != null ? parseFloat(String(branch.lng)) : NaN;
+      const hubRadius = parseFloat(String(branch.serviceRadiusKm || "13"));
+      if (
+        pickupLat != null &&
+        pickupLng != null &&
+        Number.isFinite(hubLat) &&
+        Number.isFinite(hubLng) &&
+        Number.isFinite(hubRadius) &&
+        hubRadius > 0
+      ) {
+        const dist = distanceKm(pickupLat, pickupLng, hubLat, hubLng);
+        if (dist <= hubRadius) {
+          matches.push({ branch, distance: dist, exact: false });
+        }
+      }
+
       for (const area of branch.serviceAreas) {
         const areaPincode = normalizePincode(area.pincode);
         if (pincode && areaPincode === pincode) {
@@ -2039,6 +2128,11 @@ export class DatabaseStorage implements IStorage {
         id: store.id,
         name: store.name,
         city: store.city,
+        address: store.address,
+        pincode: store.pincode,
+        lat: store.lat,
+        lng: store.lng,
+        serviceRadiusKm: store.serviceRadiusKm,
         isActive: store.isActive,
         isPrimary: store.isPrimary,
         todayBookings: today.bookings,

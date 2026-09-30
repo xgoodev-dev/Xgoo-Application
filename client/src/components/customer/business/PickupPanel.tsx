@@ -12,7 +12,16 @@ import {
 } from "@shared/business-courier";
 import { businessApi } from "./business-api";
 import { printProParcelSlip } from "./ProParcelSlip";
-import { ProPageHeader, ProTableFrame, ProTableHead, proCellClass } from "./pro-table";
+import {
+  ProChip,
+  ProField,
+  ProPageHeader,
+  ProSurface,
+  ProTableFrame,
+  ProTableHead,
+  proCellClass,
+  proMobileInputClass,
+} from "./pro-table";
 
 type BusinessProfile = {
   companyName: string;
@@ -119,11 +128,13 @@ export function PickupPanel({
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLTableCellElement>(null);
+  const mobilePickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!pickerOpen) return;
     const close = (event: PointerEvent) => {
-      if (pickerRef.current?.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (pickerRef.current?.contains(target) || mobilePickerRef.current?.contains(target)) return;
       setPickerOpen(false);
     };
     document.addEventListener("pointerdown", close);
@@ -279,16 +290,16 @@ export function PickupPanel({
         actions={
           <>
             {onOpenOrders ? (
-              <Button variant="outline" className="rounded-none" onClick={onOpenOrders}>
+              <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenOrders}>
                 From orders
               </Button>
             ) : (
-              <Button variant="outline" className="rounded-none" onClick={onOpenCustomers}>
+              <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenCustomers}>
                 Customers
               </Button>
             )}
             <Button
-              className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+              className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:rounded-none"
               disabled={planned.length === 0 || confirm.isPending}
               onClick={() => confirm.mutate()}
               data-testid="button-confirm-today"
@@ -311,6 +322,171 @@ export function PickupPanel({
           )}
         </p>
       ) : null}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 md:hidden">
+        <ProSurface className="space-y-3 bg-[#FFF7F3]">
+          <p className="text-sm font-semibold text-zinc-900">Add parcel</p>
+          <div className="relative" ref={mobilePickerRef}>
+            <ProField label="Customer">
+              <input
+                className={proMobileInputClass}
+                placeholder="Name or pick saved"
+                value={draft.name}
+                onFocus={() => setPickerOpen(true)}
+                onChange={(e) => {
+                  setDraft({ ...draft, destinationId: "", name: e.target.value });
+                  setPickerOpen(true);
+                }}
+              />
+            </ProField>
+            {pickerOpen && matches.length > 0 ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg">
+                {matches.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[#FFF7F3]"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyCustomer(customer)}
+                  >
+                    <span className="font-medium">{customer.name}</span>
+                    <span className="ml-2 text-zinc-500">
+                      {customer.phone}
+                      {customer.city ? ` · ${customer.city}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <ProField label="Phone">
+            <input
+              className={proMobileInputClass}
+              placeholder="Phone"
+              value={draft.phone}
+              onChange={(e) => setDraft({ ...draft, destinationId: "", phone: e.target.value })}
+            />
+          </ProField>
+          <ProField label="Address">
+            <input
+              className={proMobileInputClass}
+              placeholder="House / street"
+              value={draft.address}
+              onChange={(e) => setDraft({ ...draft, destinationId: "", address: e.target.value })}
+            />
+          </ProField>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="Pincode">
+              <input
+                className={proMobileInputClass}
+                placeholder="Pin / ZIP"
+                value={draft.pincode}
+                onChange={(e) => setDraft({ ...draft, destinationId: "", pincode: e.target.value })}
+              />
+            </ProField>
+            <ProField label="City">
+              <input
+                className={proMobileInputClass}
+                placeholder="City"
+                value={draft.city}
+                onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+              />
+            </ProField>
+          </div>
+          <ProField label="Item">
+            <input
+              className={proMobileInputClass}
+              placeholder="Clothes, gift…"
+              value={draft.contents}
+              onChange={(e) => setDraft({ ...draft, contents: e.target.value })}
+            />
+          </ProField>
+          <div className="flex gap-2">
+            <Button
+              className="h-11 flex-1 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+              disabled={addJob.isPending}
+              onClick={() => addJob.mutate()}
+            >
+              {addJob.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
+              Add
+            </Button>
+            {isPickupDraftDirty(draft) ? (
+              <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={clearDraft}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </ProSurface>
+        {(data?.jobs || []).map((job) => (
+          <ProSurface key={job.id} className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-mono text-xs font-semibold text-zinc-900">{job.xgooOrderId || "—"}</p>
+              <ProChip accent={job.status === "planned"}>{JOB_STATUS[job.status]}</ProChip>
+            </div>
+            <p className="font-semibold text-zinc-900">{job.receiverName}</p>
+            <p className="text-sm text-zinc-500">
+              {job.receiverPhone || "—"}
+              {job.receiverCity ? ` · ${job.receiverCity}` : ""}
+            </p>
+            <p className="text-sm text-zinc-600">{job.contentDescription || "Parcel"}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  printProParcelSlip({
+                    from: {
+                      name: data?.profile.storeName || data?.profile.companyName || "Store",
+                      phone: data?.profile.pickupPhone,
+                      address: data?.profile.pickupAddress || "",
+                      city: data?.profile.pickupCity,
+                      state: data?.profile.pickupState,
+                      pincode: data?.profile.pickupPincode,
+                    },
+                    to: {
+                      name: job.receiverName,
+                      phone: job.receiverPhone,
+                      address: joinAddressLines(job.receiverAddress, job.receiverAddressLine2),
+                      city: job.receiverCity,
+                      state: job.receiverState,
+                      pincode: job.receiverPincode,
+                    },
+                    contents: job.contentDescription,
+                    pieces: job.numberOfPieces,
+                    weight: job.weight,
+                    bookingRef: job.bookingRequestId || undefined,
+                    xgooOrderId: job.xgooOrderId,
+                  });
+                }}
+              >
+                <Printer className="mr-1 h-4 w-4" />
+                Label
+              </Button>
+              {job.status === "planned" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => patchJob.mutate({ id: job.id, body: { status: "skipped" } })}
+                >
+                  <SkipForward className="mr-1 h-4 w-4" />
+                  Skip
+                </Button>
+              ) : job.status === "skipped" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => patchJob.mutate({ id: job.id, body: { status: "planned" } })}
+                >
+                  Restore
+                </Button>
+              ) : null}
+            </div>
+          </ProSurface>
+        ))}
+      </div>
+      <div className="hidden min-h-0 flex-1 md:block">
       <ProTableFrame minWidth="1360px">
         <ProTableHead
           columns={[
@@ -614,6 +790,7 @@ export function PickupPanel({
           ))}
         </tbody>
       </ProTableFrame>
+      </div>
     </div>
   );
 }

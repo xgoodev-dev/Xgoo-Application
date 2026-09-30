@@ -613,7 +613,18 @@ export function TrackingLoadsWorkspace({
           </div>
         ) : (
           listLayout === "table" ? (
-            <div className="overflow-auto rounded-none border border-zinc-200 bg-white">
+            <>
+            <div className="space-y-3 py-1 md:hidden">
+              {filtered.map((load) => (
+                <LoadCard
+                  key={load.id}
+                  load={load}
+                  selected={selectedId === load.id}
+                  onSelect={() => handleSelect(load.id)}
+                />
+              ))}
+            </div>
+            <div className="hidden overflow-auto rounded-2xl border border-zinc-200 bg-white md:block">
               <table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead className="sticky top-0 bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   <tr className="border-b border-zinc-200">
@@ -643,6 +654,7 @@ export function TrackingLoadsWorkspace({
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
           <div className="space-y-3 py-1">
             {filtered.map((load) => (

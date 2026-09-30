@@ -50,6 +50,9 @@ export const branches = pgTable("branches", {
   pincode: varchar("pincode", { length: 10 }),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
+  serviceRadiusKm: decimal("service_radius_km", { precision: 8, scale: 2 }).default("13"),
   isPrimary: boolean("is_primary").default(false),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -294,24 +297,37 @@ export const shipments = pgTable("shipments", {
   partnerSyncError: text("partner_sync_error"),
   partnerSyncedAt: timestamp("partner_synced_at"),
   xgooOrderId: varchar("xgoo_order_id", { length: 32 }),
+  shipmentType: varchar("shipment_type", { length: 30 }).notNull().default("domestic"),
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  pickupLocationName: varchar("pickup_location_name", { length: 500 }),
+  channelOrderId: varchar("channel_order_id", { length: 100 }),
+  orderDate: varchar("order_date", { length: 10 }),
 
   // Sender details
   senderName: varchar("sender_name", { length: 255 }).notNull(),
   senderPhone: varchar("sender_phone", { length: 20 }).notNull(),
+  senderEmail: varchar("sender_email", { length: 255 }),
+  senderAlternatePhone: varchar("sender_alternate_phone", { length: 20 }),
   senderAddress: text("sender_address").notNull(),
   senderAddressLine2: text("sender_address_line2"),
+  senderLandmark: text("sender_landmark"),
   senderCity: varchar("sender_city", { length: 100 }),
   senderState: varchar("sender_state", { length: 100 }),
   senderPincode: varchar("sender_pincode", { length: 20 }),
+  senderCountry: varchar("sender_country", { length: 100 }),
   
   // Receiver details
   receiverName: varchar("receiver_name", { length: 255 }).notNull(),
   receiverPhone: varchar("receiver_phone", { length: 20 }).notNull(),
+  receiverEmail: varchar("receiver_email", { length: 255 }),
+  receiverAlternatePhone: varchar("receiver_alternate_phone", { length: 20 }),
   receiverAddress: text("receiver_address").notNull(),
   receiverAddressLine2: text("receiver_address_line2"),
+  receiverLandmark: text("receiver_landmark"),
   receiverCity: varchar("receiver_city", { length: 100 }),
   receiverState: varchar("receiver_state", { length: 100 }),
   receiverPincode: varchar("receiver_pincode", { length: 20 }),
+  receiverCountry: varchar("receiver_country", { length: 100 }),
   
   // Package details
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
@@ -325,6 +341,25 @@ export const shipments = pgTable("shipments", {
   declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
   packagePhotoUrls: text("package_photo_urls").array(),
   packages: jsonb("packages"),
+  products: jsonb("products"),
+
+  orderPaymentType: varchar("order_payment_type", { length: 20 }).notNull().default("prepaid"),
+  collectableAmount: decimal("collectable_amount", { precision: 12, scale: 2 }),
+  shippingCharges: decimal("shipping_charges", { precision: 12, scale: 2 }),
+  giftwrapCharges: decimal("giftwrap_charges", { precision: 12, scale: 2 }),
+  transactionCharges: decimal("transaction_charges", { precision: 12, scale: 2 }),
+  resellerName: varchar("reseller_name", { length: 255 }),
+
+  customsDocumentType: varchar("customs_document_type", { length: 20 }),
+  incoTerms: varchar("inco_terms", { length: 20 }),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  invoiceDate: varchar("invoice_date", { length: 10 }),
+  currency: varchar("currency", { length: 10 }),
+  gstin: varchar("gstin", { length: 20 }),
+  iec: varchar("iec", { length: 20 }),
+  ioss: varchar("ioss", { length: 40 }),
+  eori: varchar("eori", { length: 40 }),
+  shipmentPurpose: varchar("shipment_purpose", { length: 100 }),
   
   // Service details
   serviceType: varchar("service_type", { length: 20 }).notNull().default("surface"), // air, surface

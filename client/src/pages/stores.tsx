@@ -20,7 +20,7 @@ export default function StoresPage() {
       <div>
         <h1 className="text-2xl font-bold">{XGOO_MODULES.command.name} stores</h1>
         <p className="text-sm text-muted-foreground">
-          Control every {XGOO_MODULES.hub.name} location, review revenue, and remove store access.
+          Control every {XGOO_MODULES.hub.name} location, service range, and store access.
         </p>
       </div>
       <CommandStoreOverview />

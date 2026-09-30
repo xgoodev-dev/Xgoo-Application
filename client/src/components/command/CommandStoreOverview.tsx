@@ -8,11 +8,18 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { HubServiceRangeInput } from "@/components/hubs/HubServiceAreaSettings";
+import { parseServiceRadiusKm } from "@shared/service-coverage";
 
 export type CommandStoreSummary = {
   id: string;
   name: string;
   city: string | null;
+  address?: string | null;
+  pincode?: string | null;
+  lat?: string | null;
+  lng?: string | null;
+  serviceRadiusKm?: string | null;
   isActive: boolean | null;
   isPrimary: boolean | null;
   todayBookings: number;
@@ -62,8 +69,8 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
             {XGOO_MODULES.command.name} stores
           </CardTitle>
           <CardDescription>
-            Daily, weekly, and monthly revenue for every {XGOO_MODULES.hub.name} location. Turn off
-            access to remove a store from operations.
+          Control every {XGOO_MODULES.hub.name} location, daily revenue, and the kilometre range
+          for {XGOO_MODULES.go.shortName} and {XGOO_MODULES.pro.shortName}.
           </CardDescription>
         </div>
         {compact ? (
@@ -95,7 +102,19 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
                       {store.isPrimary ? <Badge>Primary</Badge> : null}
                       {store.isActive === false ? <Badge variant="secondary">Access off</Badge> : null}
                     </div>
-                    <p className="text-sm text-muted-foreground">{store.city || "Location not set"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {[store.address, store.city, store.pincode].filter(Boolean).join(", ") ||
+                        "Location not set"}
+                    </p>
+                    {store.lat && store.lng ? (
+                      <p className="text-xs text-muted-foreground">
+                        Pin set · {parseServiceRadiusKm(store.serviceRadiusKm)} km service range
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-700">
+                        Set a map pin on this Hub so Go and Pro coverage can start.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Store access</span>
@@ -105,6 +124,12 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
                       onCheckedChange={(isActive) => toggleAccess.mutate({ id: store.id, isActive })}
                       aria-label={`Toggle access for ${store.name}`}
                     />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Go / Pro service range</p>
+                    <HubServiceRangeInput branchId={store.id} value={store.serviceRadiusKm} />
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-sm">

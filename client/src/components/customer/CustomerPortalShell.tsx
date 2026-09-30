@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MoreHorizontal,
   Package,
   Plus,
   Receipt,
@@ -52,6 +53,8 @@ export type CustomerPortalShellProps = {
   locationFallback?: string | null;
   /** XGoo Pro store / business name shown next to the logo. */
   businessName?: string | null;
+  /** Hide booking when this Go/Pro account is outside the Hub service range. */
+  coverageLocked?: boolean;
   children: React.ReactNode;
 };
 
@@ -69,6 +72,7 @@ function SidebarNav({
   showHome,
   showAccount = true,
   isBusiness,
+  coverageLocked,
   onNavigate,
 }: {
   activeTab: string;
@@ -77,9 +81,15 @@ function SidebarNav({
   showHome?: boolean;
   showAccount?: boolean;
   isBusiness?: boolean;
+  coverageLocked?: boolean;
   onNavigate?: () => void;
 }) {
-  const items: NavItem[] = isBusiness
+  const items: NavItem[] = coverageLocked
+    ? [
+        ...(showTrack ? [{ id: "track", label: "Track", icon: Search } as NavItem] : []),
+        { id: "help", label: "Help", icon: HelpCircle },
+      ]
+    : isBusiness
     ? [
         { id: "home", label: "Dashboard", icon: LayoutDashboard },
         { id: "orders", label: "Orders", icon: ClipboardList },
@@ -252,6 +262,7 @@ function SidebarBody({
   showHome,
   showAccount = true,
   isBusiness,
+  coverageLocked,
   onLogout,
   onSignIn,
   onHelp,
@@ -269,6 +280,7 @@ function SidebarBody({
         showHome={showHome}
         showAccount={showAccount}
         isBusiness={isBusiness}
+        coverageLocked={coverageLocked}
         onNavigate={onNavigate}
       />
       {officePhone && (
@@ -302,6 +314,7 @@ export function CustomerPortalShell({
   showHome,
   showAccount = true,
   isBusiness,
+  coverageLocked,
   onLogout,
   onSignIn,
   onHelp,
@@ -334,6 +347,7 @@ export function CustomerPortalShell({
           showHome={showHome}
           showAccount={showAccount}
           isBusiness={isBusiness}
+          coverageLocked={coverageLocked}
           onLogout={onLogout}
           onSignIn={onSignIn}
           onHelp={onHelp}
@@ -360,6 +374,7 @@ export function CustomerPortalShell({
             showHome={showHome}
             showAccount={showAccount}
             isBusiness={isBusiness}
+            coverageLocked={coverageLocked}
             onLogout={onLogout}
             onSignIn={onSignIn}
             onHelp={onHelp}
@@ -372,24 +387,23 @@ export function CustomerPortalShell({
 
       {/* Main */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F4F4F5]">
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200/80 bg-white px-4">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-200/80 bg-white px-3 sm:gap-3 sm:px-4">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-9 w-9 text-zinc-700 md:hidden"
+            className="h-9 w-9 shrink-0 text-zinc-700 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
             data-testid="button-open-sidebar"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="flex min-w-0 shrink items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <img src={xgooLogo} alt="" className="h-7 w-7 object-contain md:hidden" />
             <div className="min-w-0">
               <span className="block truncate text-sm font-bold tracking-tight text-zinc-900 md:hidden">
-                {isBusiness ? XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
-                {isBusiness && storeLabel ? ` · ${storeLabel}` : ""}
+                {isBusiness ? storeLabel || XGOO_MODULES.pro.name : XGOO_MODULES.go.name}
               </span>
               {isBusiness && storeLabel ? (
                 <span
@@ -401,10 +415,72 @@ export function CustomerPortalShell({
               ) : null}
             </div>
           </div>
-          <LocationChip fallback={locationFallback} compact className="ml-auto max-w-[16rem] sm:max-w-xs" />
+          <LocationChip
+            fallback={locationFallback}
+            compact
+            className="ml-auto hidden max-w-[10rem] sm:inline-flex sm:max-w-xs"
+          />
         </header>
 
-        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        <main
+          className={cn(
+            "min-h-0 flex-1 overflow-hidden",
+            isBusiness && !coverageLocked && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0",
+          )}
+        >
+          {children}
+        </main>
+
+        {isBusiness && !coverageLocked ? (
+          <nav
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur md:hidden"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            data-testid="pro-mobile-tabbar"
+          >
+            <div className="grid h-[4.25rem] grid-cols-5">
+              {(
+                [
+                  { id: "home", label: "Home", icon: LayoutDashboard },
+                  { id: "orders", label: "Orders", icon: ClipboardList },
+                  { id: "pickup", label: "Pickup", icon: Package },
+                  { id: "bookings", label: "Shipments", icon: Truck },
+                ] as const
+              ).map((item) => {
+                const Icon = item.icon;
+                const active = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onTabChange(item.id)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
+                      active ? "text-[#FF4907]" : "text-zinc-500",
+                    )}
+                    data-testid={`tabbar-${item.id}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
+                  ["customers", "bills", "schedule", "account"].includes(activeTab)
+                    ? "text-[#FF4907]"
+                    : "text-zinc-500",
+                )}
+                data-testid="tabbar-more"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+                More
+              </button>
+            </div>
+          </nav>
+        ) : null}
       </div>
     </div>
   );

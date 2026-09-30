@@ -281,6 +281,11 @@ export function AppSidebar() {
                     pendingRequestCount={pendingRequestCount}
                   />
                 ) : null}
+                <NavItem
+                  item={{ title: "Settings", url: "/hub-settings", icon: Settings }}
+                  location={location}
+                  pendingRequestCount={pendingRequestCount}
+                />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

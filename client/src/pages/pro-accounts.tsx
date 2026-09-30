@@ -19,8 +19,8 @@ export default function ProAccountsPage() {
       <div>
         <h1 className="text-2xl font-bold">{XGOO_MODULES.pro.name} accounts</h1>
         <p className="text-sm text-muted-foreground">
-          Review business name, store name, GST, and category. Only verified stores can use{" "}
-          {XGOO_MODULES.pro.name}.
+          See active {XGOO_MODULES.pro.name} stores and the bookings they create. Review new
+          applications before a store can go live.
         </p>
       </div>
       <CommandProAccounts />

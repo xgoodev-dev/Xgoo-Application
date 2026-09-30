@@ -1,6 +1,7 @@
-import { and, desc, eq, isNull, like } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bookingRequests,
   businessDailyJobs,
   businessDestinations,
   businessOrders,
@@ -428,8 +429,30 @@ export async function submitBusinessApplication(
   return serializeProfile(updated);
 }
 
+async function countsByCustomer(
+  userIds: string[],
+  column: typeof bookingRequests.customerUserId | typeof businessOrders.customerUserId,
+  table: typeof bookingRequests | typeof businessOrders,
+) {
+  const totals = new Map<string, number>();
+  if (userIds.length === 0) return totals;
+  const rows = await db
+    .select({
+      customerUserId: column,
+      total: count(),
+    })
+    .from(table)
+    .where(inArray(column, userIds))
+    .groupBy(column);
+  for (const row of rows) {
+    if (row.customerUserId) totals.set(row.customerUserId, Number(row.total) || 0);
+  }
+  return totals;
+}
+
 export async function listBusinessAccounts(officeId: string) {
   await ensureBusinessCourierTables();
+  await ensureXgooOrderIdColumns();
   const rows = await db
     .select({
       user: customerUsers,
@@ -437,8 +460,19 @@ export async function listBusinessAccounts(officeId: string) {
     })
     .from(customerUsers)
     .leftJoin(businessProfiles, eq(businessProfiles.customerUserId, customerUsers.id))
-    .where(and(eq(customerUsers.officeId, officeId), eq(customerUsers.accountType, "business")))
+    .where(
+      and(
+        eq(customerUsers.officeId, officeId),
+        or(eq(customerUsers.accountType, "business"), isNotNull(businessProfiles.id)),
+      ),
+    )
     .orderBy(desc(customerUsers.createdAt));
+
+  const userIds = rows.map((row) => row.user.id);
+  const [bookingTotals, orderTotals] = await Promise.all([
+    countsByCustomer(userIds, bookingRequests.customerUserId, bookingRequests),
+    countsByCustomer(userIds, businessOrders.customerUserId, businessOrders),
+  ]);
 
   return rows.map((row) => {
     const profile = row.profile;
@@ -461,8 +495,155 @@ export async function listBusinessAccounts(officeId: string) {
       verifiedAt: profile?.verifiedAt || null,
       applicationComplete: profile ? isBusinessApplicationComplete(profile) : false,
       ready: profile ? isBusinessProfileReady(profile) : false,
+      bookingCount: bookingTotals.get(row.user.id) || 0,
+      orderCount: orderTotals.get(row.user.id) || 0,
     };
   });
+}
+
+export function serializeCommandProBooking(
+  booking: {
+    id: string;
+    requestNumber: string;
+    xgooOrderId?: string | null;
+    receiverName: string;
+    receiverCity?: string | null;
+    status: string;
+    createdAt?: Date | string | null;
+    convertedShipmentId?: string | null;
+    customerUserId?: string | null;
+  },
+  store?: { storeName?: string | null; companyName?: string | null; accountName?: string | null },
+) {
+  return {
+    id: booking.id,
+    requestNumber: booking.requestNumber,
+    xgooOrderId: booking.xgooOrderId || null,
+    receiverName: booking.receiverName,
+    receiverCity: booking.receiverCity || null,
+    status: booking.status,
+    createdAt: booking.createdAt || null,
+    convertedShipmentId: booking.convertedShipmentId || null,
+    customerUserId: booking.customerUserId || null,
+    storeName: store?.storeName || store?.companyName || store?.accountName || "XGoo Pro store",
+  };
+}
+
+export function serializeCommandProOrder(
+  order: {
+    id: string;
+    xgooOrderId?: string | null;
+    receiverName: string;
+    receiverCity?: string | null;
+    status: string;
+    contentDescription?: string | null;
+    createdAt?: Date | string | null;
+    bookingRequestId?: string | null;
+    customerUserId?: string | null;
+  },
+  store?: { storeName?: string | null; companyName?: string | null; accountName?: string | null },
+) {
+  return {
+    id: order.id,
+    xgooOrderId: order.xgooOrderId || null,
+    receiverName: order.receiverName,
+    receiverCity: order.receiverCity || null,
+    status: order.status,
+    contentDescription: order.contentDescription || null,
+    createdAt: order.createdAt || null,
+    bookingRequestId: order.bookingRequestId || null,
+    customerUserId: order.customerUserId || null,
+    storeName: store?.storeName || store?.companyName || store?.accountName || "XGoo Pro store",
+  };
+}
+
+export async function listCommandProOrders(officeId: string, customerUserIds: string[]) {
+  if (customerUserIds.length === 0) return [];
+  await ensureBusinessCourierTables();
+  await ensureXgooOrderIdColumns();
+  const rows = await db
+    .select({
+      order: businessOrders,
+      storeName: businessProfiles.storeName,
+      companyName: businessProfiles.companyName,
+      accountName: customerUsers.name,
+    })
+    .from(businessOrders)
+    .innerJoin(customerUsers, eq(customerUsers.id, businessOrders.customerUserId))
+    .leftJoin(businessProfiles, eq(businessProfiles.customerUserId, customerUsers.id))
+    .where(and(eq(customerUsers.officeId, officeId), inArray(businessOrders.customerUserId, customerUserIds)))
+    .orderBy(desc(businessOrders.createdAt))
+    .limit(80);
+
+  return rows.map((row) =>
+    serializeCommandProOrder(row.order, {
+      storeName: row.storeName,
+      companyName: row.companyName,
+      accountName: row.accountName,
+    }),
+  );
+}
+
+export async function listCommandProBookings(officeId: string, customerUserIds: string[]) {
+  await ensureBusinessCourierTables();
+  await ensureXgooOrderIdColumns();
+  const ownership =
+    customerUserIds.length > 0
+      ? or(eq(bookingRequests.source, "b2b_daily"), inArray(bookingRequests.customerUserId, customerUserIds))
+      : eq(bookingRequests.source, "b2b_daily");
+  const rows = await db
+    .select({
+      booking: bookingRequests,
+      storeName: businessProfiles.storeName,
+      companyName: businessProfiles.companyName,
+      accountName: customerUsers.name,
+    })
+    .from(bookingRequests)
+    .leftJoin(customerUsers, eq(customerUsers.id, bookingRequests.customerUserId))
+    .leftJoin(businessProfiles, eq(businessProfiles.customerUserId, customerUsers.id))
+    .where(and(eq(bookingRequests.officeId, officeId), ownership))
+    .orderBy(desc(bookingRequests.createdAt))
+    .limit(80);
+
+  return rows.map((row) =>
+    serializeCommandProBooking(row.booking, {
+      storeName: row.storeName,
+      companyName: row.companyName,
+      accountName: row.accountName,
+    }),
+  );
+}
+
+export async function listCommandProAccountActivity(officeId: string, customerUserId: string) {
+  await ensureBusinessCourierTables();
+  const customer = await storage.getCustomerUser(customerUserId);
+  if (!customer || customer.officeId !== officeId) {
+    throw Object.assign(new Error("Pro account not found."), { status: 404 });
+  }
+  const [bookings, orders, profile] = await Promise.all([
+    storage.getBookingRequestsByCustomerUser(customerUserId, {
+      officeId,
+      phone: customer.phone,
+    }),
+    listBusinessOrders(customerUserId),
+    getOrCreateBusinessProfile(customerUserId),
+  ]);
+  return {
+    bookings: bookings.map((booking) =>
+      serializeCommandProBooking(booking, {
+        storeName: profile.storeName,
+        companyName: profile.companyName,
+        accountName: customer.name,
+      }),
+    ),
+    orders: orders.map((order) =>
+      serializeCommandProOrder(order, {
+        storeName: profile.storeName,
+        companyName: profile.companyName,
+        accountName: customer.name,
+      }),
+    ),
+  };
 }
 
 export async function reviewBusinessAccount(

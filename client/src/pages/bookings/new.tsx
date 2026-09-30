@@ -3,7 +3,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { z } from "zod";
 import {
   ArrowLeft,
   Package,
@@ -56,41 +55,33 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { AddressMapField } from "@/components/bookings/AddressMapField";
-import type { Customer, CourierPartner } from "@shared/schema";
+import {
+  HubBookingAddressExtras,
+  HubBookingCustomsSection,
+  HubBookingOrderSection,
+  HubBookingPaymentSection,
+  HubBookingProductSection,
+  HubBookingScopeToggle,
+  HubBookingWeightSummary,
+} from "@/components/bookings/hub-booking-fields";
+import {
+  hubBookingDefaultValues,
+  hubBookingFormSchema,
+  type HubBookingFormData,
+} from "@/components/bookings/hub-booking-schema";
+import type { BranchWithServiceAreas, Customer, CourierPartner } from "@shared/schema";
 import type { PricingQuoteResult } from "@shared/pricing";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { resolveBookingMethod } from "@shared/booking-engine";
+import {
+  filledProducts,
+  packageWeightSummary,
+  productsDeclaredValue,
+  productsDescription,
+  type HubShipmentScope,
+} from "@shared/hub-booking";
 
-const bookingSchema = z.object({
-  customerId: z.string().optional(),
-  courierPartnerId: z.string().min(1, "Please select a courier partner"),
-  awbNumber: z.string().optional(),
-  senderName: z.string().min(1, "Sender name is required"),
-  senderPhone: z.string().min(10, "Valid phone number required"),
-  senderAddress: z.string().min(1, "Sender address is required"),
-  senderCity: z.string().optional(),
-  senderState: z.string().optional(),
-  senderPincode: z.string().optional(),
-  receiverName: z.string().min(1, "Receiver name is required"),
-  receiverPhone: z.string().min(10, "Valid phone number required"),
-  receiverAddress: z.string().min(1, "Receiver address is required"),
-  receiverCity: z.string().optional(),
-  receiverState: z.string().optional(),
-  receiverPincode: z.string().optional(),
-  weight: z.string().min(1, "Weight is required"),
-  length: z.string().optional(),
-  width: z.string().optional(),
-  height: z.string().optional(),
-  numberOfPieces: z.string().default("1"),
-  contentDescription: z.string().optional(),
-  declaredValue: z.string().optional(),
-  serviceType: z.enum(["air", "surface"]),
-  paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
-  manualAmount: z.string().optional(),
-  packagePhotoUrls: z.array(z.string()).optional(),
-});
-
-type BookingFormData = z.infer<typeof bookingSchema>;
+type BookingFormData = HubBookingFormData;
 
 type DelhiveryStatus = {
   configured: boolean;
@@ -156,7 +147,7 @@ export default function NewBookingPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
   const [isScanningPhotos, setIsScanningPhotos] = useState(false);
-  const [bookingView, setBookingView] = useState<"form" | "table">("table");
+  const [bookingView, setBookingView] = useState<"form" | "table">("form");
   const [recommendation, setRecommendation] = useState<{
     recommendedPartnerId: string;
     reason: string;
@@ -210,16 +201,13 @@ export default function NewBookingPage() {
   const { data: delhiveryStatus } = useQuery<DelhiveryStatus>({
     queryKey: ["/api/integrations/delhivery/status"],
   });
+  const { data: branches } = useQuery<BranchWithServiceAreas[]>({
+    queryKey: ["/api/branches"],
+  });
 
   const form = useForm<BookingFormData>({
-    resolver: zodResolver(bookingSchema),
-    defaultValues: {
-      serviceType: "surface",
-      paymentMode: "cash",
-      numberOfPieces: "1",
-      weight: "",
-      packagePhotoUrls: [],
-    },
+    resolver: zodResolver(hubBookingFormSchema),
+    defaultValues: hubBookingDefaultValues(),
   });
 
   const [sourceBookingRequestId, setSourceBookingRequestId] = useState<string | null>(null);
@@ -234,16 +222,26 @@ export default function NewBookingPage() {
     const textFields = [
       "senderName",
       "senderPhone",
+      "senderEmail",
+      "senderAlternatePhone",
       "senderAddress",
+      "senderAddressLine2",
+      "senderLandmark",
       "senderCity",
       "senderState",
       "senderPincode",
+      "senderCountry",
       "receiverName",
       "receiverPhone",
+      "receiverEmail",
+      "receiverAlternatePhone",
       "receiverAddress",
+      "receiverAddressLine2",
+      "receiverLandmark",
       "receiverCity",
       "receiverState",
       "receiverPincode",
+      "receiverCountry",
       "weight",
       "numberOfPieces",
       "length",
@@ -252,6 +250,9 @@ export default function NewBookingPage() {
       "contentDescription",
       "declaredValue",
       "serviceType",
+      "shipmentType",
+      "destinationCountry",
+      "pickupLocationName",
     ] as const;
 
     for (const key of textFields) {
@@ -262,6 +263,7 @@ export default function NewBookingPage() {
 
   const selectedPartnerId = form.watch("courierPartnerId");
   const serviceType = form.watch("serviceType");
+  const shipmentType = form.watch("shipmentType");
   const weight = form.watch("weight");
   const senderPincode = form.watch("senderPincode");
   const receiverPincode = form.watch("receiverPincode");
@@ -271,6 +273,35 @@ export default function NewBookingPage() {
   const numberOfPieces = form.watch("numberOfPieces");
   const contentDescription = form.watch("contentDescription");
   const declaredValue = form.watch("declaredValue");
+
+  useEffect(() => {
+    if (form.getValues("pickupLocationName")) return;
+    const primary = branches?.find((branch) => branch.isPrimary) || branches?.[0];
+    if (primary?.name) form.setValue("pickupLocationName", primary.name);
+  }, [branches, form]);
+
+  const applyShipmentScope = (scope: HubShipmentScope) => {
+    form.setValue("shipmentType", scope, { shouldValidate: true });
+    switch (scope) {
+      case "domestic":
+        form.setValue("senderCountry", form.getValues("senderCountry") || "India");
+        form.setValue("receiverCountry", "India");
+        form.setValue("destinationCountry", "");
+        form.setValue("currency", "INR");
+        break;
+      case "international":
+        form.setValue("senderCountry", form.getValues("senderCountry") || "India");
+        if (form.getValues("receiverCountry") === "India") form.setValue("receiverCountry", "");
+        form.setValue("orderPaymentType", "prepaid");
+        if (!form.getValues("customsDocumentType")) form.setValue("customsDocumentType", "csb5");
+        if (!form.getValues("incoTerms")) form.setValue("incoTerms", "DAP");
+        break;
+      default: {
+        const exhaustive: never = scope;
+        return exhaustive;
+      }
+    }
+  };
 
   const toNum = (v?: string) => {
     const n = parseFloat(v || "");
@@ -988,15 +1019,33 @@ export default function NewBookingPage() {
   const createBookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
       const amount = data.manualAmount ? parseFloat(data.manualAmount) : calculatePrice();
+      const productRows = filledProducts(data.products);
+      const productValue = productsDeclaredValue(productRows);
+      const productDesc = productsDescription(productRows);
+      const weights = packageWeightSummary({
+        actualKg: totalWeight,
+        length: maxLength,
+        width: maxWidth,
+        height: maxHeight,
+      });
       const payload = {
         ...data,
         weight: totalWeight.toString(),
         length: maxLength > 0 ? maxLength.toString() : null,
         width: maxWidth > 0 ? maxWidth.toString() : null,
         height: maxHeight > 0 ? maxHeight.toString() : null,
+        volumetricWeight: weights.volumetricWeight.toString(),
+        chargeableWeight: weights.applicableWeight.toString(),
         numberOfPieces: totalPieces || 1,
-        declaredValue: totalDeclaredValue > 0 ? totalDeclaredValue.toString() : null,
-        contentDescription: combinedDescription || data.contentDescription || "",
+        declaredValue:
+          totalDeclaredValue > 0
+            ? totalDeclaredValue.toString()
+            : productValue > 0
+              ? productValue.toString()
+              : null,
+        contentDescription: combinedDescription || productDesc || data.contentDescription || "",
+        products: productRows,
+        destinationCountry: data.shipmentType === "international" ? data.destinationCountry : null,
         totalAmount: amount.toString(),
         baseAmount: amount.toString(),
         packagePhotoUrls: data.packagePhotoUrls || [],
@@ -1098,9 +1147,10 @@ export default function NewBookingPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold">New Booking</h1>
-          <p className="text-muted-foreground">Create a new shipment</p>
+          <p className="text-muted-foreground">Create a domestic or international shipment</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <HubBookingScopeToggle value={shipmentType} onChange={applyShipmentScope} />
           <Button
             type="button"
             size="sm"
@@ -1208,6 +1258,7 @@ export default function NewBookingPage() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <HubBookingOrderSection form={form} branches={branches} scope={shipmentType} />
           {bookingView === "table" ? (
             <>
               <Card>
@@ -1300,6 +1351,24 @@ export default function NewBookingPage() {
                   </div>
                 </CardContent>
               </Card>
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-base">Pickup & delivery extras</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <p className="mb-3 text-sm font-medium">Pickup / sender</p>
+                    <HubBookingAddressExtras form={form} party="sender" scope={shipmentType} />
+                  </div>
+                  <div>
+                    <p className="mb-3 text-sm font-medium">Delivery / receiver</p>
+                    <HubBookingAddressExtras form={form} party="receiver" scope={shipmentType} />
+                  </div>
+                </CardContent>
+              </Card>
+              <HubBookingProductSection form={form} scope={shipmentType} />
+              <HubBookingPaymentSection form={form} scope={shipmentType} />
+              {shipmentType === "international" ? <HubBookingCustomsSection form={form} /> : null}
               <Card>
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -1480,16 +1549,23 @@ export default function NewBookingPage() {
                       Add Package
                     </Button>
                   </div>
+                  <HubBookingWeightSummary
+                    deadWeight={totalWeight}
+                    length={maxLength}
+                    width={maxWidth}
+                    height={maxHeight}
+                  />
                 </CardContent>
               </Card>
             </>
           ) : (
+          <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <User className="h-4 w-4" />
-                  Sender Details
+                  Sender / pickup details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1636,14 +1712,15 @@ export default function NewBookingPage() {
                     name="senderPincode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pincode</FormLabel>
+                        <FormLabel>{shipmentType === "international" ? "Postal code" : "Pincode"}</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Pincode" data-testid="input-sender-pincode" />
+                          <Input {...field} placeholder={shipmentType === "international" ? "Postal code" : "Pincode"} data-testid="input-sender-pincode" />
                         </FormControl>
                       </FormItem>
                     )}
                   />
                 </div>
+                <HubBookingAddressExtras form={form} party="sender" scope={shipmentType} />
               </CardContent>
             </Card>
 
@@ -1651,7 +1728,7 @@ export default function NewBookingPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <MapPin className="h-4 w-4" />
-                  Receiver Details
+                  Delivery details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1769,16 +1846,21 @@ export default function NewBookingPage() {
                     name="receiverPincode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pincode</FormLabel>
+                        <FormLabel>{shipmentType === "international" ? "Postal code" : "Pincode"}</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Pincode" data-testid="input-receiver-pincode" />
+                          <Input {...field} placeholder={shipmentType === "international" ? "Postal code" : "Pincode"} data-testid="input-receiver-pincode" />
                         </FormControl>
                       </FormItem>
                     )}
                   />
                 </div>
+                <HubBookingAddressExtras form={form} party="receiver" scope={shipmentType} />
               </CardContent>
             </Card>
+          </div>
+
+            <HubBookingProductSection form={form} scope={shipmentType} />
+            <HubBookingPaymentSection form={form} scope={shipmentType} />
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
@@ -1967,8 +2049,17 @@ export default function NewBookingPage() {
                     )}
                   </div>
                 </div>
+
+                <HubBookingWeightSummary
+                  deadWeight={totalWeight}
+                  length={maxLength}
+                  width={maxWidth}
+                  height={maxHeight}
+                />
               </CardContent>
             </Card>
+
+            {shipmentType === "international" ? <HubBookingCustomsSection form={form} /> : null}
 
             <Card>
               <CardHeader className="pb-4">
@@ -2164,7 +2255,7 @@ export default function NewBookingPage() {
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
                 <CreditCard className="h-4 w-4" />
-                Payment
+                Hub collection
               </CardTitle>
             </CardHeader>
             <CardContent>

@@ -12,7 +12,7 @@ import {
   type BusinessSettlementMode,
 } from "@shared/business-courier";
 import { businessApi } from "./business-api";
-import { ProPageHeader, ProTableFrame, ProTableHead } from "./pro-table";
+import { ProChip, ProPageHeader, ProSurface, ProTableFrame, ProTableHead } from "./pro-table";
 
 type BillRow = {
   id: string;
@@ -165,7 +165,7 @@ export function BillsPanel({ token }: { token: string }) {
         description="Every shipment charge in one place. Pay XGoo once for all outstanding movement."
         actions={
           <Button
-            className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+            className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:rounded-none"
             disabled={outstanding <= 0}
             onClick={() => setPaying(true)}
           >
@@ -175,14 +175,14 @@ export function BillsPanel({ token }: { token: string }) {
       />
 
       <div className="mb-4 grid gap-3 lg:grid-cols-3">
-        <div className="border border-zinc-200 bg-white px-4 py-3">
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Due now</p>
           <p className="mt-1 text-2xl font-extrabold text-zinc-900">{rupees(data?.outstandingTotal || "0")}</p>
           <p className="mt-1 text-xs text-zinc-500">
             {data?.outstandingCount || 0} shipment{(data?.outstandingCount || 0) === 1 ? "" : "s"}
           </p>
         </div>
-        <div className="border border-zinc-200 bg-white px-4 py-3">
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             This {billingCycleLabel(cycle).toLowerCase()}
           </p>
@@ -191,7 +191,7 @@ export function BillsPanel({ token }: { token: string }) {
           </p>
           <p className="mt-1 text-xs text-zinc-500">{data?.period.label || "—"}</p>
         </div>
-        <div className="border border-zinc-200 bg-white px-4 py-3">
+        <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Already paid</p>
           <p className="mt-1 text-2xl font-extrabold text-zinc-900">{rupees(data?.paidTotal || "0")}</p>
           <p className="mt-1 text-xs text-zinc-500">
@@ -286,6 +286,34 @@ export function BillsPanel({ token }: { token: string }) {
           Loading bills
         </div>
       ) : (
+        <>
+        <div className="space-y-2.5 md:hidden">
+          {rows.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-500">
+              {filter === "due"
+                ? "Nothing is due to XGoo right now."
+                : "Accepted pickup quotations appear here. Pay XGoo once for the cycle you choose."}
+            </p>
+          ) : (
+            rows.map((bill) => (
+              <ProSurface key={bill.id} className="space-y-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-zinc-900">{bill.requestNumber || bill.bookingNumber}</p>
+                  <ProChip accent={bill.paymentStatus !== "completed"}>{paymentLabel(bill.paymentStatus)}</ProChip>
+                </div>
+                <p className="text-sm text-zinc-600">{bill.receiverName}</p>
+                <p className="text-xs text-zinc-500">
+                  {billDate(bill.bookedAt)}
+                  {[bill.senderCity, bill.receiverCity].filter(Boolean).length
+                    ? ` · ${[bill.senderCity, bill.receiverCity].filter(Boolean).join(" → ")}`
+                    : ""}
+                </p>
+                <p className="pt-1 text-base font-bold text-zinc-900">{rupees(bill.amount)}</p>
+              </ProSurface>
+            ))
+          )}
+        </div>
+        <div className="hidden min-h-0 flex-1 md:block">
         <ProTableFrame minWidth="920px">
           <ProTableHead
             columns={[
@@ -338,6 +366,8 @@ export function BillsPanel({ token }: { token: string }) {
             )}
           </tbody>
         </ProTableFrame>
+        </div>
+        </>
       )}
     </div>
   );

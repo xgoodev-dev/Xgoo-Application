@@ -8,7 +8,6 @@ import {
   triggerInvoiceWhatsApp,
   triggerQuoteWhatsApp,
   triggerReceiverTrackingWhatsApp,
-  triggerShipmentPartyWhatsApp,
   triggerTrackingWhatsApp,
 } from "./integrations/whatsapp-notifications";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
@@ -52,17 +51,25 @@ async function proStoreNameForRequest(request?: BookingRequest | null) {
   return request.senderName?.trim() || undefined;
 }
 
+function partnerAwb(shipment: Shipment): string {
+  return (shipment.awbNumber || shipment.externalAwb || "").trim();
+}
+
 export async function notifyReceiverOfShipment(shipment: Shipment) {
+  const awb = partnerAwb(shipment);
+  if (!awb || !shipment.receiverPhone) return;
+  const senderPhone = (shipment.senderPhone || "").replace(/\D/g, "").slice(-10);
+  const receiverPhone = shipment.receiverPhone.replace(/\D/g, "").slice(-10);
+  if (senderPhone.length >= 10 && senderPhone === receiverPhone) return;
   const office = await officeById(shipment.officeId);
-  const ref = (shipment.awbNumber || shipment.externalAwb || shipment.bookingNumber || "").trim();
-  if (!ref || !shipment.receiverPhone) return;
   const request = await storage.getBookingRequestByShipmentId(shipment.id);
   const storeName = await proStoreNameForRequest(request);
   triggerReceiverTrackingWhatsApp(office?.whatsappSettings, {
     receiverName: shipment.receiverName,
     receiverPhone: shipment.receiverPhone,
     bookingNumber: shipment.bookingNumber,
-    trackUrl: publicTrackUrl(ref, office?.whatsappSettings),
+    awb,
+    trackUrl: publicTrackUrl(awb, office?.whatsappSettings),
     storeName,
   });
 }
@@ -379,7 +386,11 @@ export async function raisePickupShipmentAtHub(job: PickupJob) {
     officeId: job.officeId,
     branchId: job.branchId || request.branchId,
     courierPartnerId,
+    shipmentType: request.shipmentType === "international" ? "international" : "domestic",
+    destinationCountry: request.destinationCountry,
+    pickupLocationName: request.pickupLocationName,
     senderName: request.senderName,
+    senderEmail: request.senderEmail,
     senderPhone: request.senderPhone,
     senderAddress: request.senderAddress,
     senderAddressLine2: request.senderAddressLine2,
@@ -435,18 +446,6 @@ export async function raisePickupShipmentAtHub(job: PickupJob) {
     status: "at_hub",
   });
 
-  const office = await officeById(job.officeId);
-  const trackUrl = publicTrackUrl(shipment.bookingNumber, office?.whatsappSettings);
-  triggerShipmentPartyWhatsApp(office?.whatsappSettings, {
-    senderName: request.senderName,
-    senderPhone: request.senderPhone,
-    receiverName: request.receiverName,
-    receiverPhone: request.receiverPhone,
-    bookingNumber: shipment.bookingNumber,
-    route: [request.senderCity, request.receiverCity].filter(Boolean).join(" → ") || "your route",
-    amount: quotation.totalAmount,
-    trackUrl,
-  });
   triggerCustomerNotification(
     request.customerUserId,
     "Shipment booked",
@@ -491,7 +490,7 @@ export async function ensureShipmentInvoice(shipment: Shipment) {
 }
 
 export async function notifyAwbCreated(shipment: Shipment) {
-  const awb = (shipment.awbNumber || shipment.externalAwb || "").trim();
+  const awb = partnerAwb(shipment);
   if (!awb) return;
   const invoice = await ensureShipmentInvoice(shipment);
   const office = await officeById(shipment.officeId);

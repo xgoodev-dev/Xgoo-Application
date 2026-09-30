@@ -92,7 +92,10 @@ import {
   proAccessState,
   type ProProfileStatus,
 } from "@/components/customer/business/ProAccessGate";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { ComingSoonCoverage } from "@/components/customer/ComingSoonCoverage";
+import { GoHelpSupport } from "@/components/customer/go/GoHelpSupport";
+import type { ServiceCoverageResult } from "@shared/service-coverage";
 import {
   TrackingLoadsWorkspace,
   loadProgressFromStatus,
@@ -740,7 +743,7 @@ function AccountKindTabs({
   onChange: (value: "individual" | "business") => void;
 }) {
   return (
-    <div className="mb-6 grid grid-cols-2 border border-stone-200">
+    <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-xl border border-stone-200 md:rounded-none">
       {([
         { id: "individual" as const, label: XGOO_MODULES.go.name },
         { id: "business" as const, label: XGOO_MODULES.pro.name },
@@ -1370,8 +1373,8 @@ function RegisterForm({
                       onClick={() => form.setValue("storeType", type.id)}
                       className={
                         form.watch("storeType") === type.id
-                          ? "rounded-none border border-[#FF4907] bg-[#FF4907] px-3 py-2 text-sm font-semibold text-white"
-                          : "rounded-none border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+                          ? "rounded-full border border-[#FF4907] bg-[#FF4907] px-3 py-2 text-sm font-semibold text-white md:rounded-none"
+                          : "rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 md:rounded-none"
                       }
                       data-testid={`chip-register-store-type-${type.id}`}
                     >
@@ -3764,6 +3767,48 @@ export default function CustomerPortalPage() {
     queryFn: ({ signal }) => businessApi(auth.token!).profile(signal),
     enabled: Boolean(isBusiness && auth.token),
   });
+  const coverageQuery = useQuery({
+    queryKey: ["/api/customer/service-coverage", auth.token],
+    enabled: Boolean(auth.isAuthenticated && auth.token),
+    queryFn: async () => {
+      const res = await fetch("/api/customer/service-coverage", {
+        headers: { "x-customer-token": auth.token! },
+      });
+      if (!res.ok) throw new Error("Failed to check service coverage");
+      return (await res.json()) as ServiceCoverageResult;
+    },
+  });
+  const saveCoverageLocation = useMutation({
+    mutationFn: async (pincode: string) => {
+      const res = await fetch("/api/customer/service-coverage/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-customer-token": auth.token! },
+        body: JSON.stringify({ pincode }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((json as { message?: string }).message || "Could not check this pincode");
+      }
+      return json as ServiceCoverageResult;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/customer/service-coverage", auth.token], data);
+      if (data.served) {
+        toast({ title: "You're in our service area", description: data.message });
+      } else {
+        toast({ title: "Not in range yet", description: data.message });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not check location", description: error.message, variant: "destructive" });
+    },
+  });
+  const coverageLocked = Boolean(
+    auth.isAuthenticated && coverageQuery.data?.configured && !coverageQuery.data.served,
+  );
+  const coveragePending = Boolean(
+    auth.isAuthenticated && coverageQuery.isPending && !coverageQuery.data,
+  );
   const [editingProApplication, setEditingProApplication] = useState(false);
   const businessProfile = businessProfileQuery.data as ProProfileStatus | undefined;
   const proAccess = proAccessState(businessProfile);
@@ -4105,6 +4150,7 @@ export default function CustomerPortalPage() {
           showTrack
           showAccount={auth.isAuthenticated}
           isBusiness={isBusiness}
+          coverageLocked={coverageLocked}
           officePhone={office.phone}
           businessName={
             isBusiness
@@ -4129,16 +4175,48 @@ export default function CustomerPortalPage() {
           onHelp={
             auth.isAuthenticated
               ? () => {
+                  if (coverageLocked) {
+                    setActiveTab("help");
+                    return;
+                  }
                   setActiveTab("account");
                   setGoProfileView("help");
                 }
               : undefined
           }
         >
-          {isBusiness && auth.token && auth.user ? (
+          {coveragePending ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-[#FF4907]" />
+            </div>
+          ) : coverageLocked ? (
+            <>
+              {activeTab === "track" ? (
+                <div className="h-full overflow-y-auto px-4 py-4 md:px-6">
+                  <div className="mx-auto max-w-3xl">
+                    <TrackTab slug={slug} />
+                  </div>
+                </div>
+              ) : activeTab === "help" ? (
+                <GoHelpSupport
+                  onBack={() => setActiveTab("home")}
+                  module={isBusiness ? "pro" : "go"}
+                />
+              ) : (
+                <ComingSoonCoverage
+                  coverage={coverageQuery.data}
+                  isBusiness={isBusiness}
+                  saving={saveCoverageLocation.isPending}
+                  onSaveLocation={(pin) => saveCoverageLocation.mutate(pin)}
+                  onTrack={() => setActiveTab("track")}
+                  onHelp={() => setActiveTab("help")}
+                />
+              )}
+            </>
+          ) : isBusiness && auth.token && auth.user ? (
             <>
               {activeTab === "home" && (
-                <div className="h-full min-h-0 overflow-y-auto px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-y-auto px-3 sm:px-3 sm:px-4 md:px-6">
                   {proGate || (
                     <ProHome
                       token={auth.token}
@@ -4162,7 +4240,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "orders" && (
-                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-3 sm:px-4 md:px-6">
                   {proGate || (
                     <OrdersPanel
                       token={auth.token}
@@ -4172,7 +4250,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "customers" && (
-                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-4 md:px-6">
                   {proGate || (
                     <DestinationsPanel
                       token={auth.token}
@@ -4186,7 +4264,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "pickup" && (
-                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-4 md:px-6">
                   {proGate || (
                     <TodayDispatch
                       token={auth.token}
@@ -4200,7 +4278,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "schedule" && (
-                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-4 md:px-6">
                   {proGate || (
                     <SchedulePanel token={auth.token} slug={slug} userPhone={auth.user.phone} />
                   )}
@@ -4222,7 +4300,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "bills" && (
-                <div className="h-full min-h-0 overflow-hidden px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-4 md:px-6">
                   {proGate || <BillsPanel token={auth.token} />}
                 </div>
               )}

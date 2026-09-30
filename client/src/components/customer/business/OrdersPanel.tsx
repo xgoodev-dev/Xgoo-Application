@@ -15,6 +15,7 @@ import {
 } from "@shared/business-courier";
 import { businessApi } from "./business-api";
 import { printProParcelSlip, type ProParcelSlipParty } from "./ProParcelSlip";
+import { ProChip, ProField, ProSurface, proMobileInputClass } from "./pro-table";
 
 type BusinessProfile = {
   id?: string;
@@ -165,11 +166,13 @@ export function OrdersPanel({
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLTableCellElement>(null);
+  const mobilePickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!pickerOpen) return;
     const close = (event: PointerEvent) => {
-      if (pickerRef.current?.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (pickerRef.current?.contains(target) || mobilePickerRef.current?.contains(target)) return;
       setPickerOpen(false);
     };
     document.addEventListener("pointerdown", close);
@@ -361,7 +364,7 @@ export function OrdersPanel({
             <>
               <Button
                 variant="outline"
-                className="rounded-none"
+                className="rounded-xl sm:rounded-none"
                 onClick={() => void shareCustomerLink("whatsapp")}
                 data-testid="button-share-order-link-whatsapp"
               >
@@ -370,7 +373,7 @@ export function OrdersPanel({
               </Button>
               <Button
                 variant="outline"
-                className="rounded-none"
+                className="rounded-xl sm:rounded-none"
                 onClick={() => void shareCustomerLink("instagram")}
                 data-testid="button-copy-order-link"
               >
@@ -380,19 +383,250 @@ export function OrdersPanel({
           ) : null}
           <Button
             variant="outline"
-            className="rounded-none"
+            className="rounded-xl sm:rounded-none"
             disabled={openOrders.length === 0 || queueAll.isPending}
             onClick={() => queueAll.mutate()}
           >
             Add open to pickup ({openOrders.length})
           </Button>
-          <Button variant="outline" className="rounded-none" onClick={onOpenPickup}>
+          <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenPickup}>
             Open pickup
           </Button>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-none border border-zinc-200 bg-white">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 md:hidden">
+        <ProSurface className="space-y-3 bg-[#FFF7F3]">
+          <p className="text-sm font-semibold text-zinc-900">New order</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="Via">
+              <select
+                className={proMobileInputClass}
+                value={draft.channel}
+                onChange={(e) => setDraft({ ...draft, channel: e.target.value as BusinessOrderChannelId })}
+                aria-label="Order via"
+              >
+                {BUSINESS_ORDER_CHANNELS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </ProField>
+            <ProField label="Type">
+              <select
+                className={proMobileInputClass}
+                value={draft.shipmentType}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    shipmentType: e.target.value as BusinessShipmentScope,
+                    destinationCountry: e.target.value === "domestic" ? "" : draft.destinationCountry,
+                  })
+                }
+                aria-label="Domestic or international"
+              >
+                {BUSINESS_SHIPMENT_SCOPES.map((scope) => (
+                  <option key={scope.id} value={scope.id}>
+                    {scope.label}
+                  </option>
+                ))}
+              </select>
+            </ProField>
+          </div>
+          <div className="relative" ref={mobilePickerRef}>
+            <ProField label="Customer">
+              <input
+                className={proMobileInputClass}
+                placeholder="Name or pick saved"
+                value={draft.name}
+                onFocus={() => setPickerOpen(true)}
+                onChange={(e) => {
+                  setDraft({ ...draft, destinationId: "", name: e.target.value });
+                  setPickerOpen(true);
+                }}
+                data-testid="input-order-customer-mobile"
+              />
+            </ProField>
+            {pickerOpen && matches.length > 0 ? (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg">
+                {matches.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[#FFF7F3]"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyCustomer(customer)}
+                  >
+                    <span className="font-medium">{customer.name}</span>
+                    <span className="ml-2 text-zinc-500">
+                      {customer.phone}
+                      {customer.city ? ` · ${customer.city}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <ProField label="Phone">
+            <input
+              className={proMobileInputClass}
+              placeholder="Phone"
+              value={draft.phone}
+              onChange={(e) => setDraft({ ...draft, destinationId: "", phone: e.target.value })}
+            />
+          </ProField>
+          <ProField label="Address">
+            <input
+              className={proMobileInputClass}
+              placeholder="House / street"
+              value={draft.address}
+              onChange={(e) => setDraft({ ...draft, destinationId: "", address: e.target.value })}
+            />
+          </ProField>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="Pincode">
+              <input
+                className={proMobileInputClass}
+                placeholder="Pin / ZIP"
+                value={draft.pincode}
+                onChange={(e) => setDraft({ ...draft, destinationId: "", pincode: e.target.value })}
+              />
+            </ProField>
+            <ProField label="City">
+              <input
+                className={proMobileInputClass}
+                placeholder="City"
+                value={draft.city}
+                onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+              />
+            </ProField>
+          </div>
+          <ProField label="Item">
+            <input
+              className={proMobileInputClass}
+              placeholder="Clothes, gift…"
+              value={draft.contents}
+              onChange={(e) => setDraft({ ...draft, contents: e.target.value })}
+            />
+          </ProField>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="Kg">
+              <input
+                className={proMobileInputClass}
+                inputMode="decimal"
+                value={draft.weight}
+                onChange={(e) => setDraft({ ...draft, weight: e.target.value })}
+              />
+            </ProField>
+            <ProField label="Pieces">
+              <input
+                className={proMobileInputClass}
+                inputMode="numeric"
+                value={draft.pieces}
+                onChange={(e) => setDraft({ ...draft, pieces: e.target.value })}
+              />
+            </ProField>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              className="h-11 flex-1 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+              disabled={createOrder.isPending}
+              onClick={() => createOrder.mutate()}
+            >
+              {createOrder.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
+              Add order
+            </Button>
+            {isOrderDraftDirty(draft) ? (
+              <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={clearDraft}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </ProSurface>
+        {orders.map((order) => (
+          <ProSurface key={order.id} className="space-y-2" data-testid={`store-order-mobile-${order.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <button
+                type="button"
+                className="font-mono text-xs font-semibold text-zinc-900"
+                onClick={() => {
+                  if (!order.xgooOrderId) return;
+                  void navigator.clipboard.writeText(order.xgooOrderId).then(
+                    () => toast({ title: "XGoo ID copied", description: "Write it on the package." }),
+                    () => toast({ title: "XGoo ID", description: order.xgooOrderId || "" }),
+                  );
+                }}
+              >
+                {order.xgooOrderId || "—"}
+              </button>
+              <ProChip accent={order.status === "open"}>{ORDER_STATUS_LABELS[order.status] || order.status}</ProChip>
+            </div>
+            <p className="font-semibold text-zinc-900">{order.receiverName}</p>
+            <p className="text-sm text-zinc-500">
+              {order.receiverPhone}
+              {order.receiverCity ? ` · ${order.receiverCity}` : ""}
+            </p>
+            <p className="text-sm text-zinc-600">{order.contentDescription || "Store order"}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {order.xgooOrderId ? (
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => {
+                  void navigator.clipboard.writeText(order.xgooOrderId || "");
+                }}>
+                  <Copy className="mr-1 h-4 w-4" />
+                  Copy ID
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  if (!printOrderSlip(profileQuery.data, order)) {
+                    toast({
+                      title: "Could not print",
+                      description: "Allow printing in this browser and try again.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                <Printer className="mr-1 h-4 w-4" />
+                Label
+              </Button>
+              {order.status === "open" ? (
+                <>
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                    disabled={queuePickup.isPending}
+                    onClick={() => queuePickup.mutate(order.id)}
+                  >
+                    <Truck className="mr-1 h-4 w-4" />
+                    Pickup
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    disabled={cancelOrder.isPending}
+                    onClick={() => cancelOrder.mutate(order.id)}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Cancel
+                  </Button>
+                </>
+              ) : order.status === "pickup_requested" ? (
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={onOpenPickup}>
+                  Collect
+                </Button>
+              ) : null}
+            </div>
+          </ProSurface>
+        ))}
+      </div>
+
+      <div className="hidden min-h-0 flex-1 overflow-auto rounded-none border border-zinc-200 bg-white md:block">
         <table className="w-full min-w-[1520px] border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <tr className="border-b border-zinc-200">

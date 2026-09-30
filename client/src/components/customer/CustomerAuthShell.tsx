@@ -62,7 +62,7 @@ export function CustomerAuthShell({
       data-customer-auth-page
     >
       <div className="flex w-full lg:w-[45%] xl:w-[42%] flex-col min-h-screen">
-        <header className="flex items-center justify-between bg-white px-8 py-7 sm:px-12">
+        <header className="flex items-center justify-between bg-white px-4 py-4 sm:px-8 sm:py-7 lg:px-12">
           <Link href="/" className="flex items-center gap-2.5">
             <img src={xgooLogo} alt="XGoo" className="h-9 w-9 object-contain" />
             <div>
@@ -80,20 +80,20 @@ export function CustomerAuthShell({
           </Link>
         </header>
 
-        <main className="flex flex-1 flex-col justify-center px-8 sm:px-12 lg:px-16 xl:px-20 py-8">
+        <main className="flex flex-1 flex-col justify-start px-4 py-5 sm:px-8 sm:py-8 lg:justify-center lg:px-16 xl:px-20">
           <div className="mx-auto w-full max-w-[400px]">
-            <h1 className="text-[2rem] sm:text-[2.125rem] font-bold tracking-tight text-stone-900">
+            <h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-stone-900 sm:text-[2.125rem]">
               {title}
             </h1>
             {subtitle && (
-              <p className="mt-2 mb-8 text-sm text-stone-500 leading-relaxed">{subtitle}</p>
+              <p className="mt-2 mb-5 text-sm leading-relaxed text-stone-500 sm:mb-8">{subtitle}</p>
             )}
-            {!subtitle && <div className="mb-8" />}
+            {!subtitle && <div className="mb-5 sm:mb-8" />}
             {children}
           </div>
         </main>
 
-        <footer className="px-8 py-8 sm:px-12">
+        <footer className="px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
           <p className="text-xs text-stone-400 leading-relaxed max-w-md">
             <Link href="/privacy" className="hover:text-stone-600">
               Privacy Policy
@@ -119,21 +119,21 @@ export function CustomerAuthShell({
 }
 
 export const customerAuthFieldClass = cn(
-  "h-[52px] rounded-none border-0 bg-[#f5f3f2] text-stone-900 shadow-none",
+  "h-12 rounded-xl border-0 bg-[#f5f3f2] text-stone-900 shadow-none sm:h-[52px] md:rounded-none",
   "placeholder:text-stone-400 focus-visible:ring-2 focus-visible:ring-[#FF4907]/40 focus-visible:bg-[#faf8f7]",
 );
 
 export const customerAuthPrimaryButtonClass = cn(
-  "h-[52px] w-full rounded-none text-base font-semibold",
+  "h-12 w-full rounded-xl text-base font-semibold sm:h-[52px] md:rounded-none",
   "bg-[#FF4907] hover:bg-[#e03d00] text-white shadow-none",
 );
 
 export const customerAuthSecondaryButtonClass = cn(
-  "h-[48px] w-full rounded-none border border-stone-200 bg-white text-stone-800",
+  "h-12 w-full rounded-xl border border-stone-200 bg-white text-stone-800 sm:h-[48px] md:rounded-none",
   "hover:bg-stone-50 shadow-none",
 );
 
 export const customerAuthGoogleButtonClass = cn(
-  "h-[52px] w-full rounded-none border border-stone-300 bg-white text-stone-900",
+  "h-12 w-full rounded-xl border border-stone-300 bg-white text-stone-900 sm:h-[52px] md:rounded-none",
   "hover:bg-stone-50 shadow-none gap-3 [&_svg]:size-5",
 );

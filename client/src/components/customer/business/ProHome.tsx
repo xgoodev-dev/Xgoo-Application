@@ -196,12 +196,12 @@ export function ProHome({
   const storeLabel = profile?.storeName || profile?.companyName || XGOO_MODULES.pro.name;
 
   return (
-    <div className="space-y-6 py-5" data-testid="business-home">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <div className="space-y-6 py-4 sm:py-5" data-testid="business-home">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#FF4907]">Dashboard</p>
-          <h1 className="mt-1 text-2xl font-bold text-zinc-900">Good day, {firstName}</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900">Good day, {firstName}</h1>
+          <p className="mt-1 text-sm leading-5 text-zinc-500">
             {storeLabel}
             {profile?.storeType ? ` · ${storeTypeLabel(profile.storeType)}` : ""}
             {profile?.pickupTimeSlot
@@ -213,7 +213,7 @@ export function ProHome({
         <button
           type="button"
           onClick={onNotifications}
-          className="relative inline-flex h-10 w-10 items-center justify-center border border-zinc-200 bg-white text-zinc-700"
+          className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700"
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
@@ -225,7 +225,7 @@ export function ProHome({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
         <StatCard label="Open orders" value={openOrders.length} onClick={onOrders} />
         <StatCard label="Today's pickup" value={planned} onClick={onPickup} />
         <StatCard label="In transit" value={inTransitCount(items)} onClick={onShipments} />
@@ -243,7 +243,7 @@ export function ProHome({
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-zinc-900">Quick actions</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
           <QuickAction icon={ClipboardList} label="Record an order" onClick={onOrders} accent />
           <QuickAction icon={Package} label="Request pickup" onClick={onPickup} />
           <QuickAction icon={Users} label="Customers" onClick={onCustomers} />
@@ -254,7 +254,7 @@ export function ProHome({
       </section>
 
       {pendingQuotes.length > 0 ? (
-        <section className="overflow-auto border border-[#FF4907]/30 bg-white">
+        <section className="overflow-hidden rounded-2xl border border-[#FF4907]/30 bg-white">
           <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#FF4907]/20 px-3 py-3">
             <div>
               <h2 className="text-sm font-semibold text-zinc-900">Final quotations</h2>
@@ -273,7 +273,33 @@ export function ProHome({
               </Button>
             ) : null}
           </div>
-          <table className="w-full min-w-[640px] border-collapse text-sm">
+          <div className="divide-y divide-zinc-100 md:hidden">
+            {pendingQuotes.map((quote) => (
+              <div key={quote.id} className="space-y-2 px-3 py-3">
+                <p className="font-semibold text-zinc-900">{quote.quotationNumber}</p>
+                <p className="text-sm text-zinc-500">
+                  {[quote.senderCity, quote.receiverCity].filter(Boolean).join(" → ") || "Pickup quote"}
+                </p>
+                <p className="text-base font-bold text-zinc-900">₹{quote.totalAmount}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                    disabled={acceptQuote.isPending}
+                    onClick={() => acceptQuote.mutate(quote.id)}
+                  >
+                    {acceptQuote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accept to Bills"}
+                  </Button>
+                  {quote.acceptToken ? (
+                    <Button size="sm" variant="outline" className="rounded-xl" asChild>
+                      <a href={`/quote/${quote.acceptToken}`}>Review</a>
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          <table className="hidden w-full min-w-[640px] border-collapse text-sm md:table">
             <thead className="bg-[#FFF7F3] text-left text-xs font-semibold uppercase tracking-wide text-[#FF4907]">
               <tr className="border-b border-[#FF4907]/20">
                 <th className="px-3 py-2.5 font-semibold">Quote ready</th>
@@ -321,55 +347,78 @@ export function ProHome({
             Record or view all
           </button>
         </div>
-        <div className="overflow-auto border border-zinc-200 bg-white">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <tr className="border-b border-zinc-200">
-                <th className="px-3 py-2.5 font-semibold">XGoo ID</th>
-                <th className="px-3 py-2.5 font-semibold">Via</th>
-                <th className="px-3 py-2.5 font-semibold">Customer</th>
-                <th className="px-3 py-2.5 font-semibold">Phone</th>
-                <th className="px-3 py-2.5 font-semibold">City</th>
-                <th className="px-3 py-2.5 font-semibold">Item</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
+        {orders.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-4 py-8 text-center">
+            <p className="font-medium text-zinc-900">No courier orders yet</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              Record WhatsApp, call, or DM orders so they are ready for pickup.
+            </p>
+            <Button className="mt-4 rounded-xl bg-[#FF4907] hover:bg-[#e03d00]" onClick={onOrders}>
+              Record an order
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2.5 md:hidden">
               {orders.slice(0, 8).map((order) => (
-                <tr
+                <button
                   key={order.id}
-                  className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                  type="button"
                   onClick={onOrders}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white p-3 text-left shadow-sm"
                 >
-                  <td className="px-3 py-2 font-mono text-xs font-semibold text-zinc-900">
-                    {order.xgooOrderId || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600">{channelLabel(order.channel)}</td>
-                  <td className="px-3 py-2 font-medium text-zinc-900">{order.receiverName}</td>
-                  <td className="px-3 py-2 text-zinc-600">{order.receiverPhone}</td>
-                  <td className="px-3 py-2 text-zinc-600">{order.receiverCity || "—"}</td>
-                  <td className="px-3 py-2 text-zinc-600">{order.contentDescription || "Store order"}</td>
-                  <td className="px-3 py-2 text-xs font-semibold text-[#FF4907]">
-                    {ORDER_STATUS[order.status] || order.status}
-                  </td>
-                </tr>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-mono text-xs font-semibold text-zinc-900">{order.xgooOrderId || "—"}</p>
+                    <span className="text-[11px] font-semibold text-[#FF4907]">
+                      {ORDER_STATUS[order.status] || order.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 font-semibold text-zinc-900">{order.receiverName}</p>
+                  <p className="mt-0.5 text-sm text-zinc-500">
+                    {order.receiverCity || "—"}
+                    {order.contentDescription ? ` · ${order.contentDescription}` : ""}
+                  </p>
+                </button>
               ))}
-              {orders.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center">
-                    <p className="font-medium text-zinc-900">No courier orders yet</p>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      Record WhatsApp, call, or DM orders so they are ready for pickup.
-                    </p>
-                    <Button className="mt-4 rounded-none bg-[#FF4907] hover:bg-[#e03d00]" onClick={onOrders}>
-                      Record an order
-                    </Button>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+            </div>
+            <div className="hidden overflow-auto rounded-2xl border border-zinc-200 bg-white md:block">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
+                <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <tr className="border-b border-zinc-200">
+                    <th className="px-3 py-2.5 font-semibold">XGoo ID</th>
+                    <th className="px-3 py-2.5 font-semibold">Via</th>
+                    <th className="px-3 py-2.5 font-semibold">Customer</th>
+                    <th className="px-3 py-2.5 font-semibold">Phone</th>
+                    <th className="px-3 py-2.5 font-semibold">City</th>
+                    <th className="px-3 py-2.5 font-semibold">Item</th>
+                    <th className="px-3 py-2.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.slice(0, 8).map((order) => (
+                    <tr
+                      key={order.id}
+                      className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                      onClick={onOrders}
+                    >
+                      <td className="px-3 py-2 font-mono text-xs font-semibold text-zinc-900">
+                        {order.xgooOrderId || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-600">{channelLabel(order.channel)}</td>
+                      <td className="px-3 py-2 font-medium text-zinc-900">{order.receiverName}</td>
+                      <td className="px-3 py-2 text-zinc-600">{order.receiverPhone}</td>
+                      <td className="px-3 py-2 text-zinc-600">{order.receiverCity || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-600">{order.contentDescription || "Store order"}</td>
+                      <td className="px-3 py-2 text-xs font-semibold text-[#FF4907]">
+                        {ORDER_STATUS[order.status] || order.status}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
 
       <section>
@@ -379,47 +428,67 @@ export function ProHome({
             Track all
           </button>
         </div>
-        <div className="overflow-auto border border-zinc-200 bg-white">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <tr className="border-b border-zinc-200">
-                <th className="px-3 py-2.5 font-semibold">Booking</th>
-                <th className="px-3 py-2.5 font-semibold">Customer</th>
-                <th className="px-3 py-2.5 font-semibold">From</th>
-                <th className="px-3 py-2.5 font-semibold">To</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
+        {items.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-4 py-8 text-center">
+            <PackageCheck className="mx-auto h-7 w-7 text-[#FF4907]" />
+            <p className="mt-3 font-medium text-zinc-900">No shipments yet</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              After pickup and quote acceptance, bookings appear here.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2.5 md:hidden">
               {items.slice(0, 8).map((booking) => (
-                <tr
+                <button
                   key={booking.id}
-                  className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                  type="button"
                   onClick={() => onOpenBooking(booking.id)}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white p-3 text-left shadow-sm"
                 >
-                  <td className="px-3 py-2 font-mono font-semibold text-zinc-900">{booking.requestNumber}</td>
-                  <td className="px-3 py-2 text-zinc-700">{booking.receiverName || "Customer"}</td>
-                  <td className="px-3 py-2 text-zinc-600">{booking.senderCity || "—"}</td>
-                  <td className="px-3 py-2 text-zinc-600">{booking.receiverCity || "—"}</td>
-                  <td className="px-3 py-2 text-xs font-medium text-zinc-500">
+                  <p className="font-mono text-xs font-semibold text-zinc-900">{booking.requestNumber}</p>
+                  <p className="mt-1 font-semibold text-zinc-900">{booking.receiverName || "Customer"}</p>
+                  <p className="mt-0.5 text-sm text-zinc-500">
+                    {[booking.senderCity, booking.receiverCity].filter(Boolean).join(" → ") || "Route pending"}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-zinc-500">
                     {booking.tracking?.overallStatusLabel || booking.status.replace(/_/g, " ")}
-                  </td>
-                </tr>
+                  </p>
+                </button>
               ))}
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center">
-                    <PackageCheck className="mx-auto h-7 w-7 text-[#FF4907]" />
-                    <p className="mt-3 font-medium text-zinc-900">No shipments yet</p>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      After pickup and quote acceptance, bookings appear here.
-                    </p>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+            </div>
+            <div className="hidden overflow-auto rounded-2xl border border-zinc-200 bg-white md:block">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
+                <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <tr className="border-b border-zinc-200">
+                    <th className="px-3 py-2.5 font-semibold">Booking</th>
+                    <th className="px-3 py-2.5 font-semibold">Customer</th>
+                    <th className="px-3 py-2.5 font-semibold">From</th>
+                    <th className="px-3 py-2.5 font-semibold">To</th>
+                    <th className="px-3 py-2.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.slice(0, 8).map((booking) => (
+                    <tr
+                      key={booking.id}
+                      className="cursor-pointer border-b border-zinc-100 hover:bg-[#FFF7F3]"
+                      onClick={() => onOpenBooking(booking.id)}
+                    >
+                      <td className="px-3 py-2 font-mono font-semibold text-zinc-900">{booking.requestNumber}</td>
+                      <td className="px-3 py-2 text-zinc-700">{booking.receiverName || "Customer"}</td>
+                      <td className="px-3 py-2 text-zinc-600">{booking.senderCity || "—"}</td>
+                      <td className="px-3 py-2 text-zinc-600">{booking.receiverCity || "—"}</td>
+                      <td className="px-3 py-2 text-xs font-medium text-zinc-500">
+                        {booking.tracking?.overallStatusLabel || booking.status.replace(/_/g, " ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
@@ -438,7 +507,7 @@ function StatCard({
     <button
       type="button"
       onClick={onClick}
-      className="border border-zinc-200 bg-white px-4 py-4 text-left hover:border-[#FF4907]/40"
+      className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-sm hover:border-[#FF4907]/40 sm:px-4 sm:py-4"
     >
       <p className="text-2xl font-extrabold text-zinc-900">{value}</p>
       <p className="mt-1 text-xs font-medium text-zinc-500">{label}</p>
@@ -461,13 +530,13 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 border border-zinc-200 bg-white px-3 py-3 text-left hover:border-[#FF4907]/40"
+      className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-sm hover:border-[#FF4907]/40"
     >
       <span
         className={
           accent
-            ? "flex h-10 w-10 shrink-0 items-center justify-center bg-[#FF4907] text-white"
-            : "flex h-10 w-10 shrink-0 items-center justify-center bg-[#FFF7F3] text-[#FF4907]"
+            ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FF4907] text-white"
+            : "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF7F3] text-[#FF4907]"
         }
       >
         <Icon className="h-4 w-4" />

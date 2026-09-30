@@ -348,13 +348,15 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
             <button
               type="button"
               onClick={openTracking}
-              className="fixed right-0 top-1/2 z-[60] flex -translate-y-1/2 items-center gap-2 rounded-l-md bg-[#FF4907] py-3 pl-3 pr-3 text-white shadow-lg shadow-[#FF4907]/30 transition hover:bg-[#e03d00] hover:pr-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4907] focus-visible:ring-offset-2"
+              className="fixed right-0 top-1/2 z-[60] flex -translate-y-1/2 flex-col items-center gap-2 rounded-l-md bg-[#FF4907] px-2 py-3.5 text-white shadow-lg shadow-[#FF4907]/30 transition hover:bg-[#e03d00] hover:px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4907] focus-visible:ring-offset-2"
               aria-expanded={trackExpanded}
               aria-controls="tracking-sidebar-panel"
               data-testid="button-floating-track"
             >
               <PackageSearch className="h-5 w-5 shrink-0" />
-              <span className="text-sm font-semibold">Track</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] [writing-mode:vertical-rl] [text-orientation:upright]">
+                Track
+              </span>
             </button>,
             document.body,
           )

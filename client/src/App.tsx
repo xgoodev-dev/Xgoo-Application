@@ -39,6 +39,7 @@ import ReportsPage from "@/pages/reports";
 import PricingPage from "@/pages/pricing";
 import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
+import HubSettingsPage from "@/pages/hub-settings";
 import StoresPage from "@/pages/stores";
 import ProAccountsPage from "@/pages/pro-accounts";
 import StaffPage from "@/pages/staff";
@@ -122,6 +123,7 @@ function AuthenticatedApp() {
               <Route path="/stores" component={StoresPage} />
               <Route path="/pro-accounts" component={ProAccountsPage} />
               <Route path="/staff" component={StaffPage} />
+              <Route path="/hub-settings" component={HubSettingsPage} />
               <Route path="/settings" component={SettingsPage} />
               <Route component={NotFound} />
             </Switch>

@@ -14,11 +14,17 @@ import { shipments, offices, bookingRequests } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
-import { searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
+import { geocodeIndianPincode, searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
 import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
 import { shipmentPackageSchema } from "@shared/document-template";
+import {
+  filledProducts,
+  hubProductLineSchema,
+  packageWeightSummary,
+  parseNum,
+} from "@shared/hub-booking";
 import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settings";
 import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
@@ -83,10 +89,9 @@ import {
 } from "./integrations/whatsapp";
 import {
   triggerBookingRequestWhatsApp,
-  triggerBookingSuccessWhatsApp,
 } from "./integrations/whatsapp-notifications";
 import { triggerCustomerNotification } from "./customer-notifications";
-import { notifyAwbCreated, notifyReceiverOfShipment } from "./pickup-service";
+import { notifyAwbCreated } from "./pickup-service";
 import {
   addBusinessTodayJob,
   cancelBusinessOrder,
@@ -99,6 +104,9 @@ import {
   getBusinessToday,
   getPublicStorefront,
   listBusinessAccounts,
+  listCommandProAccountActivity,
+  listCommandProBookings,
+  listCommandProOrders,
   listBusinessBills,
   listBusinessDestinations,
   listBusinessOrders,
@@ -124,6 +132,15 @@ import {
   publicStoreOrderSchema,
   todayIsoDate,
 } from "@shared/business-courier";
+import {
+  parseCoord,
+  parseServiceRadiusKm,
+} from "@shared/service-coverage";
+import {
+  evaluateCustomerCoverage,
+  respondIfCustomerOutsideServiceArea,
+  respondIfOutsideServiceArea,
+} from "./service-coverage";
 import {
   clearWelcomeCooldownForPhone,
   getRecentWhatsAppWebhookDebugEvents,
@@ -184,6 +201,8 @@ const officeUpdateSchema = z.object({
   appBannerSettings: appBannerSettingsSchema.optional(),
 });
 
+const optionalCoordSchema = z.union([z.string(), z.number()]).optional().nullable();
+
 const branchCreateSchema = z.object({
   name: z.string().min(1, "Branch name is required"),
   address: z.string().optional(),
@@ -192,6 +211,9 @@ const branchCreateSchema = z.object({
   pincode: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  lat: optionalCoordSchema,
+  lng: optionalCoordSchema,
+  serviceRadiusKm: z.union([z.string(), z.number()]).optional(),
   isPrimary: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -266,36 +288,88 @@ const shipmentCreateSchema = z.object({
   customerId: z.string().optional(),
   courierPartnerId: z.string().min(1, "Courier partner is required"),
   awbNumber: z.string().optional(),
+  shipmentType: z.enum(["domestic", "international"]).default("domestic"),
+  destinationCountry: z.string().optional().nullable(),
+  pickupLocationName: z.string().optional().nullable(),
+  channelOrderId: z.string().optional().nullable(),
+  orderDate: z.string().optional().nullable(),
   senderName: z.string().min(1, "Sender name is required"),
   senderPhone: z.string().min(10, "Valid phone required"),
+  senderEmail: z.string().optional().nullable(),
+  senderAlternatePhone: z.string().optional().nullable(),
   senderAddress: z.string().min(1, "Address required"),
   senderAddressLine2: z.string().optional().nullable(),
+  senderLandmark: z.string().optional().nullable(),
   senderCity: z.string().optional(),
   senderState: z.string().optional(),
   senderPincode: z.string().optional(),
+  senderCountry: z.string().optional().nullable(),
   receiverName: z.string().min(1, "Receiver name is required"),
   receiverPhone: z.string().min(10, "Valid phone required"),
+  receiverEmail: z.string().optional().nullable(),
+  receiverAlternatePhone: z.string().optional().nullable(),
   receiverAddress: z.string().min(1, "Address required"),
   receiverAddressLine2: z.string().optional().nullable(),
+  receiverLandmark: z.string().optional().nullable(),
   receiverCity: z.string().optional(),
   receiverState: z.string().optional(),
   receiverPincode: z.string().optional(),
+  receiverCountry: z.string().optional().nullable(),
   weight: z.string().min(1, "Weight is required"),
   length: z.string().optional().nullable(),
   width: z.string().optional().nullable(),
   height: z.string().optional().nullable(),
+  volumetricWeight: z.string().optional().nullable(),
+  chargeableWeight: z.string().optional().nullable(),
   numberOfPieces: z.number().int().positive().default(1),
   contentDescription: z.string().optional(),
   declaredValue: z.string().optional().nullable(),
   packagePhotoUrls: z.array(z.string()).optional(),
   packages: z.array(shipmentPackageSchema).optional(),
+  products: z.array(hubProductLineSchema).optional(),
+  orderPaymentType: z.enum(["prepaid", "cod"]).default("prepaid"),
+  collectableAmount: z.string().optional().nullable(),
+  shippingCharges: z.string().optional().nullable(),
+  giftwrapCharges: z.string().optional().nullable(),
+  transactionCharges: z.string().optional().nullable(),
+  resellerName: z.string().optional().nullable(),
+  customsDocumentType: z.enum(["csb4", "csb5"]).optional().nullable(),
+  incoTerms: z.string().optional().nullable(),
+  invoiceNumber: z.string().optional().nullable(),
+  invoiceDate: z.string().optional().nullable(),
+  currency: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable(),
+  iec: z.string().optional().nullable(),
+  ioss: z.string().optional().nullable(),
+  eori: z.string().optional().nullable(),
+  shipmentPurpose: z.string().optional().nullable(),
   serviceType: z.enum(["air", "surface"]),
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   baseAmount: z.string().optional(),
   totalAmount: z.string().min(1),
   bookingRequestId: z.string().uuid().optional(),
   xgooOrderId: z.string().max(32).optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.shipmentType === "international" && !(data.destinationCountry || "").trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["destinationCountry"],
+      message: "Destination country is required for international bookings",
+    });
+  }
+  if (data.orderPaymentType === "cod" && !(data.collectableAmount || "").trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["collectableAmount"],
+      message: "Collectable amount is required for COD",
+    });
+  }
 });
+
+function blankToNull(value?: string | null) {
+  const trimmed = (value || "").trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 const statusUpdateSchema = z.object({
   status: z.enum(["booked", "picked_up", "in_transit", "delivered", "cancelled"]),
@@ -835,6 +909,41 @@ export async function registerRoutes(
     next();
   }
 
+  function hubStaffCanEditBranch(req: any, branch: { id: string; isPrimary?: boolean | null }): boolean {
+    if (isSuperAdmin(req)) return true;
+    const member = req.staffMember as { branchId?: string | null; status?: string } | undefined;
+    if (!member || member.status !== "active") return false;
+    if (member.branchId && member.branchId === branch.id) return true;
+    if (!member.branchId && branch.isPrimary) return true;
+    return false;
+  }
+
+  async function normalizeBranchLocation<T extends {
+    lat?: string | number | null;
+    lng?: string | number | null;
+    pincode?: string | null;
+    serviceRadiusKm?: string | number;
+  }>(data: T): Promise<T & { lat?: string | null; lng?: string | null; serviceRadiusKm?: string }> {
+    const lat = parseCoord(data.lat);
+    const lng = parseCoord(data.lng);
+    let nextLat = lat == null ? (data.lat === null ? null : undefined) : String(lat);
+    let nextLng = lng == null ? (data.lng === null ? null : undefined) : String(lng);
+    if ((nextLat == null || nextLng == null) && data.pincode) {
+      const coords = await geocodeIndianPincode(data.pincode);
+      if (coords) {
+        nextLat = String(coords.lat);
+        nextLng = String(coords.lng);
+      }
+    }
+    return {
+      ...data,
+      lat: nextLat,
+      lng: nextLng,
+      serviceRadiusKm:
+        data.serviceRadiusKm == null ? undefined : String(parseServiceRadiusKm(data.serviceRadiusKm)),
+    };
+  }
+
   async function requireSuperAdmin(req: any, res: Response) {
     if (!isSuperAdmin(req)) {
       res.status(403).json({ message: "XGoo Command Super Admin access is required" });
@@ -958,10 +1067,32 @@ export async function registerRoutes(
     try {
       const office = await requireSuperAdmin(req, res);
       if (!office) return;
-      res.json({ accounts: await listBusinessAccounts(office.id) });
+      const accounts = await listBusinessAccounts(office.id);
+      const accountIds = accounts.map((account) => account.id);
+      const [bookings, orders] = await Promise.all([
+        listCommandProBookings(office.id, accountIds),
+        listCommandProOrders(office.id, accountIds),
+      ]);
+      res.json({ accounts, bookings, orders });
     } catch (error) {
       console.error("Error fetching Pro accounts:", error);
       res.status(500).json({ message: "Failed to load Pro accounts" });
+    }
+  });
+
+  app.get("/api/command/pro-accounts/:id/activity", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      res.json(await listCommandProAccountActivity(office.id, req.params.id));
+    } catch (error) {
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      console.error("Error fetching Pro account activity:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to load Pro bookings",
+      });
     }
   });
 
@@ -1875,7 +2006,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
-      const validated = branchCreateSchema.parse(req.body);
+      const validated = await normalizeBranchLocation(branchCreateSchema.parse(req.body));
       const branch = await storage.createBranch({ ...validated, officeId });
       res.json(branch);
     } catch (error) {
@@ -1887,7 +2018,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/branches/:id", isAuthenticated, superAdminOnly, async (req: any, res) => {
+  app.patch("/api/branches/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
@@ -1896,8 +2027,29 @@ export async function registerRoutes(
       if (!existing || existing.officeId !== officeId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const validated = branchUpdateSchema.parse(req.body);
-      const branch = await storage.updateBranch(id, validated);
+      if (!hubStaffCanEditBranch(req, existing)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const parsed = branchUpdateSchema.parse(req.body);
+      const location = isSuperAdmin(req)
+        ? parsed
+        : {
+            name: parsed.name,
+            address: parsed.address,
+            city: parsed.city,
+            state: parsed.state,
+            pincode: parsed.pincode,
+            phone: parsed.phone,
+            email: parsed.email,
+            lat: parsed.lat,
+            lng: parsed.lng,
+            serviceRadiusKm: parsed.serviceRadiusKm,
+          };
+      const validated = await normalizeBranchLocation(location);
+      const patch = Object.fromEntries(
+        Object.entries(validated).filter(([, value]) => value !== undefined),
+      );
+      const branch = await storage.updateBranch(id, patch);
       res.json(branch);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2847,6 +2999,14 @@ export async function registerRoutes(
       }
 
       const { paymentMode, bookingRequestId, xgooOrderId: bodyXgooOrderId, ...shipmentFields } = validated;
+      const weights = packageWeightSummary({
+        actualKg: parseNum(shipmentFields.weight),
+        length: parseNum(shipmentFields.length),
+        width: parseNum(shipmentFields.width),
+        height: parseNum(shipmentFields.height),
+      });
+      const productRows = filledProducts(shipmentFields.products);
+      const isInternational = shipmentFields.shipmentType === "international";
 
       const linkedBooking = bookingRequestId
         ? await storage.getBookingRequest(bookingRequestId)
@@ -2856,6 +3016,38 @@ export async function registerRoutes(
         officeId,
         customerId: validated.customerId || null,
         xgooOrderId: linkedBooking?.xgooOrderId || bodyXgooOrderId || null,
+        destinationCountry: isInternational ? blankToNull(shipmentFields.destinationCountry) : null,
+        pickupLocationName: blankToNull(shipmentFields.pickupLocationName),
+        channelOrderId: blankToNull(shipmentFields.channelOrderId),
+        orderDate: blankToNull(shipmentFields.orderDate),
+        senderEmail: blankToNull(shipmentFields.senderEmail),
+        senderAlternatePhone: blankToNull(shipmentFields.senderAlternatePhone),
+        senderAddressLine2: blankToNull(shipmentFields.senderAddressLine2),
+        senderLandmark: blankToNull(shipmentFields.senderLandmark),
+        senderCountry: blankToNull(shipmentFields.senderCountry) || (isInternational ? "India" : "India"),
+        receiverEmail: blankToNull(shipmentFields.receiverEmail),
+        receiverAlternatePhone: blankToNull(shipmentFields.receiverAlternatePhone),
+        receiverAddressLine2: blankToNull(shipmentFields.receiverAddressLine2),
+        receiverLandmark: blankToNull(shipmentFields.receiverLandmark),
+        receiverCountry: blankToNull(shipmentFields.receiverCountry) || (isInternational ? blankToNull(shipmentFields.destinationCountry) : "India"),
+        volumetricWeight: shipmentFields.volumetricWeight || String(weights.volumetricWeight),
+        chargeableWeight: shipmentFields.chargeableWeight || String(weights.applicableWeight),
+        products: productRows.length > 0 ? productRows : null,
+        collectableAmount: shipmentFields.orderPaymentType === "cod" ? blankToNull(shipmentFields.collectableAmount) : null,
+        shippingCharges: blankToNull(shipmentFields.shippingCharges),
+        giftwrapCharges: blankToNull(shipmentFields.giftwrapCharges),
+        transactionCharges: blankToNull(shipmentFields.transactionCharges),
+        resellerName: blankToNull(shipmentFields.resellerName),
+        customsDocumentType: isInternational ? shipmentFields.customsDocumentType || "csb5" : null,
+        incoTerms: isInternational ? blankToNull(shipmentFields.incoTerms) : null,
+        invoiceNumber: isInternational ? blankToNull(shipmentFields.invoiceNumber) : null,
+        invoiceDate: isInternational ? blankToNull(shipmentFields.invoiceDate) : null,
+        currency: blankToNull(shipmentFields.currency) || (isInternational ? "INR" : "INR"),
+        gstin: isInternational ? blankToNull(shipmentFields.gstin) : null,
+        iec: isInternational ? blankToNull(shipmentFields.iec) : null,
+        ioss: isInternational ? blankToNull(shipmentFields.ioss) : null,
+        eori: isInternational ? blankToNull(shipmentFields.eori) : null,
+        shipmentPurpose: isInternational ? blankToNull(shipmentFields.shipmentPurpose) : null,
       });
 
       // Create payment record
@@ -2898,16 +3090,12 @@ export async function registerRoutes(
         }
       }
 
-      const office = await storage.getOfficeByUserId(userId);
-      if (office) {
-        triggerBookingSuccessWhatsApp(
-          (office as { whatsappSettings?: unknown }).whatsappSettings,
-          shipment,
-        );
+      const partnerAwb = (shipment.awbNumber || "").trim();
+      if (partnerAwb) {
+        void notifyAwbCreated(shipment).catch((error) => {
+          console.error("[WhatsApp AWB] Failed after Hub booking", error);
+        });
       }
-      void notifyReceiverOfShipment(shipment).catch((error) => {
-        console.error("[WhatsApp receiver tracking] Failed after Hub booking", error);
-      });
 
       res.json(shipment);
     } catch (error) {
@@ -3984,6 +4172,15 @@ export async function registerRoutes(
       }
 
       const validated = parseBookingRequestBody(req.body);
+      if (
+        await respondIfOutsideServiceArea(res, office.id, {
+          lat: (req.body as { pickupLat?: string | number | null }).pickupLat,
+          lng: (req.body as { pickupLng?: string | number | null }).pickupLng,
+          pincode: validated.senderPincode,
+        })
+      ) {
+        return;
+      }
       const branchId = await resolveBranchIdForBooking(office.id, validated);
       const phone = normalizeCustomerPhone(validated.senderPhone);
       const existingCustomer = phone.length >= 10
@@ -4487,6 +4684,68 @@ export async function registerRoutes(
     res.json(safeUser);
   });
 
+  app.get("/api/customer/service-coverage", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      res.json(await evaluateCustomerCoverage(req.customerUser));
+    } catch (error) {
+      console.error("Error checking service coverage:", error);
+      res.status(500).json({ message: "Failed to check service coverage" });
+    }
+  });
+
+  app.post("/api/customer/service-coverage/location", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const body = z.object({
+        address: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        pincode: z.string().optional(),
+        lat: optionalCoordSchema,
+        lng: optionalCoordSchema,
+      }).parse(req.body || {});
+      const lat = parseCoord(body.lat);
+      const lng = parseCoord(body.lng);
+      let nextLat = lat == null ? null : String(lat);
+      let nextLng = lng == null ? null : String(lng);
+      if ((nextLat == null || nextLng == null) && body.pincode) {
+        const coords = await geocodeIndianPincode(body.pincode);
+        if (coords) {
+          nextLat = String(coords.lat);
+          nextLng = String(coords.lng);
+        }
+      }
+
+      if (req.customerUser.accountType === "business") {
+        await updateBusinessProfile(req.customerUser.id, {
+          ...(body.address != null ? { pickupAddress: body.address } : {}),
+          pickupCity: body.city ?? null,
+          pickupState: body.state ?? null,
+          pickupPincode: body.pincode ?? null,
+          pickupLat: nextLat,
+          pickupLng: nextLng,
+        });
+      } else {
+        await storage.updateCustomerUser(req.customerUser.id, {
+          address: body.address,
+          city: body.city,
+          state: body.state,
+          pincode: body.pincode,
+          defaultPickupLat: nextLat,
+          defaultPickupLng: nextLng,
+        });
+      }
+
+      const user = await storage.getCustomerUser(req.customerUser.id);
+      res.json(await evaluateCustomerCoverage(user || req.customerUser));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error saving pickup location for coverage:", error);
+      res.status(500).json({ message: "Failed to save pickup location" });
+    }
+  });
+
   // Update customer profile
   app.patch("/api/customer/me", isCustomerAuthenticated, async (req: any, res) => {
     try {
@@ -4714,6 +4973,15 @@ export async function registerRoutes(
         pickupDate: req.body.pickupDate || null,
         pickupTimeSlot: req.body.pickupTimeSlot || null,
       };
+      if (
+        await respondIfOutsideServiceArea(res, req.customerUser.officeId, {
+          lat: pickupData.pickupLat,
+          lng: pickupData.pickupLng,
+          pincode: validated.senderPincode,
+        })
+      ) {
+        return;
+      }
 
       const branchId = await resolveBranchIdForBooking(req.customerUser.officeId, {
         ...validated,
@@ -4910,6 +5178,7 @@ export async function registerRoutes(
   app.post("/api/customer/business/orders", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!(await requireApprovedBusiness(req, res))) return;
+      if (await respondIfCustomerOutsideServiceArea(res, req.customerUser)) return;
       const input = businessOrderSchema.parse(req.body || {});
       res.json(await createBusinessOrder(req.customerUser.id, input));
     } catch (error) {
@@ -4928,6 +5197,7 @@ export async function registerRoutes(
   app.post("/api/customer/business/orders/:id/pickup", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!(await requireApprovedBusiness(req, res))) return;
+      if (await respondIfCustomerOutsideServiceArea(res, req.customerUser)) return;
       const date = parseJobDate((req.body as { date?: string })?.date);
       res.json(await queueBusinessOrderForPickup(req.customerUser.id, req.params.id, date));
     } catch (error) {
@@ -5002,6 +5272,7 @@ export async function registerRoutes(
   app.post("/api/customer/business/today/jobs", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!(await requireApprovedBusiness(req, res))) return;
+      if (await respondIfCustomerOutsideServiceArea(res, req.customerUser)) return;
       const input = businessAddTodayJobSchema.parse(req.body || {});
       const date = parseJobDate((req.body as { date?: string })?.date);
       res.json(
@@ -5048,6 +5319,7 @@ export async function registerRoutes(
   app.post("/api/customer/business/today/confirm", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!(await requireApprovedBusiness(req, res))) return;
+      if (await respondIfCustomerOutsideServiceArea(res, req.customerUser)) return;
       const date = parseJobDate((req.body as { date?: string })?.date);
       const result = await confirmBusinessToday(
         req.customerUser,

@@ -82,7 +82,7 @@ export function ProApplicationForm({
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 py-6" data-testid="pro-application">
+    <div className="mx-auto max-w-lg space-y-6 px-1 py-4 sm:py-6" data-testid="pro-application">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[#FF4907]">
           {XGOO_MODULES.pro.name}
@@ -94,11 +94,11 @@ export function ProApplicationForm({
         </p>
       </div>
       {profile?.verificationStatus === "rejected" && profile.verificationNote ? (
-        <p className="rounded-none border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {profile.verificationNote}
         </p>
       ) : null}
-      <Card>
+      <Card className="rounded-2xl">
         <CardContent className="space-y-4 pt-6">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Business name</label>
@@ -179,7 +179,7 @@ export function ProApplicationForm({
             />
           </div>
           <Button
-            className="h-12 w-full rounded-none bg-[#FF4907] font-semibold text-white hover:bg-[#e03d00]"
+            className="h-12 w-full rounded-xl bg-[#FF4907] font-semibold text-white hover:bg-[#e03d00]"
             onClick={() => void submit()}
             disabled={saving}
             data-testid="button-submit-pro-application"
@@ -200,8 +200,8 @@ export function ProVerificationPending({
   onEdit?: () => void;
 }) {
   return (
-    <div className="mx-auto max-w-lg space-y-6 py-10" data-testid="pro-pending-review">
-      <div className="flex h-12 w-12 items-center justify-center rounded-none bg-[#FFF0EA] text-[#FF4907]">
+    <div className="mx-auto max-w-lg space-y-6 px-1 py-8 sm:py-10" data-testid="pro-pending-review">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF0EA] text-[#FF4907]">
         <Clock3 className="h-6 w-6" />
       </div>
       <div>
@@ -214,7 +214,7 @@ export function ProVerificationPending({
           they verify the store.
         </p>
       </div>
-      <Card>
+      <Card className="rounded-2xl">
         <CardContent className="space-y-2 pt-6 text-sm">
           <p>
             <span className="text-zinc-500">Business</span>{" "}
@@ -231,7 +231,7 @@ export function ProVerificationPending({
         </CardContent>
       </Card>
       {onEdit ? (
-        <Button variant="outline" className="rounded-none" onClick={onEdit}>
+        <Button variant="outline" className="w-full rounded-xl sm:w-auto" onClick={onEdit}>
           Update details
         </Button>
       ) : null}

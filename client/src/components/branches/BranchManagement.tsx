@@ -36,6 +36,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { BranchWithServiceAreas } from "@shared/schema";
+import { HubServiceRangeInput } from "@/components/hubs/HubServiceAreaSettings";
+import { parseServiceRadiusKm } from "@shared/service-coverage";
 
 const branchSchema = z.object({
   name: z.string().min(1, "Branch name is required"),
@@ -45,6 +47,7 @@ const branchSchema = z.object({
   pincode: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  serviceRadiusKm: z.coerce.number().min(1).max(200).default(13),
   isPrimary: z.boolean().default(false),
   isActive: z.boolean().default(true),
 });
@@ -80,6 +83,7 @@ export function BranchManagement() {
       pincode: "",
       phone: "",
       email: "",
+      serviceRadiusKm: 13,
       isPrimary: false,
       isActive: true,
     },
@@ -90,7 +94,10 @@ export function BranchManagement() {
     defaultValues: { pincode: "", radiusKm: "25", label: "" },
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/branches"] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/branches"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/command/stores"] });
+  };
 
   const saveBranchMutation = useMutation({
     mutationFn: async (data: BranchFormData) => {
@@ -162,6 +169,7 @@ export function BranchManagement() {
       pincode: "",
       phone: "",
       email: "",
+      serviceRadiusKm: 13,
       isPrimary: false,
       isActive: true,
     });
@@ -178,6 +186,7 @@ export function BranchManagement() {
       pincode: branch.pincode || "",
       phone: branch.phone || "",
       email: branch.email || "",
+      serviceRadiusKm: parseServiceRadiusKm(branch.serviceRadiusKm),
       isPrimary: branch.isPrimary ?? false,
       isActive: branch.isActive ?? true,
     });
@@ -199,7 +208,7 @@ export function BranchManagement() {
             Branches
           </CardTitle>
           <CardDescription>
-            Manage XGoo branches and the pincodes each branch serves. Set a radius in km to cover nearby areas from each operation pincode.
+            Manage XGoo Hubs and the kilometre range each Hub serves for Go and Pro.
           </CardDescription>
         </div>
         <Button onClick={openCreateBranch} data-testid="button-new-branch">
@@ -236,6 +245,10 @@ export function BranchManagement() {
                       .filter(Boolean)
                       .join(", ") || "No address set"}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <span className="text-xs text-muted-foreground">Go / Pro range</span>
+                    <HubServiceRangeInput branchId={branch.id} value={branch.serviceRadiusKm} />
+                  </div>
                   {(branch.phone || branch.email) && (
                     <p className="text-xs text-muted-foreground mt-1">
                       {[branch.phone, branch.email].filter(Boolean).join(" · ")}
@@ -422,7 +435,23 @@ export function BranchManagement() {
                     </FormItem>
                   )}
                 />
-              </div>
+                  </div>
+              <FormField
+                control={branchForm.control}
+                name="serviceRadiusKm"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Go / Pro service range (km)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={1} max={200} step="1" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Customers outside this circle around the Hub pin see an expanding-soon page.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={branchForm.control}
                 name="isPrimary"
