@@ -48,8 +48,7 @@ tsc_output.txt
 # Vite temp files
 vite.config.ts.*
 
-# Test/dev assets
-attached_assets
+
 
 # TypeScript build info cache
 node_modules/typescript/tsbuildinfo
