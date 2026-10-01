@@ -6,7 +6,7 @@ import { MarketingHeader, consumePendingSectionScroll } from "@/components/marke
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { CourierPartnersMarquee } from "@/components/marketing/CourierPartnersMarquee";
 import { PageSeo } from "@/components/seo/PageSeo";
-import { XGOO_CONTACT, XGOO_BRAND_FOUNDATION, XGOO_BRAND_VOICE } from "@/components/marketing/site-info";
+import { XGOO_CONTACT, XGOO_BRAND_FOUNDATION, XGOO_BRAND_VOICE, XGOO_ORIGIN } from "@/components/marketing/site-info";
 import {
   SEO_PAGES,
   buildBreadcrumbJsonLd,
@@ -74,6 +74,10 @@ const heroHighlights = [
 ];
 
 const aboutPoints = [
+  {
+    title: `${XGOO_ORIGIN.foundedYear} · ${XGOO_ORIGIN.storeName}`,
+    detail: XGOO_ORIGIN.teaser,
+  },
   {
     title: XGOO_BRAND_FOUNDATION.purpose.label,
     detail: XGOO_BRAND_FOUNDATION.purpose.quote,
@@ -276,14 +280,13 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: ORANGE }}>
-              {XGOO_BRAND_FOUNDATION.purpose.label}
+              {XGOO_ORIGIN.eyebrow}
             </p>
             <h2 className="mt-3 text-[1.7rem] font-extrabold tracking-tight text-zinc-900 sm:text-4xl">
-              {XGOO_BRAND_FOUNDATION.purpose.quote}
+              {XGOO_ORIGIN.heading}
             </h2>
             <p className="mt-4 text-base leading-relaxed text-zinc-500">
-              {XGOO_BRAND_FOUNDATION.coreIdea.paragraphs[0]}{" "}
-              {XGOO_BRAND_FOUNDATION.coreIdea.paragraphs[2]}
+              {XGOO_ORIGIN.paragraphs[0]} {XGOO_ORIGIN.paragraphs[2]}
             </p>
             <ul className="mt-8 space-y-4">
               {aboutPoints.map((point) => (

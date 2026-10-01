@@ -1,4 +1,4 @@
-import { XGOO_BRAND, XGOO_CONTACT, XGOO_BRAND_VOICE } from "@/components/marketing/site-info";
+import { XGOO_BRAND, XGOO_CONTACT, XGOO_BRAND_VOICE, XGOO_ORIGIN } from "@/components/marketing/site-info";
 
 /** Canonical production site — override with VITE_SITE_URL when needed. */
 export const SITE_URL =
@@ -41,10 +41,17 @@ export const SEO_PAGES = {
   },
   about: {
     path: "/about",
-    title: "About XGoo | Movement Creates Progress",
+    title: "About XGoo | From Courier Point, Kondapur (2021)",
     description:
-      "Learn XGoo’s brand foundation: purpose, vision, mission, and principles. We empower progress through movement and innovation.",
-    keywords: ["about XGoo", "movement platform", "NSGroup", "courier company"],
+      "XGoo began in 2021 as Courier Point, a small store in Kondapur, Hyderabad, founded by S Krishna Murthy. Learn our story, purpose, vision, and mission.",
+    keywords: [
+      "about XGoo",
+      "Courier Point Hyderabad",
+      "Kondapur courier",
+      "S Krishna Murthy",
+      "movement platform",
+      "NSGroup",
+    ],
   },
   contact: {
     path: "/contact",
@@ -143,7 +150,13 @@ export function buildOrganizationJsonLd() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: XGOO_BRAND.productName,
+    alternateName: XGOO_ORIGIN.storeName,
     legalName: XGOO_BRAND.parentCompany,
+    foundingDate: String(XGOO_ORIGIN.foundedYear),
+    founder: {
+      "@type": "Person",
+      name: XGOO_ORIGIN.founderName,
+    },
     url: SITE_URL,
     logo: `${SITE_URL}/favicon.png`,
     email: XGOO_CONTACT.email,

@@ -7,8 +7,8 @@ import { PageSeo } from "@/components/seo/PageSeo";
 import heroImage from "@/assets/landing/purpose-deliveries.jpg";
 import {
   XGOO_BRAND_FOUNDATION,
-  XGOO_BRAND_VOICE,
 } from "@/components/marketing/brand-foundation";
+import { XGOO_ORIGIN } from "@/components/marketing/site-info";
 import { SEO_PAGES, buildBreadcrumbJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
 import {
   ArrowRight,
@@ -16,9 +16,12 @@ import {
   Eye,
   Heart,
   Lightbulb,
+  MapPin,
   Rocket,
   Sparkles,
+  Store,
   Target,
+  UserRound,
   Zap,
 } from "lucide-react";
 
@@ -93,6 +96,19 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function MilestoneGlyph({ year }: { year: (typeof XGOO_ORIGIN.milestones)[number]["year"] }) {
+  switch (year) {
+    case "2021":
+      return <Store className="h-4 w-4" />;
+    case "Today":
+      return <Rocket className="h-4 w-4" />;
+    default: {
+      const exhaustive: never = year;
+      return exhaustive;
+    }
+  }
+}
+
 export default function AboutPage() {
   const [, navigate] = useLocation();
 
@@ -112,16 +128,83 @@ export default function AboutPage() {
         image={heroImage}
         imageAlt="Parcels prepared for movement with XGoo"
         crumbs={[{ name: "Home", path: "/" }, { name: "About" }]}
-        eyebrow={XGOO_BRAND_FOUNDATION.documentTitle}
+        eyebrow={XGOO_ORIGIN.eyebrow}
         title={
           <>
-            {XGOO_BRAND_FOUNDATION.coreIdea.title} is the foundation of{" "}
+            From a small {XGOO_ORIGIN.neighbourhood} store to{" "}
             <span style={{ color: "#FF4907" }}>XGoo</span>
           </>
         }
-        support={XGOO_BRAND_VOICE.beliefOneLiner}
+        support={XGOO_ORIGIN.teaser}
+        highlights={[
+          { label: `Founded ${XGOO_ORIGIN.foundedYear}` },
+          { label: `${XGOO_ORIGIN.neighbourhood}, ${XGOO_ORIGIN.city}` },
+          { label: XGOO_ORIGIN.storeName },
+        ]}
         showPickup={false}
       />
+
+      <section className="py-16 sm:py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-start gap-10 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <SectionLabel>{XGOO_ORIGIN.eyebrow}</SectionLabel>
+              <h2 className="mb-6 text-3xl font-bold text-zinc-900 sm:text-4xl">
+                The foundation block of XGoo
+              </h2>
+              <div className="space-y-4 leading-relaxed text-zinc-500">
+                {XGOO_ORIGIN.paragraphs.map((paragraph) => (
+                  <p key={paragraph.slice(0, 48)}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+            <Card className="border border-zinc-200 bg-white text-zinc-900 shadow-sm">
+              <CardContent className="space-y-6 p-8">
+                <div className="flex items-start gap-4">
+                  <div
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: "rgba(255,73,7,0.08)" }}
+                  >
+                    <UserRound className="h-6 w-6" style={{ color: "#FF4907" }} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+                      {XGOO_ORIGIN.founderRole}
+                    </p>
+                    <h3 className="mt-1 text-xl font-bold text-zinc-900">{XGOO_ORIGIN.founderName}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+                      Founder of {XGOO_ORIGIN.storeName}, now XGoo. The store in {XGOO_ORIGIN.neighbourhood} grew
+                      through his leadership, effort, and care for every movement.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-4 border-t border-zinc-100 pt-6">
+                  {XGOO_ORIGIN.milestones.map((milestone) => (
+                    <div key={milestone.year} className="flex gap-4">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                        style={{ background: "#FF4907" }}
+                      >
+                        <MilestoneGlyph year={milestone.year} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">
+                          {milestone.year} · {milestone.title}
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-zinc-500">{milestone.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="flex items-center gap-2 text-sm text-zinc-500">
+                    <MapPin className="h-4 w-4 shrink-0" style={{ color: "#FF4907" }} />
+                    {XGOO_ORIGIN.neighbourhood}, {XGOO_ORIGIN.city}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
 
       <section className="py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
