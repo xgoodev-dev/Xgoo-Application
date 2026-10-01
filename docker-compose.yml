@@ -4,11 +4,11 @@ version: "3.8"
 # XGoo Courier SaaS - Docker Compose (Dokploy / Production)
 # ============================================================
 # Usage:
-#   1. Copy .env.example → .env and fill in all values
-#   2. Deploy via Dokploy (point to this repo) OR run locally:
-#      docker compose up --build -d
+#   1. Copy .env.example → .env and fill in required values
+#   2. In Dokploy: Deploy via Application (Dockerfile) or Compose
+#      Or locally: docker compose up --build -d
 #
-# IMPORTANT — Two types of env vars:
+# IMPORTANT — Two types of variables:
 #   BUILD ARGS (VITE_*): Baked into the client bundle at build time.
 #     Set these in Dokploy → Service → Build Arguments.
 #   RUNTIME ENV VARS: Loaded by the server at container startup.
@@ -21,47 +21,77 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # These are baked into the Vite client bundle at build time.
-        # They MUST be provided as Docker build arguments in Dokploy.
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        # Build arguments for Vite client bundle
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_DEFAULT_OFFICE_SLUG: ${VITE_DEFAULT_OFFICE_SLUG:-demo-office}
+        VITE_SITE_URL: ${VITE_SITE_URL:-https://www.xgoo.in}
+        VITE_META_PIXEL_ID: ${VITE_META_PIXEL_ID:-}
+        VITE_WHATSAPP_NUMBER: ${VITE_WHATSAPP_NUMBER:-}
 
     image: xgoo-courier:latest
     container_name: xgoo-courier-app
     restart: unless-stopped
 
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-3005}:3005"
 
     environment:
       # Server runtime configuration
       NODE_ENV: production
-      PORT: 3000
+      PORT: 3005
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      EXTENSION_AUTOFILL_SECRET: ${EXTENSION_AUTOFILL_SECRET:-}
 
-      # PostgreSQL connection string
-      DATABASE_URL: ${DATABASE_URL}
+      # PostgreSQL connection
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_POOL_URL: ${DATABASE_POOL_URL:-}
+      SUPABASE_PROJECT_REF: ${SUPABASE_PROJECT_REF:-}
+      SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-}
+      SUPABASE_POOLER_HOST: ${SUPABASE_POOLER_HOST:-}
 
       # Supabase (server-side admin client)
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
 
-      # OpenAI / AI integration
-      AI_INTEGRATIONS_OPENAI_API_KEY: ${AI_INTEGRATIONS_OPENAI_API_KEY}
+      # AI / OpenAI integration
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AI_INTEGRATIONS_OPENAI_API_KEY: ${AI_INTEGRATIONS_OPENAI_API_KEY:-}
       AI_INTEGRATIONS_OPENAI_BASE_URL: ${AI_INTEGRATIONS_OPENAI_BASE_URL:-https://api.openai.com/v1}
 
+      # Defaults & Administration
+      DEFAULT_OFFICE_SLUG: ${DEFAULT_OFFICE_SLUG:-demo-office}
+      XGOO_SUPER_ADMIN_EMAIL: ${XGOO_SUPER_ADMIN_EMAIL:-xgoo.express@gmail.com}
+      CUSTOMER_OTP_DUMMY: ${CUSTOMER_OTP_DUMMY:-1}
+
+      # Delhivery Courier Integration
+      DELHIVERY_API_TOKEN: ${DELHIVERY_API_TOKEN:-}
+      DELHIVERY_PICKUP_LOCATION: ${DELHIVERY_PICKUP_LOCATION:-}
+      DELHIVERY_CLIENT_NAME: ${DELHIVERY_CLIENT_NAME:-}
+      DELHIVERY_SELLER_GST_TIN: ${DELHIVERY_SELLER_GST_TIN:-}
+      DELHIVERY_HSN_CODE: ${DELHIVERY_HSN_CODE:-999799}
+      DELHIVERY_API_BASE_URL: ${DELHIVERY_API_BASE_URL:-https://track.delhivery.com}
+      DELHIVERY_PICKUP_TIME: ${DELHIVERY_PICKUP_TIME:-16:00:00}
+      DELHIVERY_SKIP_PICKUP: ${DELHIVERY_SKIP_PICKUP:-false}
+
+      # WhatsApp & Meta
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}
+
     volumes:
-      # Persistent storage for user-uploaded files (label images, receipts, etc.)
-      # In Dokploy: configure this volume under Service → Volumes
+      # Persistent storage for user-uploaded documents and label images
       - uploads_data:/app/uploads
 
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3005/"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
-# Named volume for persistent file uploads
+# Named persistent volume for file uploads
 volumes:
   uploads_data:
     driver: local

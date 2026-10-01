@@ -12,6 +12,20 @@ dist
 # User-uploaded files (mounted as a Docker volume)
 uploads
 
+# Mobile apps & Chrome extensions (separate targets, not part of web server image)
+mobile
+mobile-partner
+extension
+XGoo-Partner-Sync-extension
+*.zip
+
+# IDE & workspace artifacts
+.cursor
+.gemini
+.claude
+.vscode
+.idea
+
 # OS artifacts
 .DS_Store
 Thumbs.db
@@ -20,13 +34,12 @@ Thumbs.db
 .git
 .gitignore
 
-# Claude AI workspace
-.claude
-
-# Logs
+# Logs & temp files
 *.log
 output.log
 output_new.log
+compile_errors*.txt
+tsc_output.txt
 
 # Build artifacts
 *.tar.gz
@@ -35,11 +48,8 @@ output_new.log
 # Vite temp files
 vite.config.ts.*
 
-# Test/dev assets (large binary files not needed in production)
+# Test/dev assets
 attached_assets
-
-# Database migrations (generated locally, not needed in image)
-migrations
 
 # TypeScript build info cache
 node_modules/typescript/tsbuildinfo
