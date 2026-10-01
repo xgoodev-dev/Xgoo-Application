@@ -147,13 +147,48 @@ function resolveDatabaseUrl(): string {
 const connectionString = resolveDatabaseUrl();
 export const databaseHost = getDatabaseHost(connectionString);
 
-/** Local dev typically does not use TLS; managed Postgres (Supabase, Neon, Railway, etc.) requires it. */
-function isLocalDatabase(url: string): boolean {
-  return (
-    url.includes("localhost") ||
-    url.includes("127.0.0.1") ||
-    url.includes("0.0.0.0")
+/** Smart SSL detection: Docker internal networks, local databases, cloud providers, and env overrides */
+function shouldEnableSsl(url: string): boolean {
+  // Explicit environment variable overrides
+  const envSsl = cleanEnvValue(
+    process.env.DATABASE_SSL || process.env.DB_SSL || process.env.PGSSLMODE,
   );
+  if (envSsl === "false" || envSsl === "0" || envSsl === "disable") return false;
+  if (envSsl === "true" || envSsl === "1" || envSsl === "require") return true;
+
+  // URL query params
+  if (/sslmode=disable/i.test(url) || /ssl=false/i.test(url)) return false;
+  if (/sslmode=require/i.test(url) || /ssl=true/i.test(url)) return true;
+
+  // Known cloud providers requiring SSL
+  if (
+    url.includes("supabase.co") ||
+    url.includes("supabase.com") ||
+    url.includes("pooler.supabase.com") ||
+    url.includes("neon.tech") ||
+    url.includes("cockroachlabs.cloud") ||
+    url.includes("render.com") ||
+    url.includes("railway.app") ||
+    url.includes("aivencloud.com")
+  ) {
+    return true;
+  }
+
+  // Local / Docker network hostnames (e.g. postgres, db, localhost, 127.0.0.1, 0.0.0.0, internal service names)
+  const host = getDatabaseHost(url).toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "postgres" ||
+    host === "db" ||
+    host === "database" ||
+    !host.includes(".") // Single-word container host in Docker Compose / Dokploy network
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 const pool = new Pool({
@@ -163,11 +198,11 @@ const pool = new Pool({
   connectionTimeoutMillis: isServerless ? 15000 : 20000,
   // Supabase / PgBouncer transaction pooler on serverless requires prepared statements off.
   ...(isServerless ? { allowExitOnIdle: true, prepare: false as const } : {}),
-  ...(isLocalDatabase(connectionString)
-    ? {}
-    : {
+  ...(shouldEnableSsl(connectionString)
+    ? {
         ssl: { rejectUnauthorized: false },
-      }),
+      }
+    : {}),
 });
 
 pool.on("error", (err) => {
