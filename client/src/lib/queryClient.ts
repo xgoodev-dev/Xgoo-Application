@@ -1,10 +1,12 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { STAFF_TOKEN_KEY } from "@/hooks/use-auth";
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { "Authorization": `Bearer ${session.access_token}` };
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem(STAFF_TOKEN_KEY);
+    if (token) {
+      return { Authorization: `Bearer ${token}` };
+    }
   }
   return {};
 }

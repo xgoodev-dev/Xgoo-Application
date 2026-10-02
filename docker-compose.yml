@@ -22,8 +22,7 @@ services:
       dockerfile: Dockerfile
       args:
         # Build arguments for Vite client bundle
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_DEFAULT_OFFICE_SLUG: ${VITE_DEFAULT_OFFICE_SLUG:-demo-office}
         VITE_SITE_URL: ${VITE_SITE_URL:-https://www.xgoo.in}
         VITE_META_PIXEL_ID: ${VITE_META_PIXEL_ID:-}
@@ -43,6 +42,10 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       EXTENSION_AUTOFILL_SECRET: ${EXTENSION_AUTOFILL_SECRET:-}
+
+      # Standalone Google OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
 
       # PostgreSQL connection
       DATABASE_URL: ${DATABASE_URL:-}

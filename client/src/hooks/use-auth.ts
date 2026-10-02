@@ -1,37 +1,78 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import type { User } from "@supabase/supabase-js";
+import { useEffect, useState, useCallback } from "react";
+
+export interface AuthUser {
+  id: string;
+  email?: string;
+  user_metadata?: {
+    full_name?: string;
+    [key: string]: unknown;
+  };
+}
+
+export const STAFF_TOKEN_KEY = "xgoo_staff_token";
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+  const fetchCurrentUser = useCallback(async () => {
+    if (typeof window === "undefined") {
       setIsLoading(false);
-    });
+      return;
+    }
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const token = localStorage.getItem(STAFF_TOKEN_KEY);
+    if (!token) {
+      setUser(null);
       setIsLoading(false);
-    });
+      return;
+    }
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    try {
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+      } else {
+        localStorage.removeItem(STAFF_TOKEN_KEY);
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  async function logout() {
-    await supabase.auth.signOut();
-  }
+  useEffect(() => {
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
+
+  const login = useCallback((token: string, authUser: AuthUser) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STAFF_TOKEN_KEY, token);
+    }
+    setUser(authUser);
+    setIsLoading(false);
+  }, []);
+
+  const logout = useCallback(async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STAFF_TOKEN_KEY);
+    }
+    setUser(null);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+  }, []);
 
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
+    login,
     logout,
     isLoggingOut: false,
   };

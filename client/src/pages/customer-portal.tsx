@@ -117,7 +117,7 @@ import {
   type PickupSettings,
 } from "@shared/pickup-settings";
 import { FcGoogle } from "react-icons/fc";
-import { supabase } from "@/lib/supabase";
+import { triggerGoogleSignIn } from "@/lib/google-auth";
 import { CUSTOMER_GOOGLE_OAUTH_KEY } from "@/lib/customer-google-oauth";
 import { cn } from "@/lib/utils";
 
@@ -808,11 +808,13 @@ function CustomerGoogleSignIn({
   disabled,
   buttonLabel = "Continue with Google",
   dividerLabel = "or continue with email or phone",
+  onSuccess,
 }: {
   slug: string;
   disabled?: boolean;
   buttonLabel?: string;
   dividerLabel?: string;
+  onSuccess?: (user: CustomerUserInfo, token: string) => void;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -820,21 +822,24 @@ function CustomerGoogleSignIn({
   async function handleGoogle() {
     setBusy(true);
     try {
-      sessionStorage.setItem(CUSTOMER_GOOGLE_OAUTH_KEY, slug);
-      const path = window.location.pathname.startsWith("/book") ? window.location.pathname : "/book";
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}${path}?oauth=1&account=pro`,
-          queryParams: { prompt: "select_account" },
-        },
+      const googleToken = await triggerGoogleSignIn();
+      const res = await fetch(`/api/public/office/${slug}/customer/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: googleToken }),
       });
-      if (error) {
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        toast({ title: "Google sign-in failed", description: error.message, variant: "destructive" });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(result.message || "Google sign-in failed");
+      }
+      persistCustomerModule("business");
+      toast({ title: "Welcome!", description: `Signed in as ${result.user.name}` });
+      if (onSuccess) {
+        onSuccess(result.user, result.token);
+      } else {
+        window.location.reload();
       }
     } catch (error: unknown) {
-      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
       toast({
         title: "Google sign-in failed",
         description: error instanceof Error ? error.message : "Try again.",
@@ -960,6 +965,7 @@ function LoginForm({
           disabled={isSubmitting}
           buttonLabel="Sign in with Google"
           dividerLabel="or sign in with email or phone"
+          onSuccess={onLogin}
         />
       ) : null}
       <Form {...form}>
@@ -1192,6 +1198,7 @@ function RegisterForm({
           disabled={isSubmitting}
           buttonLabel="Sign up with Google"
           dividerLabel="or sign up with email or phone"
+          onSuccess={onLogin}
         />
       ) : null}
       <Form {...form}>
@@ -3859,7 +3866,7 @@ export default function CustomerPortalPage() {
   }, [auth.isAuthenticated, slug]);
 
   useEffect(() => {
-    if (!slug || auth.isAuthenticated || googleExchanged.current) return;
+    if (!slug || auth.isAuthenticated) return;
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
     const windowParams = new URLSearchParams(window.location.search);
     const oauthError = params.get("error") || windowParams.get("error");
@@ -3868,81 +3875,15 @@ export default function CustomerPortalPage() {
       setGoogleExchanging(false);
       toast({
         title: "Google sign-in cancelled",
-        description: params.get("error_description") || windowParams.get("error_description") || "Try again to continue with Google.",
+        description:
+          params.get("error_description") ||
+          windowParams.get("error_description") ||
+          "Try again to continue with Google.",
         variant: "destructive",
       });
       clearCustomerOAuthParams();
-      return;
     }
-
-    const flag = sessionStorage.getItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-    const isOauthReturn =
-      params.get("oauth") === "1" ||
-      params.has("code") ||
-      windowParams.get("oauth") === "1" ||
-      windowParams.has("code");
-    if (!flag || (flag !== slug && flag !== "1") || !isOauthReturn) {
-      return;
-    }
-
-    let cancelled = false;
-    setGoogleExchanging(true);
-
-    const exchange = async (accessToken: string) => {
-      if (cancelled || googleExchanged.current) return;
-      googleExchanged.current = true;
-      try {
-        const res = await fetch(`/api/public/office/${slug}/customer/google`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(result.message || "Google sign-in failed");
-        }
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        await supabase.auth.signOut();
-        persistCustomerModule("business");
-        handlePortalLogin(result.user, result.token);
-        clearCustomerOAuthParams();
-        toast({ title: "Welcome!", description: `Signed in as ${result.user.name}` });
-      } catch (error: unknown) {
-        googleExchanged.current = false;
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        toast({
-          title: "Google sign-in failed",
-          description: error instanceof Error ? error.message : "Try again.",
-          variant: "destructive",
-        });
-        clearCustomerOAuthParams();
-      } finally {
-        if (!cancelled) setGoogleExchanging(false);
-      }
-    };
-
-    void supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.access_token) void exchange(data.session.access_token);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.access_token) void exchange(session.access_token);
-    });
-    const timeout = window.setTimeout(() => {
-      if (cancelled || googleExchanged.current) return;
-      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-      setGoogleExchanging(false);
-      toast({
-        title: "Google sign-in timed out",
-        description: "Try Continue with Google again.",
-        variant: "destructive",
-      });
-      clearCustomerOAuthParams();
-    }, 15000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-      sub.subscription.unsubscribe();
-    };
-  }, [slug, search, auth.isAuthenticated, handlePortalLogin, toast]);
+  }, [slug, search, auth.isAuthenticated, toast]);
 
   const exitGuestMode = useCallback(() => {
     if (!slug) return;

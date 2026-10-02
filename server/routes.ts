@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { isAuthenticated, supabaseAdmin } from "./auth";
+import { isAuthenticated, supabaseAdmin, generateStaffToken } from "./auth";
+import { verifyGoogleToken } from "./google-verify";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -808,6 +809,132 @@ export async function registerRoutes(
     return isAuthenticated(req, res, next);
   }
 
+  // Staff & Admin Direct Authentication Routes
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+      const normalizedEmail = email.trim().toLowerCase();
+      let user = await storage.getUserByEmail(normalizedEmail);
+
+      // Bootstrap super admin account on initial login if credentials match SUPER_ADMIN_EMAIL
+      if (!user && normalizedEmail === SUPER_ADMIN_EMAIL) {
+        const hash = await bcrypt.hash(password, 10);
+        user = await storage.createUser({
+          email: normalizedEmail,
+          firstName: "Super",
+          lastName: "Admin",
+          passwordHash: hash,
+        });
+      }
+
+      if (!user) {
+        return res.status(401).json({ message: "Account not found. Please contact the administrator." });
+      }
+
+      if (!user.passwordHash) {
+        return res.status(401).json({
+          message: "No password set for this account. Please sign in with Google or reset your password.",
+        });
+      }
+
+      const isValid = await bcrypt.compare(password, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const token = generateStaffToken({
+        id: user.id,
+        email: user.email || normalizedEmail,
+        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email?.split("@")[0],
+      });
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          user_metadata: {
+            full_name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email?.split("@")[0],
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Internal error during login" });
+    }
+  });
+
+  app.post("/api/auth/google", async (req, res) => {
+    try {
+      const token =
+        req.body.token ||
+        (req.headers.authorization?.startsWith("Bearer ")
+          ? req.headers.authorization.slice("Bearer ".length).trim()
+          : null);
+      if (!token) {
+        return res.status(400).json({ message: "Google authentication token is required" });
+      }
+
+      const googleUser = await verifyGoogleToken(token);
+      if (!googleUser.email) {
+        return res.status(400).json({ message: "Google account does not provide an email address" });
+      }
+
+      const normalizedEmail = googleUser.email.trim().toLowerCase();
+      let user =
+        (await storage.getUserByGoogleId(googleUser.id)) ||
+        (await storage.getUserByEmail(normalizedEmail));
+
+      if (!user) {
+        user = await storage.createUser({
+          email: normalizedEmail,
+          googleId: googleUser.id,
+          firstName: googleUser.name,
+          profileImageUrl: googleUser.picture,
+        });
+      } else if (!user.googleId) {
+        user = (await storage.updateUser(user.id, { googleId: googleUser.id })) || user;
+      }
+
+      const sessionToken = generateStaffToken({
+        id: user.id,
+        email: user.email || normalizedEmail,
+        name: googleUser.name,
+      });
+
+      res.json({
+        token: sessionToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          user_metadata: {
+            full_name: [user.firstName, user.lastName].filter(Boolean).join(" ") || googleUser.name,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Google staff auth error:", error);
+      res.status(401).json({
+        message: error instanceof Error ? error.message : "Failed to authenticate with Google",
+      });
+    }
+  });
+
+  app.get("/api/auth/me", isAuthenticated, async (req: any, res) => {
+    res.json({
+      user: req.user,
+      staffMember: req.staffMember,
+      role: req.staffRole,
+    });
+  });
+
+  app.post("/api/auth/logout", async (_req, res) => {
+    res.json({ success: true });
+  });
+
   // Local Storage Routes
   app.post("/api/uploads/request-url", isOfficeOrCustomerAuthenticated, (req, res) => {
     const id = randomUUID();
@@ -1174,20 +1301,13 @@ export async function registerRoutes(
       }
 
       const normalizedEmail = validated.email.trim().toLowerCase();
-      const { data: usersPage, error: listError } =
-        await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      if (listError) throw listError;
-      let authUser = usersPage.users.find(
-        (user) => user.email?.trim().toLowerCase() === normalizedEmail,
-      );
+      let authUser = await storage.getUserByEmail(normalizedEmail);
       let invitationSent = false;
       if (!authUser) {
-        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-          normalizedEmail,
-          { data: { displayName: validated.displayName } },
-        );
-        if (error) throw error;
-        authUser = data.user;
+        authUser = await storage.createUser({
+          email: normalizedEmail,
+          firstName: validated.displayName,
+        });
         invitationSent = true;
       }
       if (!authUser) {
@@ -4648,14 +4768,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Office not found" });
       }
       const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith("Bearer ")) {
-        return res.status(401).json({ message: "Google sign-in expired. Try again." });
+      const token =
+        req.body.token ||
+        (authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : null);
+      if (!token) {
+        return res.status(401).json({ message: "Google sign-in token missing. Try again." });
       }
-      const accessToken = authHeader.slice("Bearer ".length).trim();
-      if (!accessToken) {
-        return res.status(401).json({ message: "Google sign-in expired. Try again." });
-      }
-      const session = await loginOrRegisterCustomerWithGoogle(office, accessToken);
+      const session = await loginOrRegisterCustomerWithGoogle(office, token);
       res.json(session);
     } catch (error) {
       if (error instanceof z.ZodError || (error as { status?: number })?.status) {

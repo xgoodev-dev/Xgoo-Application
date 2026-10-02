@@ -26,6 +26,10 @@ export function serveStatic(app: Express) {
           process.env.VITE_SUPABASE_ANON_KEY ||
           process.env.SUPABASE_ANON_KEY ||
           "",
+        VITE_GOOGLE_CLIENT_ID:
+          process.env.VITE_GOOGLE_CLIENT_ID ||
+          process.env.GOOGLE_CLIENT_ID ||
+          "",
         VITE_DEFAULT_OFFICE_SLUG:
           process.env.VITE_DEFAULT_OFFICE_SLUG ||
           process.env.DEFAULT_OFFICE_SLUG ||

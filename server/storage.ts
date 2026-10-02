@@ -71,9 +71,16 @@ import {
   type PickupJob,
   type InsertPickupJob,
   type ShipmentWithRelations,
+  users,
+  type User,
+  type UpsertUser,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, inArray, ne } from "drizzle-orm";
+
+const SUPER_ADMIN_EMAIL = (
+  process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
+).toLowerCase();
 
 let customerIntakeColumnsReady: Promise<void> | null = null;
 let customerAccountTypeReady: Promise<void> | null = null;
@@ -117,6 +124,35 @@ export function ensureCustomerAccountTypeColumn() {
     });
   }
   return customerAccountTypeReady;
+}
+
+let usersAuthColumnsReady: Promise<void> | null = null;
+export function ensureUsersAuthColumns() {
+  if (!usersAuthColumnsReady) {
+    usersAuthColumnsReady = db.execute(sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        email varchar UNIQUE,
+        first_name varchar,
+        last_name varchar,
+        profile_image_url varchar,
+        password_hash varchar(255),
+        google_id varchar(255),
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `).then(async () => {
+      await db.execute(sql`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash varchar(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id varchar(255);
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name varchar;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name varchar;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url varchar;
+        CREATE INDEX IF NOT EXISTS idx_users_google ON users (google_id);
+      `);
+    });
+  }
+  return usersAuthColumnsReady;
 }
 
 export function ensureBookingPackageColumns() {
@@ -325,6 +361,13 @@ async function tryDelhiveryLiveQuote(
 }
 
 export interface IStorage {
+  // User operations
+  getUserById(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByGoogleId(googleId: string): Promise<User | undefined>;
+  createUser(user: UpsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<UpsertUser>): Promise<User | undefined>;
+
   // Office operations
   getOfficeByUserId(userId: string): Promise<Office | undefined>;
   createOffice(office: InsertOffice): Promise<Office>;
@@ -563,6 +606,52 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUserById(id: string): Promise<User | undefined> {
+    await ensureUsersAuthColumns();
+    const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    await ensureUsersAuthColumns();
+    const normalized = email.trim().toLowerCase();
+    const [user] = await db.select().from(users).where(eq(users.email, normalized)).limit(1);
+    return user;
+  }
+
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    await ensureUsersAuthColumns();
+    const [user] = await db.select().from(users).where(eq(users.googleId, googleId)).limit(1);
+    return user;
+  }
+
+  async createUser(user: UpsertUser): Promise<User> {
+    await ensureUsersAuthColumns();
+    const [created] = await db
+      .insert(users)
+      .values({
+        ...user,
+        email: user.email?.trim().toLowerCase(),
+      })
+      .returning();
+    return created;
+  }
+
+  async updateUser(id: string, updates: Partial<UpsertUser>): Promise<User | undefined> {
+    await ensureUsersAuthColumns();
+    const [updated] = await db
+      .update(users)
+      .set({
+        ...updates,
+        ...(updates.email ? { email: updates.email.trim().toLowerCase() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
   // Office operations
   async getOfficeByUserId(userId: string): Promise<Office | undefined> {
     const [office] = await db.select().from(offices).where(eq(offices.userId, userId));
@@ -579,7 +668,47 @@ export class DatabaseStorage implements IStorage {
         ),
       )
       .limit(1);
-    return membership?.office;
+    if (membership?.office) return membership.office;
+
+    // Automatic reconciliation by user email:
+    const user = await this.getUserById(userId);
+    if (user?.email) {
+      const normalizedEmail = user.email.toLowerCase().trim();
+
+      // 1. If user is Super Admin, bind to the primary office or create default
+      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+        const [firstOffice] = await db.select().from(offices).limit(1);
+        if (firstOffice) {
+          await db.update(offices).set({ userId }).where(eq(offices.id, firstOffice.id));
+          return { ...firstOffice, userId };
+        } else {
+          return this.createOffice({
+            userId,
+            name: "XGoo Courier",
+            email: normalizedEmail,
+            publicSlug: "xgoo-hq",
+          });
+        }
+      }
+
+      // 2. Check if an active office_members record exists for this email
+      const [memberByEmail] = await db
+        .select()
+        .from(officeMembers)
+        .where(eq(officeMembers.email, normalizedEmail))
+        .limit(1);
+      if (memberByEmail && memberByEmail.status === "active") {
+        await db.update(officeMembers).set({ userId }).where(eq(officeMembers.id, memberByEmail.id));
+        const [matchedOffice] = await db
+          .select()
+          .from(offices)
+          .where(eq(offices.id, memberByEmail.officeId))
+          .limit(1);
+        if (matchedOffice) return matchedOffice;
+      }
+    }
+
+    return undefined;
   }
 
   async createOffice(office: InsertOffice): Promise<Office> {
@@ -597,7 +726,23 @@ export class DatabaseStorage implements IStorage {
       .from(officeMembers)
       .where(eq(officeMembers.userId, userId))
       .limit(1);
-    return member;
+    if (member) return member;
+
+    const user = await this.getUserById(userId);
+    if (user?.email) {
+      const normalizedEmail = user.email.toLowerCase().trim();
+      const [memberByEmail] = await db
+        .select()
+        .from(officeMembers)
+        .where(eq(officeMembers.email, normalizedEmail))
+        .limit(1);
+      if (memberByEmail) {
+        await db.update(officeMembers).set({ userId }).where(eq(officeMembers.id, memberByEmail.id));
+        return { ...memberByEmail, userId };
+      }
+    }
+
+    return undefined;
   }
 
   async getOfficeMembersByOffice(officeId: string): Promise<OfficeMember[]> {
