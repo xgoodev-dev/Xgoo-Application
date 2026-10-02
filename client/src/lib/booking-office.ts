@@ -5,7 +5,10 @@ export type PublicBookingOffice = {
 };
 
 export async function resolvePublicBookingOffice(): Promise<PublicBookingOffice> {
-  const defaultSlug = import.meta.env.VITE_DEFAULT_OFFICE_SLUG?.trim();
+  const defaultSlug =
+    (typeof window !== "undefined" &&
+      window.__APP_CONFIG__?.VITE_DEFAULT_OFFICE_SLUG?.trim()) ||
+    import.meta.env.VITE_DEFAULT_OFFICE_SLUG?.trim();
   if (defaultSlug) {
     return { slug: defaultSlug };
   }
