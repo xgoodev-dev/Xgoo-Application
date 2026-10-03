@@ -277,6 +277,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
               <PickupLocationMap
                 initialLat={lat ?? undefined}
                 initialLng={lng ?? undefined}
+                serviceRadiusKm={form.watch("serviceRadiusKm")}
                 onLocationSelect={(nextLat, nextLng, name) => {
                   form.setValue("lat", String(nextLat), { shouldDirty: true });
                   form.setValue("lng", String(nextLng), { shouldDirty: true });

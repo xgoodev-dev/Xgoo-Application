@@ -15,7 +15,13 @@ import { shipments, offices, bookingRequests } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import OpenAI from "openai";
 import express from "express";
-import { geocodeIndianPincode, searchIndianAddresses, reverseGeocodeLatLng } from "./geocode";
+import {
+  geocodeIndianPincode,
+  searchIndianAddresses,
+  reverseGeocodeLatLng,
+  getPlacesAutocomplete,
+  getDirectionsRoute,
+} from "./geocode";
 import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
@@ -2267,11 +2273,94 @@ export async function registerRoutes(
     }
   });
 
-  // Geocoding for address autofill + maps
-  app.get("/api/geocode/search", isAuthenticated, async (req: any, res) => {
+  // ---------------------------------------------------------------------------
+  // Google Maps Platform proxy endpoints (Public & Authenticated)
+  // ---------------------------------------------------------------------------
+
+  // Geocode address search
+  app.get("/api/maps/geocode", async (req: Request, res: Response) => {
     try {
       const q = String(req.query.q || "").trim();
-      if (q.length < 3) {
+      const limit = Math.min(10, Math.max(1, parseInt(String(req.query.limit || "5"), 10)));
+      if (q.length < 2) {
+        return res.json([]);
+      }
+      const results = await searchIndianAddresses(q, limit);
+      res.json(results);
+    } catch (error) {
+      console.error("Maps geocode error:", error);
+      res.status(500).json({ message: "Address geocode failed" });
+    }
+  });
+
+  // Reverse geocode (lat/lng -> formatted address, city, state, pincode)
+  app.get("/api/maps/reverse-geocode", async (req: Request, res: Response) => {
+    try {
+      const lat = parseFloat(String(req.query.lat));
+      const lng = parseFloat(String(req.query.lng));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ message: "Invalid coordinates" });
+      }
+      const result = await reverseGeocodeLatLng(lat, lng);
+      if (!result) {
+        return res.status(404).json({ message: "Could not resolve coordinates to an address" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Maps reverse geocode error:", error);
+      res.status(500).json({ message: "Reverse geocode failed" });
+    }
+  });
+
+  // Places Autocomplete
+  app.get("/api/maps/autocomplete", async (req: Request, res: Response) => {
+    try {
+      const input = String(req.query.q || req.query.input || "").trim();
+      const country = String(req.query.country || "IN").trim();
+      if (input.length < 2) {
+        return res.json([]);
+      }
+      const predictions = await getPlacesAutocomplete(input, country);
+      res.json(predictions);
+    } catch (error) {
+      console.error("Maps autocomplete error:", error);
+      res.status(500).json({ message: "Places autocomplete failed" });
+    }
+  });
+
+  // Route / Directions (distance, travel duration, polyline points)
+  app.get("/api/maps/route", async (req: Request, res: Response) => {
+    try {
+      const originLat = parseFloat(String(req.query.originLat));
+      const originLng = parseFloat(String(req.query.originLng));
+      const destLat = parseFloat(String(req.query.destLat));
+      const destLng = parseFloat(String(req.query.destLng));
+
+      if (
+        !Number.isFinite(originLat) ||
+        !Number.isFinite(originLng) ||
+        !Number.isFinite(destLat) ||
+        !Number.isFinite(destLng)
+      ) {
+        return res.status(400).json({ message: "Invalid route coordinates" });
+      }
+
+      const route = await getDirectionsRoute(originLat, originLng, destLat, destLng);
+      if (!route) {
+        return res.status(404).json({ message: "Could not calculate route" });
+      }
+      res.json(route);
+    } catch (error) {
+      console.error("Maps route error:", error);
+      res.status(500).json({ message: "Route calculation failed" });
+    }
+  });
+
+  // Legacy / backward-compatible geocode routes
+  app.get("/api/geocode/search", async (req: Request, res: Response) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      if (q.length < 2) {
         return res.json([]);
       }
       const results = await searchIndianAddresses(q, 6);
@@ -2282,7 +2371,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/geocode/reverse", isAuthenticated, async (req: any, res) => {
+  app.get("/api/geocode/reverse", async (req: Request, res: Response) => {
     try {
       const lat = parseFloat(String(req.query.lat));
       const lng = parseFloat(String(req.query.lng));
