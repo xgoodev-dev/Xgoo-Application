@@ -1,6 +1,7 @@
 import { LocateFixed, MapPin } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
+import { getApiUrl } from '@/lib/api';
 import { useAppTheme } from '@/lib/theme';
 
 export function LocationBar() {
@@ -18,19 +19,22 @@ export function LocationBar() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        const { latitude, longitude } = position.coords;
         try {
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=16&addressdetails=1`,
+            `${getApiUrl()}/api/maps/reverse-geocode?lat=${latitude}&lng=${longitude}`,
             { headers: { Accept: 'application/json' } },
           );
-          const data = (await res.json()) as { display_name?: string };
-          setLabel(
-            data.display_name ||
-              `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
-          );
-          setLive(true);
+          if (res.ok) {
+            const data = (await res.json()) as { displayName?: string; address?: string };
+            setLabel(data.displayName || data.address || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+            setLive(true);
+          } else {
+            setLabel(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+            setLive(true);
+          }
         } catch {
-          setLabel(`${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+          setLabel(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
           setLive(true);
         } finally {
           setLocating(false);

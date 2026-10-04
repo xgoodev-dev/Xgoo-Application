@@ -118,7 +118,7 @@ import {
   type PickupSettings,
 } from "@shared/pickup-settings";
 import { FcGoogle } from "react-icons/fc";
-import { supabase } from "@/lib/supabase";
+import { triggerGoogleSignIn } from "@/lib/google-auth";
 import { CUSTOMER_GOOGLE_OAUTH_KEY } from "@/lib/customer-google-oauth";
 import { cn } from "@/lib/utils";
 
@@ -456,214 +456,7 @@ const profileSchema = z.object({
   pincode: z.string().optional(),
 });
 
-function PickupMapComponent({ onLocationSelect, initialLat, initialLng, autoDetectOnMount }: {
-  onLocationSelect: (lat: number, lng: number, name: string) => void;
-  initialLat?: number;
-  initialLng?: number;
-  autoDetectOnMount?: boolean;
-}) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
-  const [isLocating, setIsLocating] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [locationName, setLocationName] = useState("");
-  const autoDetectRef = useRef(false);
 
-  async function reverseGeocode(lat: number, lng: number): Promise<string> {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-        { headers: { "Accept-Language": "en" } }
-      );
-      const data = await res.json();
-      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    } catch {
-      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    }
-  }
-
-  async function detectLocation() {
-    if (!navigator.geolocation) return;
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        if (leafletMapRef.current) {
-          leafletMapRef.current.setView([latitude, longitude], 16);
-          const L = await import("leaflet");
-          const defaultIcon = L.icon({
-            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41],
-          });
-          if (markerRef.current) {
-            markerRef.current.setLatLng([latitude, longitude]);
-          } else {
-            markerRef.current = L.marker([latitude, longitude], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
-            markerRef.current.on("dragend", async () => {
-              const pos = markerRef.current.getLatLng();
-              const name = await reverseGeocode(pos.lat, pos.lng);
-              setLocationName(name);
-              onLocationSelect(pos.lat, pos.lng, name);
-            });
-          }
-        }
-        const name = await reverseGeocode(latitude, longitude);
-        setLocationName(name);
-        onLocationSelect(latitude, longitude, name);
-        setIsLocating(false);
-      },
-      () => setIsLocating(false),
-      { enableHighAccuracy: true }
-    );
-  }
-
-  useEffect(() => {
-    if (!mapRef.current || leafletMapRef.current) return;
-
-    const loadLeaflet = async () => {
-      const L = await import("leaflet");
-      await import("leaflet/dist/leaflet.css");
-
-      const defaultIcon = L.icon({
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
-
-      const lat = initialLat || 20.5937;
-      const lng = initialLng || 78.9629;
-      const zoom = initialLat ? 15 : 5;
-
-      const map = L.map(mapRef.current!, { zoomControl: true }).setView([lat, lng], zoom);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
-
-      if (initialLat && initialLng) {
-        markerRef.current = L.marker([initialLat, initialLng], { icon: defaultIcon, draggable: true }).addTo(map);
-        markerRef.current.on("dragend", async () => {
-          const pos = markerRef.current.getLatLng();
-          const name = await reverseGeocode(pos.lat, pos.lng);
-          setLocationName(name);
-          onLocationSelect(pos.lat, pos.lng, name);
-        });
-      }
-
-      map.on("click", async (e: any) => {
-        const { lat, lng } = e.latlng;
-        if (markerRef.current) {
-          markerRef.current.setLatLng([lat, lng]);
-        } else {
-          markerRef.current = L.marker([lat, lng], { icon: defaultIcon, draggable: true }).addTo(map);
-          markerRef.current.on("dragend", async () => {
-            const pos = markerRef.current.getLatLng();
-            const name = await reverseGeocode(pos.lat, pos.lng);
-            setLocationName(name);
-            onLocationSelect(pos.lat, pos.lng, name);
-          });
-        }
-        const name = await reverseGeocode(lat, lng);
-        setLocationName(name);
-        onLocationSelect(lat, lng, name);
-      });
-
-      leafletMapRef.current = map;
-
-      if (autoDetectOnMount && !initialLat && !autoDetectRef.current) {
-        autoDetectRef.current = true;
-        setTimeout(() => detectLocation(), 500);
-      }
-    };
-
-    loadLeaflet();
-
-    return () => {
-      if (leafletMapRef.current) {
-        leafletMapRef.current.remove();
-        leafletMapRef.current = null;
-      }
-    };
-  }, []);
-
-  async function searchLocation() {
-    if (!searchQuery.trim()) return;
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&countrycodes=in`,
-        { headers: { "Accept-Language": "en" } }
-      );
-      const results = await res.json();
-      if (results.length > 0) {
-        const { lat, lon, display_name } = results[0];
-        const latNum = parseFloat(lat);
-        const lngNum = parseFloat(lon);
-        if (leafletMapRef.current) {
-          leafletMapRef.current.setView([latNum, lngNum], 16);
-          const L = await import("leaflet");
-          const defaultIcon = L.icon({
-            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41],
-          });
-          if (markerRef.current) {
-            markerRef.current.setLatLng([latNum, lngNum]);
-          } else {
-            markerRef.current = L.marker([latNum, lngNum], { icon: defaultIcon, draggable: true }).addTo(leafletMapRef.current);
-            markerRef.current.on("dragend", async () => {
-              const pos = markerRef.current.getLatLng();
-              const name = await reverseGeocode(pos.lat, pos.lng);
-              setLocationName(name);
-              onLocationSelect(pos.lat, pos.lng, name);
-            });
-          }
-        }
-        setLocationName(display_name);
-        onLocationSelect(latNum, lngNum, display_name);
-      }
-    } catch {}
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search location..."
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchLocation())}
-          data-testid="input-map-search"
-        />
-        <Button type="button" variant="outline" size="icon" onClick={searchLocation} data-testid="button-map-search">
-          <Search className="h-4 w-4" />
-        </Button>
-        <Button type="button" variant="outline" size="icon" onClick={detectLocation} disabled={isLocating} data-testid="button-detect-location">
-          {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-        </Button>
-      </div>
-      <div ref={mapRef} className="leaflet-map-contained h-[250px] rounded-md border" data-testid="map-container" />
-      {locationName && (
-        <p className="text-xs text-muted-foreground flex items-start gap-1">
-          <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
-          <span data-testid="text-location-name">{locationName}</span>
-        </p>
-      )}
-    </div>
-  );
-}
 
 function CustomerBookingFooter() {
   return (
@@ -809,11 +602,13 @@ function CustomerGoogleSignIn({
   disabled,
   buttonLabel = "Continue with Google",
   dividerLabel = "or continue with email or phone",
+  onSuccess,
 }: {
   slug: string;
   disabled?: boolean;
   buttonLabel?: string;
   dividerLabel?: string;
+  onSuccess?: (user: CustomerUserInfo, token: string) => void;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -821,21 +616,24 @@ function CustomerGoogleSignIn({
   async function handleGoogle() {
     setBusy(true);
     try {
-      sessionStorage.setItem(CUSTOMER_GOOGLE_OAUTH_KEY, slug);
-      const path = window.location.pathname.startsWith("/book") ? window.location.pathname : "/book";
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}${path}?oauth=1&account=pro`,
-          queryParams: { prompt: "select_account" },
-        },
+      const googleToken = await triggerGoogleSignIn();
+      const res = await fetch(`/api/public/office/${slug}/customer/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: googleToken }),
       });
-      if (error) {
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        toast({ title: "Google sign-in failed", description: error.message, variant: "destructive" });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(result.message || "Google sign-in failed");
+      }
+      persistCustomerModule("business");
+      toast({ title: "Welcome!", description: `Signed in as ${result.user.name}` });
+      if (onSuccess) {
+        onSuccess(result.user, result.token);
+      } else {
+        window.location.reload();
       }
     } catch (error: unknown) {
-      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
       toast({
         title: "Google sign-in failed",
         description: error instanceof Error ? error.message : "Try again.",
@@ -961,6 +759,7 @@ function LoginForm({
           disabled={isSubmitting}
           buttonLabel="Sign in with Google"
           dividerLabel="or sign in with email or phone"
+          onSuccess={onLogin}
         />
       ) : null}
       <Form {...form}>
@@ -1193,6 +992,7 @@ function RegisterForm({
           disabled={isSubmitting}
           buttonLabel="Sign up with Google"
           dividerLabel="or sign up with email or phone"
+          onSuccess={onLogin}
         />
       ) : null}
       <Form {...form}>
@@ -3865,7 +3665,7 @@ export default function CustomerPortalPage() {
   }, [auth.isAuthenticated, slug]);
 
   useEffect(() => {
-    if (!slug || auth.isAuthenticated || googleExchanged.current) return;
+    if (!slug || auth.isAuthenticated) return;
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
     const windowParams = new URLSearchParams(window.location.search);
     const oauthError = params.get("error") || windowParams.get("error");
@@ -3874,81 +3674,15 @@ export default function CustomerPortalPage() {
       setGoogleExchanging(false);
       toast({
         title: "Google sign-in cancelled",
-        description: params.get("error_description") || windowParams.get("error_description") || "Try again to continue with Google.",
+        description:
+          params.get("error_description") ||
+          windowParams.get("error_description") ||
+          "Try again to continue with Google.",
         variant: "destructive",
       });
       clearCustomerOAuthParams();
-      return;
     }
-
-    const flag = sessionStorage.getItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-    const isOauthReturn =
-      params.get("oauth") === "1" ||
-      params.has("code") ||
-      windowParams.get("oauth") === "1" ||
-      windowParams.has("code");
-    if (!flag || (flag !== slug && flag !== "1") || !isOauthReturn) {
-      return;
-    }
-
-    let cancelled = false;
-    setGoogleExchanging(true);
-
-    const exchange = async (accessToken: string) => {
-      if (cancelled || googleExchanged.current) return;
-      googleExchanged.current = true;
-      try {
-        const res = await fetch(`/api/public/office/${slug}/customer/google`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(result.message || "Google sign-in failed");
-        }
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        await supabase.auth.signOut();
-        persistCustomerModule("business");
-        handlePortalLogin(result.user, result.token);
-        clearCustomerOAuthParams();
-        toast({ title: "Welcome!", description: `Signed in as ${result.user.name}` });
-      } catch (error: unknown) {
-        googleExchanged.current = false;
-        sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-        toast({
-          title: "Google sign-in failed",
-          description: error instanceof Error ? error.message : "Try again.",
-          variant: "destructive",
-        });
-        clearCustomerOAuthParams();
-      } finally {
-        if (!cancelled) setGoogleExchanging(false);
-      }
-    };
-
-    void supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.access_token) void exchange(data.session.access_token);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.access_token) void exchange(session.access_token);
-    });
-    const timeout = window.setTimeout(() => {
-      if (cancelled || googleExchanged.current) return;
-      sessionStorage.removeItem(CUSTOMER_GOOGLE_OAUTH_KEY);
-      setGoogleExchanging(false);
-      toast({
-        title: "Google sign-in timed out",
-        description: "Try Continue with Google again.",
-        variant: "destructive",
-      });
-      clearCustomerOAuthParams();
-    }, 15000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-      sub.subscription.unsubscribe();
-    };
-  }, [slug, search, auth.isAuthenticated, handlePortalLogin, toast]);
+  }, [slug, search, auth.isAuthenticated, toast]);
 
   const exitGuestMode = useCallback(() => {
     if (!slug) return;

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +15,7 @@ import { PageSeo } from "@/components/seo/PageSeo";
 import { SEO_PAGES } from "@/lib/seo";
 import { setOpsWorkspace } from "@/lib/ops-workspace";
 import { useAuth } from "@/hooks/use-auth";
+import { triggerGoogleSignIn } from "@/lib/google-auth";
 
 const PARTNERS = ["DTDC", "FedEx", "Blue Dart", "Delhivery", "Ecom Express"];
 
@@ -118,7 +118,7 @@ export default function AuthPage() {
   const search = useSearch();
   const moduleParam = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("module");
   const opsModule = moduleParam === "command" ? XGOO_MODULES.command : XGOO_MODULES.hub;
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -136,14 +136,33 @@ export default function AuthPage() {
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast({ title: "Error signing in", description: error.message, variant: "destructive" });
-    } else {
-      setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
-      setLocation("/dashboard");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({
+          title: "Error signing in",
+          description: data.message || "Failed to sign in",
+          variant: "destructive",
+        });
+      } else {
+        login(data.token, data.user);
+        setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
+        setLocation("/dashboard");
+      }
+    } catch (err) {
+      toast({
+        title: "Error signing in",
+        description: err instanceof Error ? err.message : "Network error. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function handleForgotPassword() {
@@ -155,28 +174,32 @@ export default function AuthPage() {
       });
       return;
     }
-    setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth-page`,
+    toast({
+      title: "Password reset",
+      description: "Contact your workspace Super Admin or use Google Sign-In to access your account.",
     });
-    if (error) {
-      toast({ title: "Could not send reset link", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Check your email", description: "Password reset link has been sent." });
-    }
-    setLoading(false);
   }
 
   async function handleGoogleSignIn() {
     setLoading(true);
     setOpsWorkspace(opsModule.id === "command" ? "command" : "hub");
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/dashboard` },
+      const googleToken = await triggerGoogleSignIn();
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: googleToken }),
       });
-      if (error) {
-        toast({ title: "Google sign-in failed", description: error.message, variant: "destructive" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({
+          title: "Google sign-in failed",
+          description: data.message || "Could not sign in with Google",
+          variant: "destructive",
+        });
+      } else {
+        login(data.token, data.user);
+        setLocation("/dashboard");
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "An unexpected error occurred.";

@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { sql } from "drizzle-orm";
 import { db } from "./db";
-import { supabaseAdmin } from "./auth";
+import { verifyGoogleToken } from "./google-verify";
 import { issueCustomerSession } from "./customer-otp";
 import { storage } from "./storage";
 import type { Office } from "@shared/schema";
@@ -21,32 +21,18 @@ function ensureCustomerGoogleColumns() {
   return googleColumnsReady;
 }
 
-function googlePhone(user: { phone?: string; user_metadata?: Record<string, unknown> }) {
-  const metaPhone = typeof user.user_metadata?.phone === "string" ? user.user_metadata.phone : "";
-  const digits = `${user.phone || ""} ${metaPhone}`.replace(/\D/g, "");
-  return digits.length >= 10 ? digits.slice(-10) : null;
-}
-
-export async function loginOrRegisterCustomerWithGoogle(office: Office, accessToken: string) {
+export async function loginOrRegisterCustomerWithGoogle(office: Office, token: string) {
   await ensureCustomerGoogleColumns();
-  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-  if (error || !data.user) {
-    throw Object.assign(new Error("Google sign-in expired. Try again."), { status: 401 });
-  }
+  const googleUser = await verifyGoogleToken(token);
 
-  const googleUser = data.user;
   const email = googleUser.email?.trim().toLowerCase() || null;
-  const name =
-    (typeof googleUser.user_metadata?.full_name === "string" && googleUser.user_metadata.full_name.trim()) ||
-    (typeof googleUser.user_metadata?.name === "string" && googleUser.user_metadata.name.trim()) ||
-    email?.split("@")[0] ||
-    "Customer";
-  const phone = googlePhone(googleUser);
+  const name = googleUser.name?.trim() || email?.split("@")[0] || "Customer";
+  const phone = null;
 
   let customer =
     (await storage.getCustomerUserByGoogleId(office.id, googleUser.id, "business")) ||
-    (email ? await storage.getCustomerUserByEmail(office.id, email, "business") : undefined) ||
-    (phone ? await storage.getCustomerUserByPhone(office.id, phone, "business") : undefined);
+    (email ? await storage.getCustomerUserByEmail(office.id, email, "business") : undefined);
+
 
   if (!customer) {
     const passwordHash = await bcrypt.hash(randomUUID(), 10);

@@ -4,10 +4,14 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { registerSeoStaticRoutes } from "./seo-static";
 import { createServer } from "http";
+import { pool } from "./db";
 
 // export app so that api/index.ts can consume it for Vercel Serverless Functions
 export const app = express();
 const httpServer = createServer(app);
+
+// Enable trust proxy for reverse proxies (Dokploy, Traefik, Nginx)
+app.set("trust proxy", 1);
 
 declare module "http" {
   interface IncomingMessage {
@@ -15,18 +19,23 @@ declare module "http" {
   }
 }
 
-if (process.env.NODE_ENV !== "production") {
-  app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-pickup-token");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-    if (req.method === "OPTIONS") {
-      res.sendStatus(204);
-      return;
-    }
-    next();
-  });
-}
+// CORS handling for API requests (Mobile app, Chrome extension, partner sync)
+app.use("/api", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-pickup-token, x-autofill-token",
+  );
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+  );
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
 
 function isMultipart(req: Request): boolean {
   const ct = req.headers["content-type"] || "";
@@ -122,29 +131,61 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   if (!process.env.VERCEL) {
-    const port = parseInt(process.env.PORT || "3000", 10);
+    const port = parseInt(process.env.PORT || "3005", 10);
     const onListening = (label: string) => {
       log(`serving ${label} on port ${port}`);
     };
 
     httpServer.listen({ port, host: "0.0.0.0" }, () => {
-      onListening("http://127.0.0.1");
+      onListening("http://0.0.0.0");
     });
 
-    // Windows Chrome resolves `localhost` to IPv6 ::1, which 0.0.0.0 does not accept.
-    const ipv6Loopback = createServer(app);
-    ipv6Loopback.on("upgrade", (req, socket, head) => {
-      httpServer.emit("upgrade", req, socket, head);
-    });
-    ipv6Loopback.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EAFNOSUPPORT" || err.code === "EADDRNOTAVAIL" || err.code === "EADDRINUSE") {
-        log("IPv6 localhost unavailable; use http://127.0.0.1:3000");
-        return;
+    // Graceful shutdown handling for Docker / Dokploy
+    let isShuttingDown = false;
+    const gracefulShutdown = (signal: string) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      log(`Received ${signal}, shutting down gracefully...`);
+
+      httpServer.close(() => {
+        log("HTTP server closed.");
+        pool.end().then(() => {
+          log("Database pool closed.");
+          process.exit(0);
+        }).catch((err) => {
+          console.error("Error closing database pool:", err);
+          process.exit(0);
+        });
+      });
+
+      // Force shutdown after timeout if connections hang
+      setTimeout(() => {
+        log("Forced shutdown after timeout.");
+        process.exit(1);
+      }, 10000).unref();
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+    // Optional IPv6 loopback on Windows development environments
+    if (process.platform === "win32") {
+      const ipv6Loopback = createServer(app);
+      ipv6Loopback.on("upgrade", (req, socket, head) => {
+        httpServer.emit("upgrade", req, socket, head);
+      });
+      ipv6Loopback.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EAFNOSUPPORT" || err.code === "EADDRNOTAVAIL" || err.code === "EADDRINUSE") {
+          return;
+        }
+      });
+      try {
+        ipv6Loopback.listen({ port, host: "::1", ipv6Only: true }, () => {
+          onListening("http://localhost");
+        });
+      } catch {
+        // Ignore IPv6 errors on unsupported systems
       }
-      throw err;
-    });
-    ipv6Loopback.listen({ port, host: "::1", ipv6Only: true }, () => {
-      onListening("http://localhost");
-    });
+    }
   }
 })();
