@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { reverseGeocodePoint } from "@/components/customer/BookShipmentMap";
 import { trackMetaLead } from "@/lib/meta-pixel";
 import { resolvePublicBookingOffice } from "@/lib/booking-office";
+import { getStoredReferralCode } from "@/lib/referral";
 import { cn } from "@/lib/utils";
 
 const ORANGE = "#FF4907";
@@ -171,6 +172,7 @@ export function DirectPickupForm({
           contentDescription: packageItems.join(", "),
           shipmentType,
           destinationCountry: defaults?.destinationCountry,
+          referralCode: getStoredReferralCode() || undefined,
           pickupLocationName: pickup,
           pickupLat: pickupCoords?.lat?.toString(),
           pickupLng: pickupCoords?.lng?.toString(),

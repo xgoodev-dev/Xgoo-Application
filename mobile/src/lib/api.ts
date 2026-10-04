@@ -127,6 +127,26 @@ export type BookingPayload = {
   pickupLocationName?: string | null;
   pickupDate?: string | null;
   pickupTimeSlot?: string | null;
+  referralCode?: string | null;
+};
+
+export type ReferralDashboard = {
+  program: {
+    isActive: boolean;
+    commissionType: 'percent' | 'flat';
+    commissionValue: string;
+    minPayoutAmount: string;
+  };
+  partner: null | {
+    code: string;
+    status: 'active' | 'suspended';
+    sharePath: string;
+    bankAccountName: string;
+    bankAccountNumberMasked: string;
+    bankIfsc: string;
+    hasBank: boolean;
+    totals: { pending: number; approved: number; paid: number };
+  };
 };
 
 export class ApiError extends Error {
@@ -287,6 +307,19 @@ export const customerApi = {
     api<{ success: boolean }>(
       `/api/customer/addresses/${id}`,
       { method: 'DELETE' },
+      token,
+    ),
+  referral: (token: string) =>
+    api<ReferralDashboard>('/api/customer/referral', {}, token),
+  joinReferral: (token: string) =>
+    api<ReferralDashboard>('/api/customer/referral/join', { method: 'POST' }, token),
+  saveReferralBank: (
+    token: string,
+    input: { bankAccountName: string; bankAccountNumber: string; bankIfsc: string },
+  ) =>
+    api<ReferralDashboard>(
+      '/api/customer/referral/bank',
+      { method: 'PATCH', body: JSON.stringify(input) },
       token,
     ),
 };

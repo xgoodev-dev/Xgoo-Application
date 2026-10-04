@@ -13,7 +13,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-const LAST_UPDATED = "15 September 2026";
+const LAST_UPDATED = "3 October 2026";
 
 const GO = XGOO_MODULES.go.name;
 const PRO = XGOO_MODULES.pro.name;
@@ -86,44 +86,52 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         ],
       },
       {
-        heading: "8. Staff accounts",
+        heading: "8. Referral partners",
+        paragraphs: [
+          "Anyone may join the XGoo referral program from Go, Pro, or the website. A referral partner earns only when a referred person actually sends a courier and pays an accepted quote. Filling a form or creating a booking request is not enough.",
+          "Commission rates, the minimum payout, and program availability are set by XGoo Command and may change. Self-referrals and the first valid referral code on an account are enforced. Payouts are made to the bank account the partner adds; marking a payout as paid records that Command has transferred the amount.",
+          "Referral partners are not employees or staff. We may pause a partner or the program for fraud, self-referral, or policy breaches.",
+        ],
+      },
+      {
+        heading: "9. Staff accounts",
         paragraphs: [
           `${HUB} and ${COMMAND} accounts must be used only by authorised persons. Keep login credentials confidential. You may not scrape data, attempt unauthorised access, or interfere with operations.`,
         ],
       },
       {
-        heading: "9. Liability",
+        heading: "10. Liability",
         paragraphs: [
           "Liability for loss or damage is limited to the extent permitted by applicable law and by the terms of the assigned courier partner. High-value goods should be declared and insured where available.",
           "We are not liable for indirect, incidental, or consequential losses, including business interruption or lost profits. Indicative delivery dates are not guarantees unless a premium service expressly says so.",
         ],
       },
       {
-        heading: "10. Communications",
+        heading: "11. Communications",
         paragraphs: [
           "We send transactional updates by WhatsApp, SMS, email, phone, or in-app notification. After a shipment is raised, the sender (From) may receive booking, route, amount, and tracking. The receiver (To) may receive booking identity and tracking without the amount.",
         ],
       },
       {
-        heading: "11. Intellectual property",
+        heading: "12. Intellectual property",
         paragraphs: [
           "XGoo names, logos, apps, and website content belong to NSGroup or its licensors. You may not copy, reverse engineer, or misuse them except as needed to use the service.",
         ],
       },
       {
-        heading: "12. Suspension and changes",
+        heading: "13. Suspension and changes",
         paragraphs: [
           "We may suspend an account for restricted items, unpaid bills, safety concerns, fraud, or policy breaches. We may update these terms from time to time. Continued use after the updated date means you accept the new terms.",
         ],
       },
       {
-        heading: "13. Governing law",
+        heading: "14. Governing law",
         paragraphs: [
           "These terms are governed by the laws of India. Courts in Hyderabad, Telangana, have exclusive jurisdiction, subject to mandatory consumer protections that apply to you.",
         ],
       },
       {
-        heading: "14. Contact",
+        heading: "15. Contact",
         paragraphs: [
           `For questions about these terms, email ${XGOO_CONTACT.email} or call ${XGOO_CONTACT.phone}.`,
           `Service area contact: ${XGOO_CONTACT.address}. Hours: ${XGOO_CONTACT.hours}.`,

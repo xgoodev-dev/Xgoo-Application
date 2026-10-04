@@ -643,6 +643,8 @@ export const bookingRequests = pgTable("booking_requests", {
   
   // Customer user link
   customerUserId: varchar("customer_user_id").references(() => customerUsers.id),
+  referralCode: varchar("referral_code", { length: 16 }),
+  referredByPartnerId: varchar("referred_by_partner_id"),
 
   // Origin channel: mobile_android, mobile_ios, whatsapp, in_store,
   // website, customer_portal, b2b_daily, phone, partner_api, or legacy.
@@ -692,6 +694,7 @@ export const customerUsers = pgTable("customer_users", {
   pincode: varchar("pincode", { length: 10 }),
   defaultPickupLat: decimal("default_pickup_lat", { precision: 10, scale: 7 }),
   defaultPickupLng: decimal("default_pickup_lng", { precision: 10, scale: 7 }),
+  referredByPartnerId: varchar("referred_by_partner_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -1356,6 +1359,94 @@ export type BookingJob = typeof bookingJobs.$inferSelect;
 export type InsertBookingJob = z.infer<typeof insertBookingJobSchema>;
 export type BookingEvent = typeof bookingEvents.$inferSelect;
 export type InsertBookingEvent = z.infer<typeof insertBookingEventSchema>;
+
+export const referralSettings = pgTable("referral_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id).unique(),
+  commissionType: varchar("commission_type", { length: 20 }).notNull().default("percent"),
+  commissionValue: decimal("commission_value", { precision: 10, scale: 2 }).notNull().default("5"),
+  minPayoutAmount: decimal("min_payout_amount", { precision: 12, scale: 2 }).notNull().default("100"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const referralPartners = pgTable("referral_partners", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  customerUserId: varchar("customer_user_id").notNull().references(() => customerUsers.id).unique(),
+  code: varchar("code", { length: 16 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  bankAccountName: varchar("bank_account_name", { length: 120 }),
+  bankAccountNumber: varchar("bank_account_number", { length: 20 }),
+  bankIfsc: varchar("bank_ifsc", { length: 11 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_referral_partners_office").on(table.officeId),
+  index("idx_referral_partners_code").on(table.code),
+]);
+
+export const referralPayouts = pgTable("referral_payouts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  partnerId: varchar("partner_id").notNull().references(() => referralPartners.id),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  note: text("note"),
+  paidAt: timestamp("paid_at").defaultNow(),
+  paidByUserId: varchar("paid_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_referral_payouts_office").on(table.officeId),
+  index("idx_referral_payouts_partner").on(table.partnerId),
+]);
+
+export const referralCommissions = pgTable("referral_commissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id),
+  partnerId: varchar("partner_id").notNull().references(() => referralPartners.id),
+  bookingRequestId: varchar("booking_request_id").notNull().references(() => bookingRequests.id).unique(),
+  quotationId: varchar("quotation_id").references(() => quotations.id),
+  quoteAmount: decimal("quote_amount", { precision: 12, scale: 2 }).notNull(),
+  commissionType: varchar("commission_type", { length: 20 }).notNull(),
+  commissionValue: decimal("commission_value", { precision: 10, scale: 2 }).notNull(),
+  commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  payoutId: varchar("payout_id").references(() => referralPayouts.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_referral_commissions_office").on(table.officeId),
+  index("idx_referral_commissions_partner").on(table.partnerId),
+  index("idx_referral_commissions_status").on(table.status),
+]);
+
+export const insertReferralSettingsSchema = createInsertSchema(referralSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertReferralPartnerSchema = createInsertSchema(referralPartners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertReferralPayoutSchema = createInsertSchema(referralPayouts).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertReferralCommissionSchema = createInsertSchema(referralCommissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ReferralSettings = typeof referralSettings.$inferSelect;
+export type InsertReferralSettings = z.infer<typeof insertReferralSettingsSchema>;
+export type ReferralPartner = typeof referralPartners.$inferSelect;
+export type InsertReferralPartner = z.infer<typeof insertReferralPartnerSchema>;
+export type ReferralPayout = typeof referralPayouts.$inferSelect;
+export type InsertReferralPayout = z.infer<typeof insertReferralPayoutSchema>;
+export type ReferralCommission = typeof referralCommissions.$inferSelect;
+export type InsertReferralCommission = z.infer<typeof insertReferralCommissionSchema>;
 
 export type PickupPartner = typeof pickupPartners.$inferSelect;
 export type InsertPickupPartner = z.infer<typeof insertPickupPartnerSchema>;

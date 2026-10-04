@@ -93,6 +93,23 @@ import {
 import { triggerCustomerNotification } from "./customer-notifications";
 import { notifyAwbCreated } from "./pickup-service";
 import {
+  getCustomerReferralDashboard,
+  getOrCreateReferralSettings,
+  getPublicReferralProgram,
+  joinReferralProgram,
+  listReferralPartners,
+  listReferralPayouts,
+  markReferralPayoutPaid,
+  referralBankSchema,
+  referralPartnerStatusSchema,
+  referralPayoutCreateSchema,
+  referralSettingsUpdateSchema,
+  resolveReferralAttribution,
+  updateReferralBank,
+  updateReferralPartnerStatus,
+  updateReferralSettings,
+} from "./referral";
+import {
   addBusinessTodayJob,
   cancelBusinessOrder,
   confirmBusinessToday,
@@ -1118,6 +1135,99 @@ export async function registerRoutes(
       console.error("Error reviewing Pro account:", error);
       res.status(status).json({
         message: error instanceof Error ? error.message : "Failed to review Pro account",
+      });
+    }
+  });
+
+  app.get("/api/command/referral/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      res.json(await getOrCreateReferralSettings(office.id));
+    } catch (error) {
+      console.error("Error loading referral settings:", error);
+      res.status(500).json({ message: "Failed to load referral settings" });
+    }
+  });
+
+  app.put("/api/command/referral/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const body = referralSettingsUpdateSchema.parse(req.body || {});
+      res.json(await updateReferralSettings(office.id, body));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating referral settings:", error);
+      res.status(500).json({ message: "Failed to update referral settings" });
+    }
+  });
+
+  app.get("/api/command/referral/partners", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      res.json(await listReferralPartners(office.id));
+    } catch (error) {
+      console.error("Error listing referral partners:", error);
+      res.status(500).json({ message: "Failed to load referral partners" });
+    }
+  });
+
+  app.patch("/api/command/referral/partners/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const body = referralPartnerStatusSchema.parse(req.body || {});
+      res.json(await updateReferralPartnerStatus(office.id, req.params.id, body.status));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to update referral partner",
+      });
+    }
+  });
+
+  app.get("/api/command/referral/payouts", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      res.json(await listReferralPayouts(office.id));
+    } catch (error) {
+      console.error("Error listing referral payouts:", error);
+      res.status(500).json({ message: "Failed to load referral payouts" });
+    }
+  });
+
+  app.post("/api/command/referral/payouts", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const body = referralPayoutCreateSchema.parse(req.body || {});
+      res.json(
+        await markReferralPayoutPaid({
+          officeId: office.id,
+          partnerId: body.partnerId,
+          paidByUserId: req.user.id,
+          note: body.note,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to mark referral payout",
       });
     }
   });
@@ -4027,6 +4137,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/public/referral/program", async (_req, res) => {
+    try {
+      const office = await storage.getDefaultBookingOffice();
+      if (!office) {
+        return res.status(404).json({ message: "Referral program is not available yet" });
+      }
+      res.json(await getPublicReferralProgram(office.id));
+    } catch (error) {
+      console.error("Error loading public referral program:", error);
+      res.status(500).json({ message: "Failed to load referral program" });
+    }
+  });
+
   app.get("/api/health", async (_req, res) => {
     try {
       await verifyDatabaseConnection();
@@ -4197,11 +4320,19 @@ export async function registerRoutes(
             })
           : undefined);
 
+      const referral = await resolveReferralAttribution({
+        officeId: office.id,
+        customerUserId: customerUser?.id,
+        senderPhone: phone,
+        referralCode: typeof req.body?.referralCode === "string" ? req.body.referralCode : null,
+      });
       const request = await storage.createBookingRequest({
         ...validated,
         officeId: office.id,
         branchId,
         customerUserId: customerUser?.id,
+        referralCode: referral.referralCode,
+        referredByPartnerId: referral.referredByPartnerId,
         source: "website",
         status: "pending",
       });
@@ -4684,6 +4815,62 @@ export async function registerRoutes(
     res.json(safeUser);
   });
 
+  app.get("/api/customer/referral", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      res.json(
+        await getCustomerReferralDashboard({
+          officeId: req.customerUser.officeId,
+          customerUserId: req.customerUser.id,
+        }),
+      );
+    } catch (error) {
+      console.error("Error loading customer referral:", error);
+      res.status(500).json({ message: "Failed to load referral program" });
+    }
+  });
+
+  app.post("/api/customer/referral/join", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      await joinReferralProgram({
+        officeId: req.customerUser.officeId,
+        customerUserId: req.customerUser.id,
+        name: req.customerUser.name,
+      });
+      res.json(
+        await getCustomerReferralDashboard({
+          officeId: req.customerUser.officeId,
+          customerUserId: req.customerUser.id,
+        }),
+      );
+    } catch (error) {
+      console.error("Error joining referral program:", error);
+      res.status(500).json({ message: "Failed to join the referral program" });
+    }
+  });
+
+  app.patch("/api/customer/referral/bank", isCustomerAuthenticated, async (req: any, res) => {
+    try {
+      const body = referralBankSchema.parse(req.body || {});
+      await updateReferralBank(req.customerUser.officeId, req.customerUser.id, body);
+      res.json(
+        await getCustomerReferralDashboard({
+          officeId: req.customerUser.officeId,
+          customerUserId: req.customerUser.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number })?.status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to save bank details",
+      });
+    }
+  });
+
   app.get("/api/customer/service-coverage", isCustomerAuthenticated, async (req: any, res) => {
     try {
       res.json(await evaluateCustomerCoverage(req.customerUser));
@@ -4993,12 +5180,20 @@ export async function registerRoutes(
           ? clientSource
           : "customer_portal";
 
+      const referral = await resolveReferralAttribution({
+        officeId: req.customerUser.officeId,
+        customerUserId: req.customerUser.id,
+        senderPhone: validated.senderPhone,
+        referralCode: typeof req.body?.referralCode === "string" ? req.body.referralCode : null,
+      });
       const request = await storage.createBookingRequest({
         ...validated,
         ...pickupData,
         officeId: req.customerUser.officeId,
         branchId,
         customerUserId: req.customerUser.id,
+        referralCode: referral.referralCode,
+        referredByPartnerId: referral.referredByPartnerId,
         source,
         status: "pending",
       });

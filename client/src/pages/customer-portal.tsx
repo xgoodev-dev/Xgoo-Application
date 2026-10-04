@@ -38,6 +38,7 @@ import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
 import { XGOO_BRAND, XGOO_MODULES, XGOO_OPS_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
+import { captureReferralFromSearch, getStoredReferralCode } from "@/lib/referral";
 import { SEO_PAGES } from "@/lib/seo";
 import { trackMetaLead } from "@/lib/meta-pixel";
 import { Button } from "@/components/ui/button";
@@ -2123,6 +2124,7 @@ function BookingTab({
         pickupLocationName: pickupLocation?.name || null,
         pickupDate: data.pickupDate,
         pickupTimeSlot: data.pickupTimeSlot,
+        referralCode: getStoredReferralCode(),
       };
       if (isGuest) {
         const res = await fetch(`/api/public/office/${slug}/booking-request`, {
@@ -3751,6 +3753,10 @@ export default function CustomerPortalPage() {
   const [officeError, setOfficeError] = useState(false);
   const auth = useCustomerAuth(slug);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    captureReferralFromSearch(search);
+  }, [search]);
   const [activeTab, setActiveTab] = useState("book");
   const [goProfileView, setGoProfileView] = useState<GoProfileView>("menu");
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);

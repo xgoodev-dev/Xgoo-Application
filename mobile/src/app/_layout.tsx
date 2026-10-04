@@ -50,6 +50,7 @@ function AppNavigator() {
         <Stack.Screen name="personal-information" />
         <Stack.Screen name="privacy-security" />
         <Stack.Screen name="help-support" />
+        <Stack.Screen name="refer-earn" />
         <Stack.Screen name="notifications" />
       </Stack>
     </>

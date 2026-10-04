@@ -73,6 +73,13 @@ export const SEO_PAGES = {
       "Book a courier pickup in minutes with XGoo. Enter sender, receiver, and parcel details — track your shipment with booking or AWB number.",
     keywords: ["book parcel", "courier pickup", "online booking", "XGoo book"],
   },
+  refer: {
+    path: "/refer",
+    title: "Refer and Earn | XGoo Referral Partners",
+    description:
+      "Join the XGoo referral program. Share your link with people and businesses who need to send a courier, and earn when they pay the quote.",
+    keywords: ["XGoo referral", "refer and earn", "courier referral", "referral partner"],
+  },
   terms: {
     path: "/terms",
     title: "Terms and Conditions | XGoo",

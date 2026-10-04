@@ -21,6 +21,7 @@ const COMPANY_LINKS: FooterLink[] = [
   { label: "International Courier", href: INTERNATIONAL_COURIER_PATH },
   { label: "Domestic Courier", href: DOMESTIC_COURIER_PATH },
   { label: "About Us", href: "/about" },
+  { label: "Refer and earn", href: "/refer" },
   { label: "Contact", href: "/contact" },
 ];
 

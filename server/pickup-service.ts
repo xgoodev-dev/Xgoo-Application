@@ -12,6 +12,7 @@ import {
 } from "./integrations/whatsapp-notifications";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
 import { storage } from "./storage";
+import { creditReferralCommission } from "./referral";
 
 async function officeById(officeId: string) {
   const [office] = await db.select().from(offices).where(eq(offices.id, officeId)).limit(1);
@@ -330,6 +331,12 @@ export async function acceptPickupQuotation(quotation: Quotation) {
   });
 
   const billed = await addProBillForAcceptedQuote(accepted || quotation, request);
+  void creditReferralCommission({
+    quotation: accepted || quotation,
+    request,
+  }).catch((error) => {
+    console.error("Referral commission failed:", error);
+  });
 
   triggerPickupPartnerNotification(
     job.partnerId,

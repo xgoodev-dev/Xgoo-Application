@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronRight,
   CircleHelp,
+  Gift,
   LogOut,
   MapPinned,
   Moon,
@@ -72,6 +73,12 @@ export default function ProfileScreen() {
           icon={ShieldCheck}
           label="Privacy and security"
           onPress={() => router.push('/privacy-security')}
+        />
+        <Divider />
+        <MenuRow
+          icon={Gift}
+          label="Refer and earn"
+          onPress={() => router.push('/refer-earn')}
         />
       </Card>
 

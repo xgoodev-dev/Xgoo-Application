@@ -74,6 +74,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, inArray, ne } from "drizzle-orm";
+import { ensureReferralSchema } from "./referral";
 
 let customerIntakeColumnsReady: Promise<void> | null = null;
 let customerAccountTypeReady: Promise<void> | null = null;
@@ -1250,6 +1251,7 @@ export class DatabaseStorage implements IStorage {
   async getBookingRequest(id: string): Promise<BookingRequest | undefined> {
     await ensureBookingPackageColumns();
     await ensureXgooOrderIdColumns();
+    await ensureReferralSchema();
     const [request] = await db.select().from(bookingRequests).where(eq(bookingRequests.id, id));
     return request;
   }
@@ -1257,6 +1259,7 @@ export class DatabaseStorage implements IStorage {
   async createBookingRequest(request: InsertBookingRequest): Promise<BookingRequest> {
     await ensureBookingPackageColumns();
     await ensureXgooOrderIdColumns();
+    await ensureReferralSchema();
     const requestNumber = `BR${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
     const [created] = await db
       .insert(bookingRequests)

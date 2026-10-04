@@ -1,5 +1,6 @@
 import { Switch, Route, useLocation } from "wouter";
 import { useEffect } from "react";
+import { captureReferralFromLocation } from "@/lib/referral";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -48,6 +49,8 @@ import TrackPage from "@/pages/track";
 import QuoteAcceptPage from "@/pages/quote";
 import StoreCustomerOrderPage from "@/pages/store-customer-order";
 import AuthPage from "@/pages/auth-page";
+import ReferPage, { ReferralCodeRedirectPage } from "@/pages/refer";
+import ReferralsPage from "@/pages/referrals";
 import NotFound from "@/pages/not-found";
 import CourierRoutePage from "@/pages/courier-route";
 import InternationalCourierPage from "@/pages/international-courier";
@@ -72,6 +75,7 @@ function CommandOnlyRedirect() {
     const commandOnly =
       location.startsWith("/stores") ||
       location.startsWith("/pro-accounts") ||
+      location.startsWith("/referrals") ||
       location.startsWith("/settings") ||
       location === "/partners" ||
       location === "/pricing";
@@ -122,6 +126,7 @@ function AuthenticatedApp() {
               <Route path="/reports" component={ReportsPage} />
               <Route path="/stores" component={StoresPage} />
               <Route path="/pro-accounts" component={ProAccountsPage} />
+              <Route path="/referrals" component={ReferralsPage} />
               <Route path="/staff" component={StaffPage} />
               <Route path="/hub-settings" component={HubSettingsPage} />
               <Route path="/settings" component={SettingsPage} />
@@ -186,6 +191,10 @@ function Router() {
   const customerOAuth = isCustomerGoogleOAuthPending();
 
   useEffect(() => {
+    captureReferralFromLocation();
+  }, [location]);
+
+  useEffect(() => {
     if (!customerOAuth || isCustomerBookPath(location)) return;
     setLocation(customerGoogleOAuthBookPath());
   }, [customerOAuth, location, setLocation]);
@@ -201,6 +210,8 @@ function Router() {
       <Route path="/shipping-policy" component={LegalPage} />
       <Route path="/cancellation-policy" component={LegalPage} />
       <Route path="/auth-page" component={AuthPage} />
+      <Route path="/refer" component={ReferPage} />
+      <Route path="/r/:code" component={ReferralCodeRedirectPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
       <Route path="/track" component={TrackPage} />

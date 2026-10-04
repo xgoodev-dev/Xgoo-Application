@@ -26,6 +26,7 @@ const STAFF_PATH_PREFIXES = [
   "/staff",
   "/stores",
   "/pro-accounts",
+  "/referrals",
   "/hub-settings",
   "/settings",
 ];

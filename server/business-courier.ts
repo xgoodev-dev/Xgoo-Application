@@ -35,6 +35,7 @@ import {
 } from "@shared/business-courier";
 import { db } from "./db";
 import { storage, ensureXgooOrderIdColumns } from "./storage";
+import { resolveReferralAttribution } from "./referral";
 import { triggerCustomerNotification } from "./customer-notifications";
 import { triggerBookingRequestWhatsApp, triggerReceiverOrderAckWhatsApp } from "./integrations/whatsapp-notifications";
 import { offices } from "@shared/schema";
@@ -1272,6 +1273,11 @@ export async function confirmBusinessToday(
         .set({ xgooOrderId, updatedAt: new Date() })
         .where(eq(businessDailyJobs.id, job.id));
     }
+    const referral = await resolveReferralAttribution({
+      officeId: customer.officeId,
+      customerUserId: customer.id,
+      senderPhone: senderPhone,
+    });
     const request = await storage.createBookingRequest({
       senderName,
       senderPhone: senderPhone.slice(-10),
@@ -1301,6 +1307,8 @@ export async function confirmBusinessToday(
       officeId: customer.officeId,
       branchId: branchId || undefined,
       customerUserId: customer.id,
+      referralCode: referral.referralCode,
+      referredByPartnerId: referral.referredByPartnerId,
       source: "b2b_daily",
       status: "pending",
       xgooOrderId,

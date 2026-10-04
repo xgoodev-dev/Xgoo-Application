@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleHelp,
   Clock,
+  Gift,
   LogOut,
   MapPinned,
   ShieldCheck,
@@ -19,6 +20,7 @@ import { GoHelpSupport } from "./GoHelpSupport";
 import { GoNotifications } from "./GoHome";
 import { GoPrivacySecurity } from "./GoPrivacySecurity";
 import { StoreDetailsPanel } from "@/components/customer/business/StoreDetailsPanel";
+import { ReferEarnPanel } from "@/components/customer/ReferEarnPanel";
 import type { ProProfileStatus } from "@/components/customer/business/ProAccessGate";
 
 export type GoProfileView =
@@ -28,7 +30,8 @@ export type GoProfileView =
   | "addresses"
   | "privacy"
   | "notifications"
-  | "help";
+  | "help"
+  | "refer";
 
 function initialsFromName(name?: string) {
   if (!name?.trim()) return "XG";
@@ -109,6 +112,8 @@ export function GoProfile({
       );
     case "help":
       return <GoHelpSupport module={module} onBack={() => onViewChange("menu")} />;
+    case "refer":
+      return <ReferEarnPanel token={token} module={module} onBack={() => onViewChange("menu")} />;
     case "store":
       return (
         <StoreDetailsPanel
@@ -161,6 +166,11 @@ export function GoProfile({
           icon={ShieldCheck}
           label="Privacy and security"
           onClick={() => onViewChange("privacy")}
+        />
+        <MenuRow
+          icon={Gift}
+          label="Refer and earn"
+          onClick={() => onViewChange("refer")}
         />
       </Card>
 

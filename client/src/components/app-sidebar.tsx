@@ -17,6 +17,7 @@ import {
   Check,
   Calculator,
   Building2,
+  Gift,
   Store,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
@@ -55,6 +56,7 @@ const commandControlItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Stores", url: "/stores", icon: Building2 },
   { title: "Pro accounts", url: "/pro-accounts", icon: Store },
+  { title: "Referrals", url: "/referrals", icon: Gift },
   { title: "Staff", url: "/staff", icon: Users },
   { title: "Reports", url: "/reports", icon: FileText },
   { title: "Settings", url: "/settings", icon: Settings },
