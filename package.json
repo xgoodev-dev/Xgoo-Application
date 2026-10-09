@@ -13,7 +13,10 @@
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",
     "pickup": "npm --prefix mobile-partner start",
-    "pickup:android": "npm --prefix mobile-partner run android"
+    "pickup:android": "npm --prefix mobile-partner run android",
+    "pro": "npm --prefix mobile-pro start",
+    "pro:android": "npm --prefix mobile-pro run android",
+    "pro:ios": "npm --prefix mobile-pro run ios"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

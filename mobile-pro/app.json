@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "XGoo Pro",
+    "slug": "xgoo-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/xgoo-logo.png",
+    "scheme": "xgoopro",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/xgoo-logo.png",
+      "bundleIdentifier": "com.xgoo.pro",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "XGoo Pro uses your location when you set the store pickup address."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#17181B",
+        "foregroundImage": "./assets/images/xgoo-logo.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.xgoo.pro",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0E0F11",
+          "image": "./assets/images/xgoo-logo.png",
+          "imageWidth": 112
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/xgoo-logo.png",
+          "color": "#FF4907"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/with-cleartext-traffic.js"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+dist-android/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+.metro-health-check*
+npm-debug.*
+.DS_Store
+.env*.local
+*.tsbuildinfo
+/ios
+/android
