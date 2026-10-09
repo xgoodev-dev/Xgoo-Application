@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MapPin } from "lucide-react";
 import { GoogleMapCanvas } from "@/components/maps/GoogleMapCanvas";
 import {
   GooglePlacesAutocomplete,
   type GeocodeAddress,
 } from "@/components/maps/GooglePlacesAutocomplete";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export interface AddressMapValue {
@@ -24,6 +25,43 @@ interface AddressMapFieldProps {
   className?: string;
 }
 
+function locationErrorMessage(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Allow location access in the browser to drop the pin on your current place.";
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return "Could not read GPS. Try again, or search the address.";
+  }
+  if (error.code === error.TIMEOUT) {
+    return "Location timed out. Try again, or search the address.";
+  }
+  return "Could not read your current location. Try again, or search the address.";
+}
+
+function requestCurrentPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported in this browser."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      (error) => {
+        if (error.code !== error.TIMEOUT) {
+          reject(error);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 60_000,
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  });
+}
+
 export function AddressMapField({
   label,
   testIdPrefix,
@@ -31,12 +69,29 @@ export function AddressMapField({
   onChange,
   className,
 }: AddressMapFieldProps) {
+  const { toast } = useToast();
   const [isLocating, setIsLocating] = useState(false);
   const [pinnedLabel, setPinnedLabel] = useState(value.address || "");
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
+    value.lat != null && value.lng != null ? { lat: value.lat, lng: value.lng } : null,
+  );
+
+  useEffect(() => {
+    if (value.lat != null && value.lng != null) {
+      setPin({ lat: value.lat, lng: value.lng });
+    }
+  }, [value.lat, value.lng]);
+
+  useEffect(() => {
+    if (value.address && value.address !== pinnedLabel) {
+      setPinnedLabel(value.address);
+    }
+  }, [value.address, pinnedLabel]);
 
   const applyGeocodeResult = useCallback(
     (result: GeocodeAddress) => {
       setPinnedLabel(result.displayName || result.address);
+      setPin({ lat: result.lat, lng: result.lng });
       onChange({
         address: result.address || result.displayName || value.address,
         city: result.city || value.city,
@@ -49,8 +104,9 @@ export function AddressMapField({
     [onChange, value.address, value.city, value.pincode, value.state],
   );
 
-  const handleMarkerDragEnd = useCallback(
-    async ({ lat, lng }: { lat: number; lng: number }) => {
+  const dropPin = useCallback(
+    async (lat: number, lng: number) => {
+      setPin({ lat, lng });
       try {
         const res = await fetch(`/api/maps/reverse-geocode?lat=${lat}&lng=${lng}`);
         if (res.ok) {
@@ -59,59 +115,41 @@ export function AddressMapField({
           return;
         }
       } catch (err) {
-        console.warn("Reverse geocode on drag failed:", err);
+        console.warn("Reverse geocode failed:", err);
       }
-      onChange({ ...value, lat, lng });
+      const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      setPinnedLabel(fallback);
+      onChange({ ...value, lat, lng, address: value.address || fallback });
     },
     [applyGeocodeResult, onChange, value],
   );
 
-  const handleMapClick = useCallback(
-    async ({ lat, lng }: { lat: number; lng: number }) => {
-      try {
-        const res = await fetch(`/api/maps/reverse-geocode?lat=${lat}&lng=${lng}`);
-        if (res.ok) {
-          const data = (await res.json()) as GeocodeAddress;
-          applyGeocodeResult(data);
-          return;
-        }
-      } catch (err) {
-        console.warn("Reverse geocode on click failed:", err);
-      }
-      onChange({ ...value, lat, lng });
-    },
-    [applyGeocodeResult, onChange, value],
-  );
-
-  const detectLocation = () => {
-    if (!navigator.geolocation) return;
+  const detectLocation = async () => {
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const res = await fetch(`/api/maps/reverse-geocode?lat=${latitude}&lng=${longitude}`);
-          if (res.ok) {
-            const data = (await res.json()) as GeocodeAddress;
-            applyGeocodeResult(data);
-          } else {
-            onChange({ ...value, lat: latitude, lng: longitude });
-          }
-        } catch {
-          onChange({ ...value, lat: latitude, lng: longitude });
-        } finally {
-          setIsLocating(false);
-        }
-      },
-      () => setIsLocating(false),
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
+    try {
+      const position = await requestCurrentPosition();
+      await dropPin(position.coords.latitude, position.coords.longitude);
+    } catch (error) {
+      const geoError =
+        typeof error === "object" && error !== null && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      toast({
+        title: "Could not find your location",
+        description: geoError
+          ? locationErrorMessage(geoError)
+          : error instanceof Error
+            ? error.message
+            : "Try again, or search the address.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   const marker =
-    value.lat != null && value.lng != null
-      ? { lat: value.lat, lng: value.lng, label: pinnedLabel }
-      : null;
+    pin != null ? { lat: pin.lat, lng: pin.lng, label: pinnedLabel } : null;
 
   return (
     <div className={cn("space-y-2 rounded-lg border border-dashed p-3 bg-muted/20", className)}>
@@ -126,7 +164,7 @@ export function AddressMapField({
         value={value.address || ""}
         placeholder="Search address, area, or pincode…"
         onSelect={applyGeocodeResult}
-        onLocateMe={detectLocation}
+        onLocateMe={() => void detectLocation()}
         isLocating={isLocating}
         testIdPrefix={testIdPrefix}
       />
@@ -137,8 +175,9 @@ export function AddressMapField({
           markerColor={testIdPrefix === "sender" ? "#FF4907" : "#16A34A"}
           markerLetter={testIdPrefix === "sender" ? "S" : "R"}
           markerDraggable={true}
-          onMarkerDragEnd={handleMarkerDragEnd}
-          onMapClick={handleMapClick}
+          onMarkerDragEnd={({ lat, lng }) => void dropPin(lat, lng)}
+          onMapClick={({ lat, lng }) => void dropPin(lat, lng)}
+          zoom={16}
           minHeight="100%"
           testId={`map-${testIdPrefix}`}
         />

@@ -26,6 +26,7 @@ import ContactPage from "@/pages/contact";
 import LegalPage from "@/pages/legal";
 import DashboardPage from "@/pages/dashboard";
 import NewBookingPage from "@/pages/bookings/new";
+import BookingCameraPage from "@/pages/bookings/camera";
 import ShipmentsPage from "@/pages/shipments";
 import ShipmentLabelPage from "@/pages/shipments/label";
 import ShipmentInvoicePage from "@/pages/shipments/invoice";
@@ -217,6 +218,7 @@ function Router() {
       <Route path="/track" component={TrackPage} />
       <Route path="/track/:ref" component={TrackPage} />
       <Route path="/quote/:token" component={QuoteAcceptPage} />
+      <Route path="/bookings/camera/:draftId" component={BookingCameraPage} />
       <Route path="/s/:storeId" component={StoreCustomerOrderPage} />
       <Route path="/international-courier" component={InternationalCourierPage} />
       <Route path="/domestic-courier" component={DomesticCourierPage} />

@@ -187,6 +187,12 @@ import {
 import { loginOrRegisterCustomerWithGoogle } from "./customer-google";
 import { assignPickupJob, ensurePickupTables } from "./pickup-dispatch";
 import { registerPickupRoutes } from "./pickup-routes";
+import {
+  appendCameraDraftPhoto,
+  createCameraDraft,
+  getCameraDraft,
+  verifyCameraDraftToken,
+} from "./booking-camera-draft";
 
 const SUPER_ADMIN_EMAIL = (
   process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
@@ -995,6 +1001,72 @@ export async function registerRoutes(
     },
   );
 
+  app.post("/api/booking-camera-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const draft = await createCameraDraft(officeId, req.user.id);
+      res.json(draft);
+    } catch (error) {
+      console.error("Error creating booking camera draft:", error);
+      res.status(500).json({ message: "Could not start the package camera session." });
+    }
+  });
+
+  app.get("/api/public/booking-camera/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      if (!verifyCameraDraftToken(token, id)) {
+        return res.status(401).json({ message: "This camera link is invalid or expired." });
+      }
+      const draft = await getCameraDraft(id);
+      if (!draft) {
+        return res.status(410).json({ message: "This camera session has expired. Open New Booking again." });
+      }
+      res.json({ id: draft.id, photos: draft.photos });
+    } catch (error) {
+      console.error("Error reading booking camera draft:", error);
+      res.status(500).json({ message: "Could not load package photos." });
+    }
+  });
+
+  app.post("/api/public/booking-camera/:id/photos", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      if (!verifyCameraDraftToken(token, id)) {
+        return res.status(401).json({ message: "This camera link is invalid or expired." });
+      }
+      const imageBase64 = typeof req.body?.imageBase64 === "string" ? req.body.imageBase64 : "";
+      const match = /^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i.exec(imageBase64);
+      if (!match) {
+        return res.status(400).json({ message: "A JPEG or PNG photo is required." });
+      }
+      const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+      const buffer = Buffer.from(match[2], "base64");
+      if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+        return res.status(400).json({ message: "Photo must be under 10 MB." });
+      }
+      const fileId = randomUUID();
+      const ext = uploadExtensionForContentType(contentType) || ".jpg";
+      const filename = `${fileId}${ext}`;
+      const filePath = path.join(uploadDir, filename);
+      await fs.promises.writeFile(filePath, buffer);
+      const objectPath = `/objects/${filename}`;
+      const photos = await appendCameraDraftPhoto(id, objectPath);
+      res.json({ photos, objectPath });
+    } catch (error) {
+      const status =
+        typeof (error as { status?: number })?.status === "number"
+          ? (error as { status: number }).status
+          : 500;
+      if (status >= 500) console.error("Error saving booking camera photo:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Could not save the package photo.",
+      });
+    }
+  });
+
   storage.backfillPublicSlugs().catch((err) =>
     console.error("Failed to backfill public slugs:", err)
   );
@@ -1032,6 +1104,35 @@ export async function registerRoutes(
       lng: data.pickupLng != null && data.pickupLng !== "" ? parseFloat(String(data.pickupLng)) : null,
     });
     return branch?.id;
+  }
+
+  function readRequestedHubBranchId(body: unknown): string | undefined {
+    if (!body || typeof body !== "object") return undefined;
+    const rec = body as Record<string, unknown>;
+    const raw = rec.hubBranchId ?? rec.hub;
+    if (typeof raw !== "string") return undefined;
+    const id = raw.trim();
+    if (!id || id.length > 80) return undefined;
+    return id;
+  }
+
+  async function resolveLockedHubForOffice(
+    officeId: string,
+    requestedId: string | undefined,
+  ): Promise<{ id: string; name: string } | null> {
+    if (!requestedId) return null;
+    const branch = await storage.getBranch(requestedId);
+    if (!branch || branch.officeId !== officeId || branch.isActive === false) {
+      const error = new Error("This Hub counter is not available for booking.");
+      (error as Error & { status: number }).status = 400;
+      throw error;
+    }
+    return { id: branch.id, name: branch.name };
+  }
+
+  function httpStatusFromError(error: unknown, fallback = 500): number {
+    const status = (error as { status?: number })?.status;
+    return typeof status === "number" && status >= 400 && status < 600 ? status : fallback;
   }
 
   const staffMemberInputSchema = z.object({
@@ -4391,6 +4492,19 @@ export async function registerRoutes(
       if (!office) {
         return res.status(404).json({ message: "Office not found" });
       }
+      const hubQuery = typeof req.query.hub === "string" ? req.query.hub.trim() : "";
+      let hub: { id: string; name: string; city: string | null; address: string | null } | null = null;
+      if (hubQuery) {
+        const branch = await storage.getBranch(hubQuery);
+        if (branch && branch.officeId === office.id && branch.isActive !== false) {
+          hub = {
+            id: branch.id,
+            name: branch.name,
+            city: branch.city ?? null,
+            address: branch.address ?? null,
+          };
+        }
+      }
       // Return limited public info
       res.json({
         id: office.id,
@@ -4402,6 +4516,7 @@ export async function registerRoutes(
         pickupSettings: mergePickupSettings(
           (office as { pickupSettings?: unknown }).pickupSettings,
         ),
+        hub,
       });
     } catch (error) {
       console.error("Error fetching public office:", error);
@@ -4504,7 +4619,12 @@ export async function registerRoutes(
       }
 
       const validated = parseBookingRequestBody(req.body);
+      const lockedHub = await resolveLockedHubForOffice(
+        office.id,
+        readRequestedHubBranchId(req.body),
+      );
       if (
+        !lockedHub &&
         await respondIfOutsideServiceArea(res, office.id, {
           lat: (req.body as { pickupLat?: string | number | null }).pickupLat,
           lng: (req.body as { pickupLng?: string | number | null }).pickupLng,
@@ -4513,7 +4633,7 @@ export async function registerRoutes(
       ) {
         return;
       }
-      const branchId = await resolveBranchIdForBooking(office.id, validated);
+      const branchId = lockedHub?.id ?? await resolveBranchIdForBooking(office.id, validated);
       const phone = normalizeCustomerPhone(validated.senderPhone);
       const existingCustomer = phone.length >= 10
         ? await storage.getCustomerUserByPhone(office.id, phone)
@@ -4542,7 +4662,7 @@ export async function registerRoutes(
         customerUserId: customerUser?.id,
         referralCode: referral.referralCode,
         referredByPartnerId: referral.referredByPartnerId,
-        source: "website",
+        source: lockedHub ? "hub_qr" : "website",
         status: "pending",
       });
 
@@ -4575,8 +4695,11 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      console.error("Error creating booking request:", error);
-      res.status(500).json({ message: "Failed to submit booking request" });
+      const status = httpStatusFromError(error);
+      if (status >= 500) console.error("Error creating booking request:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to submit booking request",
+      });
     }
   });
 
@@ -5368,7 +5491,12 @@ export async function registerRoutes(
         pickupDate: req.body.pickupDate || null,
         pickupTimeSlot: req.body.pickupTimeSlot || null,
       };
+      const lockedHub = await resolveLockedHubForOffice(
+        req.customerUser.officeId,
+        readRequestedHubBranchId(req.body),
+      );
       if (
+        !lockedHub &&
         await respondIfOutsideServiceArea(res, req.customerUser.officeId, {
           lat: pickupData.pickupLat,
           lng: pickupData.pickupLng,
@@ -5378,13 +5506,14 @@ export async function registerRoutes(
         return;
       }
 
-      const branchId = await resolveBranchIdForBooking(req.customerUser.officeId, {
+      const branchId = lockedHub?.id ?? await resolveBranchIdForBooking(req.customerUser.officeId, {
         ...validated,
         ...pickupData,
       });
       const clientSource = String(req.headers["x-xgoo-client"] || "");
-      const source =
-        clientSource === "mobile_android" || clientSource === "mobile_ios"
+      const source = lockedHub
+        ? "hub_qr"
+        : clientSource === "mobile_android" || clientSource === "mobile_ios"
           ? clientSource
           : "customer_portal";
 
@@ -5441,8 +5570,11 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      console.error("Error creating customer booking:", error);
-      res.status(500).json({ message: "Failed to submit booking" });
+      const status = httpStatusFromError(error);
+      if (status >= 500) console.error("Error creating customer booking:", error);
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Failed to submit booking",
+      });
     }
   });
 

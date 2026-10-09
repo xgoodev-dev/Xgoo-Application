@@ -16,7 +16,7 @@ export const XGOO_MODULES = {
     id: "go",
     name: "XGoo Go",
     shortName: "Go",
-    meaning: "Send something and go",
+    meaning: "Book. Track. Repeat.",
     path: "/book?mode=login&account=go",
   },
   pro: {

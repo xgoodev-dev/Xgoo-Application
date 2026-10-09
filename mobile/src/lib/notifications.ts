@@ -15,20 +15,28 @@ export function isExpoGoClient() {
   );
 }
 
+function isStandaloneNativeApp() {
+  return (
+    Constants.executionEnvironment === ExecutionEnvironment.Standalone ||
+    Constants.executionEnvironment === ExecutionEnvironment.Bare ||
+    Constants.appOwnership === 'standalone'
+  );
+}
+
 export function canUseRemotePush() {
   return (
     Platform.OS !== 'web' &&
     Device.isDevice &&
-    !isExpoGoClient()
+    isStandaloneNativeApp()
   );
 }
 
 function getNotifications(): NotificationsModule | null {
   if (notificationsModule !== undefined) return notificationsModule;
 
-  // Android Expo Go: importing expo-notifications runs auto push registration
-  // that throws (remote push removed in SDK 53+). Skip the module entirely.
-  if (isExpoGoClient() && Platform.OS === 'android') {
+  // Expo Go / unknown runtimes: importing expo-notifications can kill the
+  // Android process. Only load it in a real standalone/dev-client build.
+  if (Platform.OS === 'web' || !isStandaloneNativeApp()) {
     notificationsModule = null;
     return null;
   }

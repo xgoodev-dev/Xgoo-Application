@@ -44,6 +44,17 @@ const DEFAULT_INDIA_CENTER: MapCoordinate = { lat: 20.5937, lng: 78.9629 };
 const PICKUP_COLOR = "#FF4907";
 const DESTINATION_COLOR = "#16A34A";
 const ROUTE_STROKE_COLOR = "#FF4907";
+const STREET_ZOOM = 16;
+
+function focusMapOn(
+  map: google.maps.Map,
+  pos: { lat: number; lng: number },
+  zoomLevel = STREET_ZOOM,
+) {
+  map.panTo(pos);
+  const current = map.getZoom() ?? 0;
+  if (current < 14) map.setZoom(zoomLevel);
+}
 
 export function GoogleMapCanvas({
   center,
@@ -185,8 +196,8 @@ export function GoogleMapCanvas({
       singleMarkerRef.current = m;
     }
 
-    map.panTo(pos);
-  }, [marker?.lat, marker?.lng, markerColor, markerLetter, markerDraggable, onMarkerDragEnd]);
+    focusMapOn(map, pos, zoom);
+  }, [marker?.lat, marker?.lng, markerColor, markerLetter, markerDraggable, onMarkerDragEnd, zoom]);
 
   // Update Dual Markers (Pickup & Destination)
   useEffect(() => {
@@ -239,11 +250,11 @@ export function GoogleMapCanvas({
       bounds.extend({ lat: destination.lat, lng: destination.lng });
       map.fitBounds(bounds, 50);
     } else if (pickup) {
-      map.panTo({ lat: pickup.lat, lng: pickup.lng });
+      focusMapOn(map, { lat: pickup.lat, lng: pickup.lng }, zoom);
     } else if (destination) {
-      map.panTo({ lat: destination.lat, lng: destination.lng });
+      focusMapOn(map, { lat: destination.lat, lng: destination.lng }, zoom);
     }
-  }, [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, onMarkerDragEnd]);
+  }, [pickup?.lat, pickup?.lng, destination?.lat, destination?.lng, onMarkerDragEnd, zoom]);
 
   // Update Route Polyline
   useEffect(() => {
@@ -350,7 +361,7 @@ export function GoogleMapCanvas({
       map.fitBounds(bounds, 50);
     } else if (marker || pickup || circleCenter || center) {
       const p = marker || pickup || circleCenter || center!;
-      map.panTo({ lat: p.lat, lng: p.lng });
+      focusMapOn(map, { lat: p.lat, lng: p.lng }, zoom);
     }
   }, [marker, pickup, destination, circleCenter, center]);
 

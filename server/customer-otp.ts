@@ -14,6 +14,7 @@ import {
   configForMessaging,
   sendWhatsAppTemplateMessage,
 } from "./integrations/whatsapp";
+import { ensureReferralSchema } from "./referral";
 import { storage } from "./storage";
 
 export type CustomerOtpPurpose = "login" | "register";
@@ -128,6 +129,7 @@ export async function sendCustomerOtp(input: {
   purpose: CustomerOtpPurpose;
 }) {
   await ensureOtpTable();
+  await ensureReferralSchema();
   const phone = normalizeCustomerPhone(input.phone);
   if (phone.length < 10) {
     throw Object.assign(new Error("Enter a valid 10-digit mobile number."), { status: 400 });
@@ -265,6 +267,7 @@ export async function consumeCustomerOtp(input: {
   otp: string;
 }) {
   await ensureOtpTable();
+  await ensureReferralSchema();
   const phone = normalizeCustomerPhone(input.phone);
   const otp = input.otp.replace(/\D/g, "");
   if (otp.length !== 6) {

@@ -1,9 +1,13 @@
 import { useFieldArray, type UseFormReturn } from "react-hook-form";
 import type { ReactNode } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Plus, Trash2, Truck } from "lucide-react";
+import { Link } from "wouter";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BOOKING_METHOD_LABELS, resolveBookingMethod } from "@shared/booking-engine";
+import type { CourierPartner } from "@shared/schema";
 import {
   FormControl,
   FormField,
@@ -62,6 +66,119 @@ function ScopeFields({
       return exhaustive;
     }
   }
+}
+
+export function HubBookingPartnerGate({
+  partners,
+  selectedPartnerId,
+  loading,
+  onSelect,
+  onContinue,
+  onCancel,
+}: {
+  partners: CourierPartner[] | undefined;
+  selectedPartnerId: string;
+  loading?: boolean;
+  onSelect: (partnerId: string) => void;
+  onContinue: () => void;
+  onCancel: () => void;
+}) {
+  const activePartners = (partners || []).filter((partner) => partner.isActive !== false);
+  const canContinue = Boolean(selectedPartnerId);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={onCancel} data-testid="button-back">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold">New Booking</h1>
+          <p className="text-muted-foreground">Select a courier partner before you fill this booking</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Courier partner</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Every new booking starts here. Choose who will move this shipment, then continue to the form.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading courier partners…
+            </div>
+          ) : activePartners.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">Add a courier partner before Hub can book.</p>
+              <Button asChild>
+                <Link href="/partners" data-testid="link-add-partners">
+                  Open Partners
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {activePartners.map((partner) => {
+                const selected = partner.id === selectedPartnerId;
+                const method = resolveBookingMethod(partner);
+                return (
+                  <button
+                    key={partner.id}
+                    type="button"
+                    onClick={() => onSelect(partner.id)}
+                    onDoubleClick={() => {
+                      onSelect(partner.id);
+                      onContinue();
+                    }}
+                    data-testid={`button-select-partner-${partner.code}`}
+                    className={`rounded-xl border p-4 text-left transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/5 ring-2 ring-primary"
+                        : "border-border hover:border-primary/50 hover:bg-muted/40"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{partner.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{partner.code}</p>
+                      </div>
+                      {selected ? (
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      ) : (
+                        <Truck className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="mt-3 text-[10px]">
+                      {BOOKING_METHOD_LABELS[method]}
+                    </Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel-partner-gate">
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!canContinue}
+              onClick={onContinue}
+              data-testid="button-continue-booking"
+            >
+              Continue to booking
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export function HubBookingScopeToggle({

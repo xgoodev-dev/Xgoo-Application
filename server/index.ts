@@ -5,6 +5,7 @@ import { serveStatic } from "./static";
 import { registerSeoStaticRoutes } from "./seo-static";
 import { createServer } from "http";
 import { pool } from "./db";
+import { ensureReferralSchema } from "./referral";
 
 // export app so that api/index.ts can consume it for Vercel Serverless Functions
 export const app = express();
@@ -24,7 +25,7 @@ app.use("/api", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-pickup-token, x-autofill-token",
+    "Content-Type, Authorization, x-customer-token, x-pickup-token, x-autofill-token",
   );
   res.header(
     "Access-Control-Allow-Methods",
@@ -98,6 +99,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    await ensureReferralSchema();
+  } catch (error) {
+    console.error("Referral schema ensure failed:", error);
+  }
   await registerRoutes(httpServer, app);
   registerSeoStaticRoutes(app);
 

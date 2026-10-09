@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   bookIcon: {
     width: 48,
     height: 48,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -23,

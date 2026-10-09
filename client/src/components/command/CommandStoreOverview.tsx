@@ -8,8 +8,10 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { HubCounterQrCard } from "@/components/hubs/HubCounterQrCard";
 import { HubServiceRangeInput } from "@/components/hubs/HubServiceAreaSettings";
 import { parseServiceRadiusKm } from "@shared/service-coverage";
+import type { Office } from "@shared/schema";
 
 export type CommandStoreSummary = {
   id: string;
@@ -44,6 +46,9 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<{ stores: CommandStoreSummary[] }>({
     queryKey: ["/api/command/stores"],
+  });
+  const { data: office } = useQuery<Office>({
+    queryKey: ["/api/office"],
   });
 
   const toggleAccess = useMutation({
@@ -131,6 +136,14 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
                     <p className="text-xs text-muted-foreground">Go / Pro service range</p>
                     <HubServiceRangeInput branchId={store.id} value={store.serviceRadiusKm} />
                   </div>
+                </div>
+                <div className="mt-4 border-t pt-4">
+                  <HubCounterQrCard
+                    compact
+                    officeSlug={office?.publicSlug}
+                    branchId={store.id}
+                    hubName={store.name}
+                  />
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
                   <div>

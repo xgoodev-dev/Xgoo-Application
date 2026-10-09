@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   section: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1, marginTop: 24, marginBottom: 8 },
   options: { gap: 9 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13 },
-  optionIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  optionIcon: { width: 40, height: 40, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   optionTitle: { fontSize: 14, fontWeight: '700' },
   optionSubtitle: { fontSize: 10, marginTop: 2 },
   faq: { paddingVertical: 4 },

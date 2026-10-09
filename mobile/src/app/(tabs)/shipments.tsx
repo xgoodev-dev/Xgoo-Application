@@ -120,7 +120,7 @@ export default function ShipmentsScreen() {
 const styles = StyleSheet.create({
   search: {
     height: 48,
-    borderRadius: 14,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 14,
     flexDirection: 'row',

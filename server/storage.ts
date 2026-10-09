@@ -106,6 +106,11 @@ function ensureCustomerIntakeColumns() {
   return customerIntakeColumnsReady;
 }
 
+async function ensureCustomerUserSchema() {
+  await ensureCustomerAccountTypeColumn();
+  await ensureReferralSchema();
+}
+
 export function ensureCustomerAccountTypeColumn() {
   if (!customerAccountTypeReady) {
     customerAccountTypeReady = db.execute(sql`
@@ -1474,7 +1479,7 @@ export class DatabaseStorage implements IStorage {
 
   // Customer User operations
   async getCustomerUserByPhone(officeId: string, phone: string, accountType?: string): Promise<CustomerUser | undefined> {
-    await ensureCustomerAccountTypeColumn();
+    await ensureCustomerUserSchema();
     const digits = phone.replace(/\D/g, "");
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
     const [user] = await db.select().from(customerUsers).where(
@@ -1492,7 +1497,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerUserByEmail(officeId: string, email: string, accountType?: string): Promise<CustomerUser | undefined> {
-    await ensureCustomerAccountTypeColumn();
+    await ensureCustomerUserSchema();
     const [user] = await db.select().from(customerUsers).where(
       and(
         eq(customerUsers.officeId, officeId),
@@ -1504,7 +1509,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerUserByGoogleId(officeId: string, googleId: string, accountType?: string): Promise<CustomerUser | undefined> {
-    await ensureCustomerAccountTypeColumn();
+    await ensureCustomerUserSchema();
     const [user] = await db.select().from(customerUsers).where(
       and(
         eq(customerUsers.officeId, officeId),
@@ -1516,18 +1521,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerUser(id: string): Promise<CustomerUser | undefined> {
-    await ensureCustomerAccountTypeColumn();
+    await ensureCustomerUserSchema();
     const [user] = await db.select().from(customerUsers).where(eq(customerUsers.id, id));
     return user;
   }
 
   async createCustomerUser(user: InsertCustomerUser): Promise<CustomerUser> {
-    await ensureCustomerAccountTypeColumn();
+    await ensureCustomerUserSchema();
     const [created] = await db.insert(customerUsers).values(user).returning();
     return created;
   }
 
   async updateCustomerUser(id: string, data: Partial<InsertCustomerUser>): Promise<CustomerUser | undefined> {
+    await ensureCustomerUserSchema();
     const [updated] = await db
       .update(customerUsers)
       .set({ ...data, updatedAt: new Date() })

@@ -1,34 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { router, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { RootErrorBoundary } from '@/components/root-error-boundary';
 import { AuthProvider } from '@/lib/auth';
-import {
-  addNotificationResponseReceivedListener,
-  ensureNotificationHandler,
-} from '@/lib/notifications';
 import { AppThemeProvider, useAppTheme } from '@/lib/theme';
 
 function AppNavigator() {
   const { isDark, colors } = useAppTheme();
-  useEffect(() => {
-    try {
-      ensureNotificationHandler();
-      const subscription = addNotificationResponseReceivedListener((response) => {
-        const shipmentId = response.notification.request.content.data?.shipmentId;
-        if (typeof shipmentId === 'string' && shipmentId) {
-          router.push(`/shipment/${shipmentId}`);
-        } else {
-          router.push('/notifications');
-        }
-      });
-      return () => subscription.remove();
-    } catch (error) {
-      console.warn('Notification listeners skipped', error);
-      return undefined;
-    }
-  }, []);
 
   return (
     <>

@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   iconButton: {
     width: 39,
     height: 39,
-    borderRadius: 13,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     top: -5,
     minWidth: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: 0,
     paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   quickIcon: {
     width: 58,
     height: 58,
-    borderRadius: 29,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

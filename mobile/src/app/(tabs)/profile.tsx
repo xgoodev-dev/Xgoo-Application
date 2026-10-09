@@ -155,7 +155,7 @@ function MenuRow({
 
 const styles = StyleSheet.create({
   profile: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  avatar: { width: 64, height: 64, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 64, height: 64, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' },
   profileCopy: { flex: 1 },
   name: { fontSize: 19, fontWeight: '800' },
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   section: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginTop: 24, marginBottom: 8 },
   menu: { paddingVertical: 3, paddingHorizontal: 14 },
   menuRow: { minHeight: 59, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  menuIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  menuIcon: { width: 36, height: 36, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   menuLabel: { flex: 1 },
   menuTitle: { fontSize: 14, fontWeight: '600' },
   menuHint: { fontSize: 10, marginTop: 2 },

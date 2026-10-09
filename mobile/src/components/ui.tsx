@@ -45,7 +45,7 @@ export function LogoMark({ size = 38 }: { size?: number }) {
       source={require('../../assets/images/xgoo-logo.png')}
       accessibilityLabel={XGOO_GO.name}
       resizeMode="contain"
-      style={{ width: size, height: size, borderRadius: Math.max(6, size * 0.2) }}
+      style={{ width: size, height: size, borderRadius: 0 }}
     />
   );
 }
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   pageSubtitle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
+    borderRadius: 0,
     padding: 16,
     shadowOpacity: 0.06,
     shadowRadius: 12,
@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.78, transform: [{ scale: 0.995 }] },
   button: {
     minHeight: 50,
-    borderRadius: 14,
+    borderRadius: 0,
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600' },
   input: {
     minHeight: 50,
-    borderRadius: 13,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 14,
     fontSize: 15,
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   pill: {
     minHeight: 34,
     justifyContent: 'center',
-    borderRadius: 999,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 13,
   },
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: 64,
     height: 64,
-    borderRadius: 22,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,

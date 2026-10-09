@@ -44,6 +44,7 @@ type BookShipmentWorkspaceProps = {
   confirmDisabled?: boolean;
   isSubmitting?: boolean;
   title?: string;
+  subtitle?: string;
 };
 
 function shortLabel(point: ShipmentMapPoint | null, fallback: string) {
@@ -71,6 +72,7 @@ export function BookShipmentWorkspace({
   confirmDisabled,
   isSubmitting,
   title = "Book a shipment",
+  subtitle,
 }: BookShipmentWorkspaceProps) {
   const activePin: ActivePin = step === "destination" ? "destination" : "pickup";
   const [query, setQuery] = useState("");
@@ -155,6 +157,11 @@ export function BookShipmentWorkspace({
             <h1 className="text-lg font-bold tracking-tight text-zinc-900" data-testid="text-booking-title">
               {title}
             </h1>
+            {subtitle ? (
+              <p className="mt-0.5 text-xs font-medium text-[#FF4907]" data-testid="text-booking-hub">
+                {subtitle}
+              </p>
+            ) : null}
             <p className="mt-0.5 text-xs text-zinc-500">
               Step {stepIndex + 1} of {STEPS.length} — {STEPS[stepIndex]?.label}
             </p>

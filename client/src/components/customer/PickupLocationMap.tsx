@@ -55,16 +55,27 @@ export function PickupLocationMap({
   const detectLocation = useCallback(() => {
     if (!navigator.geolocation) return;
     setIsLocating(true);
+    const apply = async (pos: GeolocationPosition) => {
+      const { latitude, longitude } = pos.coords;
+      setSelectedLat(latitude);
+      setSelectedLng(longitude);
+      await reverseGeocode(latitude, longitude);
+      setIsLocating(false);
+    };
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setSelectedLat(latitude);
-        setSelectedLng(longitude);
-        await reverseGeocode(latitude, longitude);
+      (pos) => void apply(pos),
+      (error) => {
+        if (error.code === error.TIMEOUT) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => void apply(pos),
+            () => setIsLocating(false),
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60_000 },
+          );
+          return;
+        }
         setIsLocating(false);
       },
-      () => setIsLocating(false),
-      { enableHighAccuracy: true, timeout: 15000 },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   }, [reverseGeocode]);
 

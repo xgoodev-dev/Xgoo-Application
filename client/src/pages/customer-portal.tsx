@@ -39,6 +39,7 @@ import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
 import { XGOO_BRAND, XGOO_MODULES, XGOO_OPS_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { captureReferralFromSearch, getStoredReferralCode } from "@/lib/referral";
+import { parseHubIdFromSearch } from "@/lib/hub-qr";
 import { SEO_PAGES } from "@/lib/seo";
 import { trackMetaLead } from "@/lib/meta-pixel";
 import { Button } from "@/components/ui/button";
@@ -129,6 +130,12 @@ interface OfficeInfo {
   state?: string;
   phone?: string;
   email?: string;
+  hub?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    address?: string | null;
+  } | null;
 }
 
 interface PartnerInfo {
@@ -744,7 +751,7 @@ function LoginForm({
       title={`Sign in to ${kind === "individual" ? XGOO_MODULES.go.name : XGOO_MODULES.pro.name}`}
       subtitle={
         kind === "individual"
-          ? `${XGOO_MODULES.go.meaning}. Sign in with your mobile number and OTP.`
+          ? `${XGOO_MODULES.go.meaning} Sign in with your mobile number and OTP.`
           : `${XGOO_MODULES.pro.meaning}. Sign in with Google, email, or phone.`
       }
       officeName={office.name}
@@ -977,7 +984,7 @@ function RegisterForm({
       title={`Create ${kind === "individual" ? XGOO_MODULES.go.name : XGOO_MODULES.pro.name} account`}
       subtitle={
         kind === "individual"
-          ? `${XGOO_MODULES.go.meaning}. Create an account with your mobile number and OTP, or book a pickup first.`
+          ? `${XGOO_MODULES.go.meaning} Create an account with your mobile number and OTP, or book a pickup first.`
           : `${XGOO_MODULES.pro.meaning}. Add your business, store, GST, and category. ${XGOO_MODULES.command.name} verifies these before Pro opens.`
       }
       officeName={office.name}
@@ -1317,6 +1324,8 @@ function BookingTab({
   guestMode,
   token,
   user,
+  hubName,
+  hubBranchId,
   onGuestBookingSaved,
 }: {
   slug: string;
@@ -1324,6 +1333,8 @@ function BookingTab({
   guestMode?: boolean;
   token?: string;
   user?: CustomerUserInfo;
+  hubName?: string | null;
+  hubBranchId?: string | null;
   onGuestBookingSaved?: () => void;
 }) {
   const isGuest = !!(guestMode && !token);
@@ -1925,6 +1936,7 @@ function BookingTab({
         pickupDate: data.pickupDate,
         pickupTimeSlot: data.pickupTimeSlot,
         referralCode: getStoredReferralCode(),
+        hubBranchId: hubBranchId || undefined,
       };
       if (isGuest) {
         const res = await fetch(`/api/public/office/${slug}/booking-request`, {
@@ -2242,6 +2254,14 @@ function BookingTab({
         <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
 
         <BookShipmentWorkspace
+          title={hubName ? `Book at ${hubName}` : hubBranchId ? "Book at this Hub" : "Book a shipment"}
+          subtitle={
+            hubName
+              ? `This booking goes to ${hubName}. Fill From and To to continue.`
+              : hubBranchId
+                ? "This booking stays with the Hub you scanned. Fill From and To to continue."
+                : undefined
+          }
           step={bookStep}
           onStepChange={(s) => {
             if (bookStep === "review" && s !== "review") setReturnToReview(true);
@@ -3654,6 +3674,15 @@ export default function CustomerPortalPage() {
       setGuestMode(false);
       return;
     }
+    const hubId =
+      parseHubIdFromSearch(search) ||
+      parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+    if (hubId) {
+      localStorage.setItem(guestModeStorageKey(slug), "1");
+      setGuestMode(true);
+      setActiveTab("book");
+      return;
+    }
     setGuestMode(localStorage.getItem(guestModeStorageKey(slug)) === "1");
   }, [slug, search]);
 
@@ -3702,6 +3731,15 @@ export default function CustomerPortalPage() {
       goLanded.current = false;
       return;
     }
+    const hubId =
+      parseHubIdFromSearch(search) ||
+      parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+    if (hubId) {
+      businessLanded.current = true;
+      goLanded.current = true;
+      if (activeTab !== "book") setActiveTab("book");
+      return;
+    }
     if (isBusiness) {
       if (!businessLanded.current) {
         businessLanded.current = true;
@@ -3717,7 +3755,7 @@ export default function CustomerPortalPage() {
       goLanded.current = true;
       setActiveTab("home");
     }
-  }, [auth.isAuthenticated, isBusiness, activeTab]);
+  }, [auth.isAuthenticated, isBusiness, activeTab, search]);
 
   // Prevent document scroll while the portal shell is open (map/form scroll internally).
   useEffect(() => {
@@ -3742,8 +3780,12 @@ export default function CustomerPortalPage() {
 
     const loadOffice = async () => {
       try {
+        const hubId =
+          parseHubIdFromSearch(search) ||
+          parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+        const hubQuery = hubId ? `?hub=${encodeURIComponent(hubId)}` : "";
         if (routeSlug) {
-          const r = await fetchJsonWithRetry(`/api/public/office/${routeSlug}`);
+          const r = await fetchJsonWithRetry(`/api/public/office/${routeSlug}${hubQuery}`);
           if (!r.ok) throw new Error();
           const data = await r.json();
           if (cancelled) return;
@@ -3754,7 +3796,7 @@ export default function CustomerPortalPage() {
 
         const defaultSlug = import.meta.env.VITE_DEFAULT_OFFICE_SLUG?.trim();
         if (defaultSlug) {
-          const r = await fetchJsonWithRetry(`/api/public/office/${encodeURIComponent(defaultSlug)}`);
+          const r = await fetchJsonWithRetry(`/api/public/office/${encodeURIComponent(defaultSlug)}${hubQuery}`);
           if (r.ok) {
             const data = await r.json();
             if (cancelled) return;
@@ -3788,7 +3830,7 @@ export default function CustomerPortalPage() {
     return () => {
       cancelled = true;
     };
-  }, [routeSlug]);
+  }, [routeSlug, search]);
 
   useEffect(() => {
     if (!slug || !office) return;
@@ -3879,11 +3921,15 @@ export default function CustomerPortalPage() {
           }}
           userName={auth.isAuthenticated ? auth.user?.name : "Guest"}
           userSubtitle={
-            guestMode && !auth.isAuthenticated
-              ? "Guest booking"
-              : isBusiness
-                ? XGOO_MODULES.pro.name
-                : XGOO_MODULES.go.name
+            office.hub?.name
+              ? office.hub.name
+              : parseHubIdFromSearch(search)
+                ? `${XGOO_MODULES.hub.shortName} counter`
+                : guestMode && !auth.isAuthenticated
+                  ? "Guest booking"
+                  : isBusiness
+                    ? XGOO_MODULES.pro.name
+                    : XGOO_MODULES.go.name
           }
           isGuest={guestMode && !auth.isAuthenticated}
           showHome={auth.isAuthenticated}
@@ -4110,6 +4156,8 @@ export default function CustomerPortalPage() {
                   slug={slug}
                   partners={partners}
                   guestMode
+                  hubName={office.hub?.name}
+                  hubBranchId={office.hub?.id || parseHubIdFromSearch(search)}
                   onGuestBookingSaved={() => setGuestBookingsTick((t) => t + 1)}
                 />
               ) : (
@@ -4118,6 +4166,8 @@ export default function CustomerPortalPage() {
                   partners={partners}
                   token={auth.token!}
                   user={auth.user!}
+                  hubName={office.hub?.name}
+                  hubBranchId={office.hub?.id || parseHubIdFromSearch(search)}
                 />
               )}
             </div>

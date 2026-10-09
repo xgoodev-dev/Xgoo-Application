@@ -2,16 +2,21 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { HubCounterQrCard } from "@/components/hubs/HubCounterQrCard";
 import { HubServiceAreaSettings } from "@/components/hubs/HubServiceAreaSettings";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
-import type { BranchWithServiceAreas } from "@shared/schema";
+import type { BranchWithServiceAreas, Office } from "@shared/schema";
 
 export default function HubSettingsPage() {
   const [, setLocation] = useLocation();
   const { isCommandWorkspace, isLoading, branchId } = useStaffAccess();
   const { data: branches, isLoading: branchesLoading } = useQuery<BranchWithServiceAreas[]>({
     queryKey: ["/api/branches"],
+    enabled: !isLoading && !isCommandWorkspace,
+  });
+  const { data: office } = useQuery<Office>({
+    queryKey: ["/api/office"],
     enabled: !isLoading && !isCommandWorkspace,
   });
 
@@ -31,8 +36,8 @@ export default function HubSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">{XGOO_MODULES.hub.name} settings</h1>
         <p className="text-sm text-muted-foreground">
-          Set this Hub’s map location and the kilometre range for {XGOO_MODULES.go.name} and{" "}
-          {XGOO_MODULES.pro.name}.
+          Set this Hub’s map location, kilometre range, and the counter QR customers scan to book
+          From and To.
         </p>
       </div>
       {branchesLoading ? (
@@ -41,7 +46,14 @@ export default function HubSettingsPage() {
           Loading Hub location…
         </div>
       ) : hub ? (
-        <HubServiceAreaSettings branch={hub} />
+        <>
+          <HubCounterQrCard
+            officeSlug={office?.publicSlug}
+            branchId={hub.id}
+            hubName={hub.name}
+          />
+          <HubServiceAreaSettings branch={hub} />
+        </>
       ) : (
         <p className="text-sm text-muted-foreground">No Hub location is set up yet.</p>
       )}

@@ -14,10 +14,8 @@ import {
   Loader2,
   Sparkles,
   Camera,
-  Upload,
   Wand2,
   Bot,
-  X,
   Mic,
   ScanLine,
   Plus,
@@ -55,10 +53,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { AddressMapField } from "@/components/bookings/AddressMapField";
+import { PackagePhotoCapture } from "@/components/bookings/PackagePhotoCapture";
 import {
   HubBookingAddressExtras,
   HubBookingCustomsSection,
   HubBookingOrderSection,
+  HubBookingPartnerGate,
   HubBookingPaymentSection,
   HubBookingProductSection,
   HubBookingScopeToggle,
@@ -144,7 +144,6 @@ export default function NewBookingPage() {
   const [sectionAiText, setSectionAiText] = useState<Record<string, string>>({ sender: "", receiver: "", package: "", service: "" });
   const [sectionAiLoading, setSectionAiLoading] = useState<Record<string, boolean>>({ sender: false, receiver: false, package: false, service: false });
   const [isMeasuring, setIsMeasuring] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
   const [isScanningPhotos, setIsScanningPhotos] = useState(false);
   const [bookingView, setBookingView] = useState<"form" | "table">("form");
@@ -185,17 +184,17 @@ export default function NewBookingPage() {
     "declaredValue",
   ]);
 
+  const [partnerConfirmed, setPartnerConfirmed] = useState(false);
   const [recordingSection, setRecordingSection] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const photoUploadRef = useRef<HTMLInputElement>(null);
   const scanPhotosInputRef = useRef<HTMLInputElement>(null);
 
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
 
-  const { data: partners } = useQuery<CourierPartner[]>({
+  const { data: partners, isLoading: partnersLoading } = useQuery<CourierPartner[]>({
     queryKey: ["/api/partners"],
   });
   const { data: delhiveryStatus } = useQuery<DelhiveryStatus>({
@@ -900,52 +899,6 @@ export default function NewBookingPage() {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const remaining = 3 - packagePhotos.length;
-    if (remaining <= 0) {
-      toast({ title: "Limit Reached", description: "Maximum 3 photos allowed.", variant: "destructive" });
-      return;
-    }
-    const filesToUpload = Array.from(files).slice(0, remaining);
-    setIsUploading(true);
-    try {
-      const newUrls: string[] = [];
-      for (const file of filesToUpload) {
-        const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
-          name: file.name,
-          size: file.size,
-          contentType: file.type,
-        });
-        const { uploadURL, objectPath } = await urlRes.json();
-        const putRes = await fetch(uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-        if (!putRes.ok) throw new Error("Failed to upload photo");
-        const putData = await putRes.json();
-        newUrls.push(putData.objectPath || objectPath);
-      }
-      const updated = [...packagePhotos, ...newUrls];
-      setPackagePhotos(updated);
-      form.setValue("packagePhotoUrls", updated);
-      toast({ title: "Photos Uploaded", description: `${newUrls.length} photo(s) uploaded successfully.` });
-    } catch (error: any) {
-      toast({ title: "Upload Failed", description: error.message || "Could not upload photos.", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-      if (photoUploadRef.current) photoUploadRef.current.value = "";
-    }
-  };
-
-  const removePhoto = (index: number) => {
-    const updated = packagePhotos.filter((_, i) => i !== index);
-    setPackagePhotos(updated);
-    form.setValue("packagePhotoUrls", updated);
-  };
-
   const handleAiRecommend = async () => {
     const senderCity = form.getValues("senderCity");
     const receiverCity = form.getValues("receiverCity");
@@ -1139,6 +1092,29 @@ export default function NewBookingPage() {
     }
   };
 
+  if (!partnerConfirmed) {
+    return (
+      <HubBookingPartnerGate
+        partners={partners}
+        selectedPartnerId={selectedPartnerId}
+        loading={partnersLoading}
+        onSelect={(partnerId) => form.setValue("courierPartnerId", partnerId, { shouldValidate: true })}
+        onContinue={() => {
+          if (!form.getValues("courierPartnerId")) {
+            toast({
+              title: "Select a courier partner",
+              description: "Choose who will move this shipment, then continue.",
+              variant: "destructive",
+            });
+            return;
+          }
+          setPartnerConfirmed(true);
+        }}
+        onCancel={() => setLocation("/shipments")}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -1150,6 +1126,21 @@ export default function NewBookingPage() {
           <p className="text-muted-foreground">Create a domestic or international shipment</p>
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {selectedPartner ? (
+            <Badge variant="secondary" className="h-8 gap-1.5 px-3" data-testid="badge-selected-partner">
+              <Truck className="h-3.5 w-3.5" />
+              {selectedPartner.name} ({selectedPartner.code})
+            </Badge>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setPartnerConfirmed(false)}
+            data-testid="button-change-partner"
+          >
+            Change partner
+          </Button>
           <HubBookingScopeToggle value={shipmentType} onChange={applyShipmentScope} />
           <Button
             type="button"
@@ -1988,67 +1979,13 @@ export default function NewBookingPage() {
                   </Button>
                 </div>
 
-                <div className="border-t pt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Upload className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Package Photos</span>
-                    <span className="text-xs text-muted-foreground">({packagePhotos.length}/3)</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {packagePhotos.map((url, index) => (
-                      <div key={index} className="relative group">
-                        <div className="w-20 h-20 rounded-md border overflow-visible bg-muted flex items-center justify-center">
-                          <img
-                            src={url}
-                            alt={`Package photo ${index + 1}`}
-                            className="w-full h-full object-cover rounded-md"
-                            data-testid={`img-package-photo-${index}`}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon"
-                          className="absolute -top-2 -right-2 h-5 w-5 rounded-full"
-                          onClick={() => removePhoto(index)}
-                          data-testid={`button-remove-photo-${index}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                    {packagePhotos.length < 3 && (
-                      <>
-                        <input
-                          ref={photoUploadRef}
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={handlePhotoUpload}
-                          data-testid="input-photo-upload"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-20 h-20"
-                          onClick={() => photoUploadRef.current?.click()}
-                          disabled={isUploading}
-                          data-testid="button-upload-photo"
-                        >
-                          {isUploading ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                            <div className="flex flex-col items-center gap-1">
-                              <Upload className="h-4 w-4" />
-                              <span className="text-[10px]">Add</span>
-                            </div>
-                          )}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                <PackagePhotoCapture
+                  photos={packagePhotos}
+                  onChange={(next) => {
+                    setPackagePhotos(next);
+                    form.setValue("packagePhotoUrls", next, { shouldDirty: true });
+                  }}
+                />
 
                 <HubBookingWeightSummary
                   deadWeight={totalWeight}

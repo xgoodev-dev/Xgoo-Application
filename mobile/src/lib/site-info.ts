@@ -8,7 +8,7 @@ export const XGOO_GO = {
   id: 'go',
   name: 'XGoo Go',
   shortName: 'Go',
-  meaning: 'Send something and go',
+  meaning: 'Book. Track. Repeat.',
 } as const;
 
 export const XGOO_LEGAL_URLS = {

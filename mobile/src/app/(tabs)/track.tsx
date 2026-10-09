@@ -105,14 +105,14 @@ export default function TrackScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { borderWidth: 1, borderRadius: 24, padding: 22, alignItems: 'center' },
-  icon: { width: 68, height: 68, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  hero: { borderWidth: 1, borderRadius: 0, padding: 22, alignItems: 'center' },
+  icon: { width: 68, height: 68, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 20, fontWeight: '800', marginTop: 16 },
   heroCopy: { fontSize: 12, marginTop: 5, textAlign: 'center' },
   search: {
     width: '100%',
     height: 52,
-    borderRadius: 15,
+    borderRadius: 0,
     borderWidth: 1,
     marginTop: 20,
     paddingHorizontal: 14,

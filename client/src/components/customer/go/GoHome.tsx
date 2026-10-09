@@ -153,7 +153,7 @@ export function GoHome({
           <h1 className="text-2xl font-extrabold tracking-tight text-zinc-900">
             {firstName} 👋
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">{product.meaning}.</p>
+          <p className="mt-1 text-sm text-zinc-500">{product.meaning}</p>
         </div>
         <button
           type="button"

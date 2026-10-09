@@ -154,7 +154,7 @@ async function openBannerLink(linkUrl?: string | null) {
 const styles = StyleSheet.create({
   carousel: {
     height: BANNER_HEIGHT,
-    borderRadius: 18,
+    borderRadius: 0,
     overflow: 'hidden',
   },
   slide: {
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 10,
   },
-  dot: { height: 7, borderRadius: 999 },
+  dot: { height: 7, borderRadius: 0 },
   hero: {
     minHeight: BANNER_HEIGHT,
     padding: 20,
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   heroCircle: {
     width: 104,
     height: 104,
-    borderRadius: 52,
+    borderRadius: 0,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     top: 26,
     width: 37,
     height: 37,
-    borderRadius: 14,
+    borderRadius: 0,
     backgroundColor: '#1D1F23',
     alignItems: 'center',
     justifyContent: 'center',

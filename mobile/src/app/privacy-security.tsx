@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 23, fontWeight: '800' },
   subtitle: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   intro: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  icon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 46, height: 46, borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   cardTitle: { fontSize: 15, fontWeight: '700' },
   copy: { fontSize: 11, lineHeight: 17, marginTop: 4 },
