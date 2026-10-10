@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, MapPin, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import {
   createGoogleMapPinSvg,
   getClientGoogleMapsApiKey,
@@ -34,6 +34,7 @@ export type GoogleMapCanvasProps = {
   circleCenter?: MapCoordinate | null;
   // Map interactions:
   onMapClick?: (coords: { lat: number; lng: number }) => void;
+  onUnavailable?: () => void;
   className?: string;
   minHeight?: string | number;
   disableDefaultUI?: boolean;
@@ -70,6 +71,7 @@ export function GoogleMapCanvas({
   circleRadiusKm,
   circleCenter,
   onMapClick,
+  onUnavailable,
   className,
   minHeight = 220,
   disableDefaultUI = false,
@@ -85,14 +87,33 @@ export function GoogleMapCanvas({
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const onUnavailableRef = useRef(onUnavailable);
+  onUnavailableRef.current = onUnavailable;
+
+  const markUnavailable = useCallback((message: string) => {
+    console.warn(message);
+    setError("Map is unavailable. Search an address to set the pin.");
+    setLoading(false);
+    onUnavailableRef.current?.();
+  }, []);
+
+  useEffect(() => {
+    const previous = (window as Window & { gm_authFailure?: () => void }).gm_authFailure;
+    (window as Window & { gm_authFailure?: () => void }).gm_authFailure = () => {
+      previous?.();
+      console.warn("Google Maps reported an authentication warning. Check Maps JavaScript API and HTTP referrers.");
+    };
+    return () => {
+      (window as Window & { gm_authFailure?: () => void }).gm_authFailure = previous;
+    };
+  }, []);
 
   // Initialize map once script is ready
   useEffect(() => {
     let active = true;
 
     if (!getClientGoogleMapsApiKey()) {
-      setError("Google Maps API key not configured. Set VITE_GOOGLE_MAPS_API_KEY in .env");
-      setLoading(false);
+      markUnavailable("Google Maps API key is not configured (VITE_GOOGLE_MAPS_API_KEY).");
       return;
     }
 
@@ -135,13 +156,14 @@ export function GoogleMapCanvas({
         });
 
         mapInstanceRef.current = map;
+        setError(null);
         setLoading(false);
+        maps.event.trigger(map, "resize");
       })
       .catch((err) => {
         if (active) {
           console.warn("Failed to load Google Maps SDK:", err);
-          setError("Could not load Google Maps. Please check network connection.");
-          setLoading(false);
+          markUnavailable("Failed to load Google Maps SDK.");
         }
       });
 
@@ -383,9 +405,8 @@ export function GoogleMapCanvas({
       )}
 
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/40 p-4 text-center z-10">
-          <MapPin className="h-8 w-8 text-primary mb-2 opacity-80" />
-          <p className="text-xs text-muted-foreground max-w-xs">{error}</p>
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-100 p-3 text-center">
+          <p className="max-w-[16rem] text-xs leading-relaxed text-zinc-500">{error}</p>
         </div>
       )}
 

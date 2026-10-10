@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { GoogleMapCanvas } from "@/components/maps/GoogleMapCanvas";
 import {
   ArrowLeft,
   Phone,
@@ -15,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CustomerTrackingView } from "@shared/customer-tracking";
 
 const ACCENT = "#FF4907";
-const INDIA_CENTER: [number, number] = [20.5937, 78.9629];
 
 export type LoadItem = {
   id: string;
@@ -173,113 +173,23 @@ function DetailMap({
   lng?: number | null;
   className?: string;
 }) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const hasCoords =
+    typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng);
+  const marker = hasCoords ? { lat, lng } : null;
 
-  useEffect(() => {
-    if (!mapRef.current || leafletMapRef.current) return;
-    let cancelled = false;
-
-    const loadLeaflet = async () => {
-      const L = await import("leaflet");
-      await import("leaflet/dist/leaflet.css");
-      if (cancelled || !mapRef.current) return;
-
-      const hasCoords =
-        typeof lat === "number" &&
-        typeof lng === "number" &&
-        Number.isFinite(lat) &&
-        Number.isFinite(lng);
-
-      const center: [number, number] = hasCoords ? [lat!, lng!] : INDIA_CENTER;
-      const zoom = hasCoords ? 13 : 5;
-
-      const map = L.map(mapRef.current, {
-        zoomControl: true,
-        attributionControl: true,
-      }).setView(center, zoom);
-
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: "abcd",
-        maxZoom: 19,
-      }).addTo(map);
-
-      const defaultIcon = L.icon({
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
-
-      if (hasCoords) {
-        markerRef.current = L.marker(center, { icon: defaultIcon }).addTo(map);
-      }
-
-      leafletMapRef.current = map;
-      // Leaflet needs a tick after container is laid out
-      setTimeout(() => map.invalidateSize(), 80);
-    };
-
-    loadLeaflet();
-
-    return () => {
-      cancelled = true;
-      if (leafletMapRef.current) {
-        leafletMapRef.current.remove();
-        leafletMapRef.current = null;
-        markerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = leafletMapRef.current;
-    if (!map) return;
-
-    const hasCoords =
-      typeof lat === "number" &&
-      typeof lng === "number" &&
-      Number.isFinite(lat) &&
-      Number.isFinite(lng);
-
-    const update = async () => {
-      const L = await import("leaflet");
-      if (hasCoords) {
-        map.setView([lat!, lng!], 13);
-        if (markerRef.current) {
-          markerRef.current.setLatLng([lat!, lng!]);
-        } else {
-          const defaultIcon = L.icon({
-            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-            iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41],
-          });
-          markerRef.current = L.marker([lat!, lng!], { icon: defaultIcon }).addTo(map);
-        }
-      } else {
-        map.setView(INDIA_CENTER, 5);
-        if (markerRef.current) {
-          map.removeLayer(markerRef.current);
-          markerRef.current = null;
-        }
-      }
-      setTimeout(() => map.invalidateSize(), 80);
-    };
-
-    update();
-  }, [lat, lng]);
-
-  return <div ref={mapRef} className={cn("h-full w-full bg-zinc-100", className)} />;
+  return (
+    <GoogleMapCanvas
+      marker={marker}
+      markerColor="#FF4907"
+      markerLetter="X"
+      markerDraggable={false}
+      center={marker ?? undefined}
+      zoom={hasCoords ? 13 : 5}
+      minHeight="100%"
+      className={cn("h-full w-full rounded-none border-0", className)}
+      testId="tracking-detail-map"
+    />
+  );
 }
 
 function DetailCard({

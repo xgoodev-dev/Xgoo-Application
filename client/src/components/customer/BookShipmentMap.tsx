@@ -23,6 +23,7 @@ export type BookShipmentMapProps = {
   destination: ShipmentMapPoint | null;
   onPickupChange: (p: ShipmentMapPoint) => void;
   onDestinationChange: (p: ShipmentMapPoint) => void;
+  onUnavailable?: () => void;
   className?: string;
 };
 
@@ -100,6 +101,7 @@ export function BookShipmentMap({
   destination,
   onPickupChange,
   onDestinationChange,
+  onUnavailable,
   className,
 }: BookShipmentMapProps) {
   const handleMapClick = useCallback(
@@ -142,6 +144,7 @@ export function BookShipmentMap({
         showRoute={Boolean(pickup && destination)}
         onMapClick={handleMapClick}
         onMarkerDragEnd={handleMarkerDragEnd}
+        onUnavailable={onUnavailable}
         minHeight="100%"
         className="h-full w-full rounded-none border-0"
         testId="book-shipment-map"

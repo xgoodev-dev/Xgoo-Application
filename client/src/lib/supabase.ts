@@ -4,6 +4,7 @@ declare global {
   interface Window {
     __APP_CONFIG__?: {
       VITE_GOOGLE_CLIENT_ID?: string;
+      VITE_GOOGLE_MAPS_API_KEY?: string;
       VITE_SUPABASE_URL?: string;
       VITE_SUPABASE_ANON_KEY?: string;
       VITE_DEFAULT_OFFICE_SLUG?: string;

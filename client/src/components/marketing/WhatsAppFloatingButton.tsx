@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { SiWhatsapp } from "react-icons/si";
 import { X } from "lucide-react";
 import { XGOO_BRAND, XGOO_CONTACT } from "@/components/marketing/site-info";
+import { isCustomerBookPath } from "@/lib/customer-google-oauth";
 import { getCourierRoute, parseCourierRouteSlug } from "@/components/marketing/courier-routes";
 import { trackMetaContact } from "@/lib/meta-pixel";
 
@@ -50,7 +51,7 @@ export function WhatsAppFloatingButton() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (isStaffPath(location) || !visible) return null;
+  if (isStaffPath(location) || isCustomerBookPath(location) || !visible) return null;
 
   const phone = resolveWhatsAppNumber();
   if (phone.length < 10) return null;

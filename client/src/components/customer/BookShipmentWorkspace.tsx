@@ -11,6 +11,7 @@ import {
   type AddressScope,
   type ShipmentMapPoint,
 } from "@/components/customer/BookShipmentMap";
+import { isGoogleMapsKeyConfigured } from "@/lib/google-maps";
 
 export type { ActivePin, AddressScope, ShipmentMapPoint };
 
@@ -46,6 +47,20 @@ type BookShipmentWorkspaceProps = {
   title?: string;
   subtitle?: string;
 };
+
+function useIsDesktopLayout() {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : false,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsDesktop(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return isDesktop;
+}
 
 function shortLabel(point: ShipmentMapPoint | null, fallback: string) {
   if (!point) return fallback;
@@ -145,20 +160,45 @@ export function BookShipmentWorkspace({
   }
 
   const activePoint = activePin === "pickup" ? pickup : destination;
+  const isDesktop = useIsDesktopLayout();
+  const mapsReady = isGoogleMapsKeyConfigured();
+  const showMap = Boolean(mapStep);
+
+  const mapPane = (
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
+      <BookShipmentMap
+        scope={scope}
+        activePin={mapStep ? activePin : pickup && destination ? "destination" : "pickup"}
+        pickup={pickup}
+        destination={destination}
+        onPickupChange={onPickupChange}
+        onDestinationChange={onDestinationChange}
+        className="absolute inset-0 h-full w-full rounded-none border-0"
+      />
+      <div className="pointer-events-none absolute left-2 top-2 z-[500] flex gap-1.5">
+        <span className="rounded-md bg-white/95 px-2 py-1 text-[10px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-[#FF4907]" /> Pickup
+        </span>
+        <span className="rounded-md bg-white/95 px-2 py-1 text-[10px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-600" /> Drop
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div
       className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[#F9FAFB] lg:flex-row"
       data-testid="book-shipment-workspace"
     >
-      <aside className="flex max-h-[52vh] min-h-0 w-full shrink-0 flex-col overflow-hidden border-b border-zinc-200 bg-white lg:max-h-none lg:h-full lg:w-[400px] lg:border-b-0 lg:border-r">
-        <div className="shrink-0 space-y-3 border-b border-zinc-100 px-4 pb-3 pt-4">
+      <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-zinc-200 bg-white lg:h-full lg:w-[400px] lg:flex-none lg:border-r">
+        <div className="shrink-0 space-y-2.5 border-b border-zinc-100 px-4 pb-3 pt-3">
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-zinc-900" data-testid="text-booking-title">
+            <h1 className="text-base font-bold tracking-tight text-zinc-900 sm:text-lg" data-testid="text-booking-title">
               {title}
             </h1>
             {subtitle ? (
-              <p className="mt-0.5 text-xs font-medium text-[#FF4907]" data-testid="text-booking-hub">
+              <p className="mt-0.5 line-clamp-2 text-xs font-medium text-[#FF4907]" data-testid="text-booking-hub">
                 {subtitle}
               </p>
             ) : null}
@@ -205,7 +245,7 @@ export function BookShipmentWorkspace({
                   onClick={() => onScopeChange("domestic")}
                   data-testid="scope-domestic"
                   className={cn(
-                    "flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold",
+                    "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
                     scope === "domestic" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
                   )}
                 >
@@ -217,7 +257,7 @@ export function BookShipmentWorkspace({
                   onClick={() => onScopeChange("international")}
                   data-testid="scope-international"
                   className={cn(
-                    "flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold",
+                    "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
                     scope === "international" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
                   )}
                 >
@@ -241,7 +281,7 @@ export function BookShipmentWorkspace({
                             ? "Search destination worldwide…"
                             : "Search destination…"
                       }
-                      className="h-11 rounded-xl border-zinc-200 bg-zinc-50 pl-9"
+                      className="h-10 rounded-xl border-zinc-200 bg-zinc-50 pl-9"
                       data-testid="input-map-address-search"
                       autoComplete="off"
                     />
@@ -253,7 +293,7 @@ export function BookShipmentWorkspace({
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-11 shrink-0 rounded-xl"
+                      className="h-10 shrink-0 rounded-xl"
                       onClick={detectCurrentLocation}
                       disabled={isDetecting}
                       data-testid="button-detect-pickup"
@@ -279,28 +319,6 @@ export function BookShipmentWorkspace({
                 )}
               </div>
 
-              {activePoint ? (
-                <div
-                  className={cn(
-                    "rounded-xl px-3 py-2 text-xs",
-                    step === "pickup" ? "bg-[#FF4907]/5 text-zinc-700" : "bg-green-50 text-zinc-700",
-                  )}
-                >
-                  <p className="font-semibold text-zinc-900">
-                    {step === "pickup" ? "Pickup set" : "Destination set"}
-                  </p>
-                  <p className="mt-0.5 line-clamp-2">{activePoint.label}</p>
-                  <p className="mt-1 text-[11px] text-zinc-400">
-                    Confirm details below, or drag the pin to adjust
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-zinc-500">
-                  {step === "pickup"
-                    ? "Search or tap the map to set pickup."
-                    : "Search or tap the map to set destination."}
-                </p>
-              )}
             </>
           )}
 
@@ -316,9 +334,47 @@ export function BookShipmentWorkspace({
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        {showMap && !isDesktop ? (
+          <div className="relative mx-4 mt-3 h-36 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+            {mapPane}
+          </div>
+        ) : null}
 
-        <div className="shrink-0 border-t border-zinc-200 bg-white px-4 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          {mapStep ? (
+            activePoint ? (
+              <div
+                className={cn(
+                  "mb-3 rounded-xl px-3 py-2 text-xs",
+                  step === "pickup" ? "bg-[#FF4907]/5 text-zinc-700" : "bg-green-50 text-zinc-700",
+                )}
+              >
+                <p className="font-semibold text-zinc-900">
+                  {step === "pickup" ? "Pickup set" : "Drop set"}
+                </p>
+                <p className="mt-0.5 line-clamp-2">{activePoint.label}</p>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  {showMap
+                    ? "Confirm details below, or drag the pin to adjust."
+                    : "Confirm the address details below."}
+                </p>
+              </div>
+            ) : (
+              <p className="mb-3 text-xs text-zinc-500">
+                {step === "pickup"
+                  ? showMap
+                    ? "Search or tap the map to set pickup."
+                    : "Search an address to set pickup."
+                  : showMap
+                    ? "Search or tap the map to set drop."
+                    : "Search an address to set drop."}
+              </p>
+            )
+          ) : null}
+          {children}
+        </div>
+
+        <div className="shrink-0 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex gap-2">
             {stepIndex > 0 && (
               <Button
@@ -358,25 +414,9 @@ export function BookShipmentWorkspace({
         </div>
       </aside>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <BookShipmentMap
-          scope={scope}
-          activePin={mapStep ? activePin : pickup && destination ? "destination" : "pickup"}
-          pickup={pickup}
-          destination={destination}
-          onPickupChange={onPickupChange}
-          onDestinationChange={onDestinationChange}
-          className="absolute inset-0 h-full w-full rounded-none border-0"
-        />
-        <div className="pointer-events-none absolute left-3 top-3 z-[500] flex gap-2">
-          <span className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
-            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#FF4907]" /> Pickup
-          </span>
-          <span className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
-            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-green-600" /> Destination
-          </span>
-        </div>
-      </div>
+      {showMap && isDesktop ? (
+        <div className="relative min-h-0 flex-1 overflow-hidden">{mapPane}</div>
+      ) : null}
     </div>
   );
 }

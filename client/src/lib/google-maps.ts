@@ -1,85 +1,115 @@
 /// <reference types="@types/google.maps" />
 
 /**
- * Google Maps JavaScript API Singleton Loader
- *
- * Efficiently loads the Google Maps JavaScript API once and provides
- * reactive hooks and promise helpers across the React application.
+ * Google Maps JavaScript API singleton loader.
  */
+
+const MAPS_SCRIPT_ID = "google-maps-js-sdk";
+const MAPS_CALLBACK = "__xgooInitGoogleMaps";
 
 let loadPromise: Promise<typeof google.maps> | null = null;
 
+declare global {
+  interface Window {
+    __APP_CONFIG__?: {
+      VITE_GOOGLE_MAPS_API_KEY?: string;
+      VITE_GOOGLE_CLIENT_ID?: string;
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_ANON_KEY?: string;
+      VITE_DEFAULT_OFFICE_SLUG?: string;
+      VITE_SITE_URL?: string;
+      VITE_META_PIXEL_ID?: string;
+      VITE_WHATSAPP_NUMBER?: string;
+    };
+    __xgooInitGoogleMaps?: () => void;
+  }
+}
+
+function readViteMapsKey(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  return (env.VITE_GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_API_KEY || "").trim();
+}
+
 export function getClientGoogleMapsApiKey(): string {
-  return (
-    (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string)?.trim() ||
-    (import.meta.env.GOOGLE_MAPS_API_KEY as string)?.trim() ||
-    ""
-  );
+  if (typeof window !== "undefined") {
+    const fromRuntime = window.__APP_CONFIG__?.VITE_GOOGLE_MAPS_API_KEY?.trim();
+    if (fromRuntime) return fromRuntime;
+  }
+  return readViteMapsKey();
 }
 
 export function isGoogleMapsKeyConfigured(): boolean {
   return Boolean(getClientGoogleMapsApiKey());
 }
 
+function mapsNamespace(): typeof google.maps | null {
+  return (window as unknown as { google?: { maps?: typeof google.maps } }).google?.maps ?? null;
+}
+
 /**
- * Dynamically loads the Google Maps JavaScript API script.
+ * Dynamically loads the Google Maps JavaScript API once.
+ * `loading=async` requires a global callback — script.onload is not enough.
  */
 export function loadGoogleMapsScript(): Promise<typeof google.maps> {
   if (typeof window === "undefined") {
-    return Promise.reject(new Error("Cannot load Google Maps in non-browser environment"));
+    return Promise.reject(new Error("Cannot load Google Maps in a non-browser environment"));
   }
 
-  const globalGoogle = (window as unknown as { google?: { maps?: typeof google.maps } }).google;
-
-  // If already loaded on window, resolve immediately
-  if (globalGoogle?.maps) {
-    return Promise.resolve(globalGoogle.maps);
-  }
-
-  if (loadPromise) {
-    return loadPromise;
-  }
-
-  const apiKey = getClientGoogleMapsApiKey();
-  if (!apiKey) {
-    return Promise.reject(new Error("Missing VITE_GOOGLE_MAPS_API_KEY"));
-  }
+  const already = mapsNamespace();
+  if (already) return Promise.resolve(already);
+  if (loadPromise) return loadPromise;
 
   loadPromise = new Promise<typeof google.maps>((resolve, reject) => {
-    const existingScript = document.getElementById("google-maps-js-sdk");
-    if (existingScript) {
-      existingScript.addEventListener("load", () => {
-        const winGoogle = (window as unknown as { google?: { maps?: typeof google.maps } }).google;
-        if (winGoogle?.maps) resolve(winGoogle.maps);
-        else reject(new Error("Google Maps loaded but window.google.maps is undefined"));
-      });
-      existingScript.addEventListener("error", () => {
-        reject(new Error("Failed to load Google Maps script"));
-      });
+    const apiKey = getClientGoogleMapsApiKey();
+    if (!apiKey) {
+      loadPromise = null;
+      reject(new Error("Missing Google Maps API key"));
       return;
     }
 
-    const script = document.createElement("script");
-    script.id = "google-maps-js-sdk";
-    script.type = "text/javascript";
-    script.async = true;
-    script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry,drawing&v=weekly&loading=async`;
+    const finish = () => {
+      const maps = mapsNamespace();
+      if (maps) {
+        resolve(maps);
+        return true;
+      }
+      return false;
+    };
 
-    script.onload = () => {
-      const winGoogle = (window as unknown as { google?: { maps?: typeof google.maps } }).google;
-      if (winGoogle?.maps) {
-        resolve(winGoogle.maps);
-      } else {
+    const previousCallback = window.__xgooInitGoogleMaps;
+    window.__xgooInitGoogleMaps = () => {
+      if (typeof previousCallback === "function") previousCallback();
+      if (!finish()) {
+        loadPromise = null;
         reject(new Error("Google Maps loaded but window.google.maps is undefined"));
       }
     };
 
-    script.onerror = (event) => {
-      loadPromise = null;
-      reject(new Error(`Failed to load Google Maps JS SDK: ${event}`));
-    };
+    if (document.getElementById(MAPS_SCRIPT_ID)) {
+      if (finish()) return;
+      const started = Date.now();
+      const poll = window.setInterval(() => {
+        if (finish() || Date.now() - started > 15000) {
+          window.clearInterval(poll);
+          if (!mapsNamespace()) {
+            loadPromise = null;
+            reject(new Error("Timed out waiting for Google Maps"));
+          }
+        }
+      }, 50);
+      return;
+    }
 
+    const script = document.createElement("script");
+    script.id = MAPS_SCRIPT_ID;
+    script.async = true;
+    script.defer = true;
+    script.src =
+      `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${MAPS_CALLBACK}`;
+    script.onerror = () => {
+      loadPromise = null;
+      reject(new Error("Failed to load Google Maps JS SDK"));
+    };
     document.head.appendChild(script);
   });
 

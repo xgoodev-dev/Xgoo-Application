@@ -2257,9 +2257,9 @@ function BookingTab({
           title={hubName ? `Book at ${hubName}` : hubBranchId ? "Book at this Hub" : "Book a shipment"}
           subtitle={
             hubName
-              ? `This booking goes to ${hubName}. Fill From and To to continue.`
+              ? `This booking stays with ${hubName}.`
               : hubBranchId
-                ? "This booking stays with the Hub you scanned. Fill From and To to continue."
+                ? "This booking stays with the Hub you scanned."
                 : undefined
           }
           step={bookStep}
@@ -2288,161 +2288,137 @@ function BookingTab({
             (bookStep === "pickup" && !pickupPoint) || (bookStep === "destination" && !destinationPoint)
           }
         >
-          {bookStep === "pickup" && (
-            <div className="space-y-4">
-              {!pickupPoint ? (
-                <p className="text-sm text-zinc-500 leading-relaxed">
-                  Search or tap the map to set pickup. You can edit full address details after the pin is placed.
+          {bookStep === "pickup" && pickupPoint && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Pickup address details</h3>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Review house no., street, and landmark.
                 </p>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-zinc-900">Pickup address details</h3>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      Review and edit what the map filled in — house no., street, landmark, etc.
-                    </p>
-                  </div>
-                  <FormField control={form.control} name="senderAddress" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address 1 *</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          {...field}
-                          rows={3}
-                          className="resize-none rounded-xl"
-                          placeholder="House / flat, street"
-                          data-testid="input-sender-address"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="senderAddressLine2" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address 2</FormLabel>
-                      <FormControl>
-                        <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-sender-address-2" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <div className="grid gap-3 grid-cols-2">
-                    <FormField control={form.control} name="senderCity" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City *</FormLabel>
-                        <FormControl>
-                          <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-sender-city" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="senderState" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State *</FormLabel>
-                        <FormControl>
-                          <Input {...field} className="rounded-xl" placeholder="State" data-testid="input-sender-state" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-                  <FormField control={form.control} name="senderPincode" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Pincode *</FormLabel>
-                      <FormControl>
-                        <Input {...field} className="rounded-xl" placeholder="6-digit pincode" inputMode="numeric" data-testid="input-sender-pincode" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <p className="text-[11px] text-zinc-400">
-                    Map pin: {pickupPoint.lat.toFixed(5)}, {pickupPoint.lng.toFixed(5)} — drag the pin to refine.
-                  </p>
-                </div>
-              )}
+              </div>
+              <FormField control={form.control} name="senderAddress" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address 1 *</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={2}
+                      className="resize-none rounded-xl"
+                      placeholder="House / flat, street"
+                      data-testid="input-sender-address"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="senderAddressLine2" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address 2</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-sender-address-2" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid gap-3 grid-cols-2">
+                <FormField control={form.control} name="senderCity" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City *</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-sender-city" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="senderState" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>State *</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="rounded-xl" placeholder="State" data-testid="input-sender-state" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="senderPincode" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Pincode *</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-xl" placeholder="6-digit pincode" inputMode="numeric" data-testid="input-sender-pincode" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </div>
           )}
 
-          {bookStep === "destination" && (
-            <div className="space-y-4">
-              {!destinationPoint ? (
-                <p className="text-sm text-zinc-500 leading-relaxed">
-                  Search or tap the map to set delivery
-                  {addressScope === "international" ? " (international addresses supported)" : ""}
-                  . You can edit full address details after the pin is placed.
+          {bookStep === "destination" && destinationPoint && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">
+                  Drop address details
+                  {addressScope === "international" ? " (International)" : ""}
+                </h3>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Edit door number, street, and locality.
                 </p>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-zinc-900">
-                      Delivery address details
-                      {addressScope === "international" ? " (International)" : ""}
-                    </h3>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      Edit door number, street, and locality so the courier can find it easily.
-                    </p>
-                  </div>
-                  <FormField control={form.control} name="receiverAddress" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address 1 *</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          {...field}
-                          rows={3}
-                          className="resize-none rounded-xl"
-                          placeholder="House / flat, street"
-                          data-testid="input-receiver-address"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="receiverAddressLine2" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address 2</FormLabel>
-                      <FormControl>
-                        <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-receiver-address-2" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <div className="grid gap-3 grid-cols-2">
-                    <FormField control={form.control} name="receiverCity" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City *</FormLabel>
-                        <FormControl>
-                          <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-receiver-city" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="receiverState" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{addressScope === "international" ? "State / Region *" : "State *"}</FormLabel>
-                        <FormControl>
-                          <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "State / province" : "State"} data-testid="input-receiver-state" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-                  <FormField control={form.control} name="receiverPincode" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{addressScope === "international" ? "Postal code *" : "Pincode *"}</FormLabel>
-                      <FormControl>
-                        <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "Postal / ZIP code" : "6-digit pincode"} data-testid="input-receiver-pincode" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  {destinationPoint.country && (
-                    <div className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-                      Country: <span className="font-medium text-zinc-900">{destinationPoint.country}</span>
-                    </div>
-                  )}
-                  <p className="text-[11px] text-zinc-400">
-                    Map pin: {destinationPoint.lat.toFixed(5)}, {destinationPoint.lng.toFixed(5)} — drag the pin to refine.
-                  </p>
+              </div>
+              <FormField control={form.control} name="receiverAddress" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address 1 *</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={2}
+                      className="resize-none rounded-xl"
+                      placeholder="House / flat, street"
+                      data-testid="input-receiver-address"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="receiverAddressLine2" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address 2</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-xl" placeholder="Area, landmark, floor" data-testid="input-receiver-address-2" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid gap-3 grid-cols-2">
+                <FormField control={form.control} name="receiverCity" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City *</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="rounded-xl" placeholder="City" data-testid="input-receiver-city" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="receiverState" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{addressScope === "international" ? "State / Region *" : "State *"}</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "State / province" : "State"} data-testid="input-receiver-state" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="receiverPincode" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{addressScope === "international" ? "Postal code *" : "Pincode *"}</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="rounded-xl" placeholder={addressScope === "international" ? "Postal / ZIP code" : "6-digit pincode"} data-testid="input-receiver-pincode" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {destinationPoint.country && (
+                <div className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                  Country: <span className="font-medium text-zinc-900">{destinationPoint.country}</span>
                 </div>
               )}
             </div>
