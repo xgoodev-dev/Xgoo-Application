@@ -39,7 +39,8 @@ import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
 import { XGOO_BRAND, XGOO_MODULES, XGOO_OPS_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { captureReferralFromSearch, getStoredReferralCode } from "@/lib/referral";
-import { parseHubIdFromSearch } from "@/lib/hub-qr";
+import { rememberHubId, resolveHubId } from "@/lib/hub-qr";
+import { BookFlowErrorBoundary } from "@/components/customer/BookFlowErrorBoundary";
 import { SEO_PAGES } from "@/lib/seo";
 import { trackMetaLead } from "@/lib/meta-pixel";
 import { Button } from "@/components/ui/button";
@@ -1327,6 +1328,7 @@ function BookingTab({
   hubName,
   hubBranchId,
   onGuestBookingSaved,
+  fillViewport = true,
 }: {
   slug: string;
   partners: PartnerInfo[];
@@ -1336,6 +1338,7 @@ function BookingTab({
   hubName?: string | null;
   hubBranchId?: string | null;
   onGuestBookingSaved?: () => void;
+  fillViewport?: boolean;
 }) {
   const isGuest = !!(guestMode && !token);
   const { toast } = useToast();
@@ -1936,7 +1939,10 @@ function BookingTab({
         pickupDate: data.pickupDate,
         pickupTimeSlot: data.pickupTimeSlot,
         referralCode: getStoredReferralCode(),
-        hubBranchId: hubBranchId || undefined,
+        hubBranchId:
+          hubBranchId ||
+          resolveHubId(typeof window === "undefined" ? "" : window.location.search) ||
+          undefined,
       };
       if (isGuest) {
         const res = await fetch(`/api/public/office/${slug}/booking-request`, {
@@ -2035,9 +2041,9 @@ function BookingTab({
 
   if (submitted) {
     return (
-      <div className="flex h-full items-center justify-center overflow-y-auto p-6">
-        <div className="mx-auto max-w-lg w-full">
-        <div className="border border-stone-200 bg-white p-8 text-center rounded-2xl shadow-sm">
+      <div className="min-h-[70dvh] overflow-y-auto px-4 py-8">
+        <div className="mx-auto w-full max-w-lg">
+        <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
           <div className="flex justify-center mb-6">
             <div className="h-16 w-16 bg-[#FF4907]/10 flex items-center justify-center">
               <CheckCircle className="h-8 w-8 text-[#FF4907]" />
@@ -2047,7 +2053,9 @@ function BookingTab({
             Booking request submitted
           </h2>
           <p className="text-stone-500 mb-6 text-sm">
-            Our team will confirm your pickup shortly. Save your request number to track status.
+            {hubName
+              ? `${hubName} has this request. Save the number below to track it.`
+              : "Our team will confirm your pickup shortly. Save your request number to track status."}
           </p>
           <div className="bg-[#f5f3f2] p-4 mb-6">
             <p className="text-sm text-stone-500 mb-1">Request Number</p>
@@ -2247,13 +2255,14 @@ function BookingTab({
             void goNextBookStep();
           }
         }}
-        className="h-full min-h-0"
+        className={fillViewport ? "h-full min-h-0" : "min-h-0"}
         data-testid="book-shipment-form"
       >
         <input type="file" ref={cameraRef} accept="image/*" capture="environment" className="hidden" onChange={handleCameraScan} data-testid="input-camera-scan" />
         <input type="file" ref={photoUploadRef} accept="image/*" className="hidden" onChange={handlePhotoUpload} data-testid="input-photo-upload" />
 
         <BookShipmentWorkspace
+          fillViewport={fillViewport}
           title={hubName ? `Book at ${hubName}` : hubBranchId ? "Book at this Hub" : "Book a shipment"}
           subtitle={
             hubName
@@ -3634,9 +3643,10 @@ export default function CustomerPortalPage() {
       return;
     }
     const hubId =
-      parseHubIdFromSearch(search) ||
-      parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+      resolveHubId(search) ||
+      resolveHubId(typeof window === "undefined" ? "" : window.location.search);
     if (hubId) {
+      rememberHubId(hubId);
       localStorage.setItem(guestModeStorageKey(slug), "1");
       setGuestMode(true);
       setActiveTab("book");
@@ -3691,9 +3701,10 @@ export default function CustomerPortalPage() {
       return;
     }
     const hubId =
-      parseHubIdFromSearch(search) ||
-      parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+      resolveHubId(search) ||
+      resolveHubId(typeof window === "undefined" ? "" : window.location.search);
     if (hubId) {
+      rememberHubId(hubId);
       businessLanded.current = true;
       goLanded.current = true;
       if (activeTab !== "book") setActiveTab("book");
@@ -3716,10 +3727,11 @@ export default function CustomerPortalPage() {
     }
   }, [auth.isAuthenticated, isBusiness, activeTab, search]);
 
-  // Prevent document scroll while the portal shell is open (map/form scroll internally).
+  // Lock document scroll only for the signed-in app shell. Hub QR guests must
+  // keep page scroll — a locked dvh viewport goes blank after the mobile keyboard.
   useEffect(() => {
-    const portalOpen = auth.isAuthenticated || guestMode;
-    if (!portalOpen) return;
+    const lockViewport = auth.isAuthenticated && !guestMode;
+    if (!lockViewport) return;
     const html = document.documentElement;
     const body = document.body;
     const prevHtml = html.style.overflow;
@@ -3740,8 +3752,8 @@ export default function CustomerPortalPage() {
     const loadOffice = async () => {
       try {
         const hubId =
-          parseHubIdFromSearch(search) ||
-          parseHubIdFromSearch(typeof window === "undefined" ? "" : window.location.search);
+          resolveHubId(search) ||
+          resolveHubId(typeof window === "undefined" ? "" : window.location.search);
         const hubQuery = hubId ? `?hub=${encodeURIComponent(hubId)}` : "";
         if (routeSlug) {
           const r = await fetchJsonWithRetry(`/api/public/office/${routeSlug}${hubQuery}`);
@@ -3798,6 +3810,10 @@ export default function CustomerPortalPage() {
       .then((data) => setPartners(data))
       .catch(() => {});
   }, [slug, office]);
+
+  useEffect(() => {
+    if (office?.hub?.id) rememberHubId(office.hub.id);
+  }, [office?.hub?.id]);
 
   if (isLoadingOffice || auth.isLoading || googleExchanging) {
     return (
@@ -3866,12 +3882,13 @@ export default function CustomerPortalPage() {
     ) : null;
 
   return (
-    <div className={portalOpen ? "h-dvh max-h-dvh overflow-hidden bg-[#F4F4F5]" : "min-h-screen bg-background flex flex-col"}>
+    <div className={portalOpen && auth.isAuthenticated && !guestMode ? "h-dvh max-h-dvh overflow-hidden bg-[#F4F4F5]" : portalOpen ? "min-h-dvh bg-[#F4F4F5]" : "min-h-screen bg-background flex flex-col"}>
       <PageSeo {...SEO_PAGES.book} />
       {!portalOpen ? (
         <AuthPage slug={slug} office={office} onLogin={handlePortalLogin} />
       ) : (
         <CustomerPortalShell
+          allowPageScroll={guestMode && !auth.isAuthenticated}
           activeTab={activeTab}
           onTabChange={(tab) => {
             setActiveTab(tab);
@@ -3882,7 +3899,7 @@ export default function CustomerPortalPage() {
           userSubtitle={
             office.hub?.name
               ? office.hub.name
-              : parseHubIdFromSearch(search)
+              : resolveHubId(search)
                 ? `${XGOO_MODULES.hub.shortName} counter`
                 : guestMode && !auth.isAuthenticated
                   ? "Guest booking"
@@ -4109,14 +4126,16 @@ export default function CustomerPortalPage() {
             </div>
           )}
           {activeTab === "book" && (
-            <div className="h-full min-h-0">
+            <div className={guestMode && !auth.isAuthenticated ? "min-h-0" : "h-full min-h-0"}>
+              <BookFlowErrorBoundary>
               {guestMode && !auth.isAuthenticated ? (
                 <BookingTab
                   slug={slug}
                   partners={partners}
                   guestMode
+                  fillViewport={false}
                   hubName={office.hub?.name}
-                  hubBranchId={office.hub?.id || parseHubIdFromSearch(search)}
+                  hubBranchId={office.hub?.id || resolveHubId(search)}
                   onGuestBookingSaved={() => setGuestBookingsTick((t) => t + 1)}
                 />
               ) : (
@@ -4126,9 +4145,10 @@ export default function CustomerPortalPage() {
                   token={auth.token!}
                   user={auth.user!}
                   hubName={office.hub?.name}
-                  hubBranchId={office.hub?.id || parseHubIdFromSearch(search)}
+                  hubBranchId={office.hub?.id || resolveHubId(search)}
                 />
               )}
+              </BookFlowErrorBoundary>
             </div>
           )}
           {activeTab === "bookings" && (

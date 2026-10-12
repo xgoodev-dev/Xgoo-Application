@@ -55,6 +55,8 @@ export type CustomerPortalShellProps = {
   businessName?: string | null;
   /** Hide booking when this Go/Pro account is outside the Hub service range. */
   coverageLocked?: boolean;
+  /** Counter QR / guest book: let the page scroll instead of locking the viewport. */
+  allowPageScroll?: boolean;
   children: React.ReactNode;
 };
 
@@ -315,6 +317,7 @@ export function CustomerPortalShell({
   showAccount = true,
   isBusiness,
   coverageLocked,
+  allowPageScroll = false,
   onLogout,
   onSignIn,
   onHelp,
@@ -328,7 +331,10 @@ export function CustomerPortalShell({
 
   return (
     <div
-      className="flex h-full max-h-full min-h-0 w-full overflow-hidden bg-[#F4F4F5] [color-scheme:light]"
+      className={cn(
+        "flex w-full bg-[#F4F4F5] [color-scheme:light]",
+        allowPageScroll ? "min-h-dvh overflow-visible" : "h-full max-h-full min-h-0 overflow-hidden",
+      )}
       data-testid="customer-portal-shell"
     >
       {/* Desktop sidebar */}
@@ -386,7 +392,12 @@ export function CustomerPortalShell({
       </Sheet>
 
       {/* Main */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F4F4F5]">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col bg-[#F4F4F5]",
+          allowPageScroll ? "min-h-dvh overflow-visible" : "min-h-0 overflow-hidden",
+        )}
+      >
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-200/80 bg-white px-3 sm:gap-3 sm:px-4">
           <Button
             type="button"
@@ -424,7 +435,7 @@ export function CustomerPortalShell({
 
         <main
           className={cn(
-            "min-h-0 flex-1 overflow-hidden",
+            allowPageScroll ? "flex-1 overflow-visible" : "min-h-0 flex-1 overflow-hidden",
             isBusiness && !coverageLocked && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0",
           )}
         >

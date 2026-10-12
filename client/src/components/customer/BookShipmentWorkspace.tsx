@@ -45,6 +45,8 @@ type BookShipmentWorkspaceProps = {
   isSubmitting?: boolean;
   title?: string;
   subtitle?: string;
+  /** When false, the form grows with the page instead of locking to the viewport. */
+  fillViewport?: boolean;
 };
 
 function useIsDesktopLayout() {
@@ -87,6 +89,7 @@ export function BookShipmentWorkspace({
   isSubmitting,
   title = "Book a shipment",
   subtitle,
+  fillViewport = true,
 }: BookShipmentWorkspaceProps) {
   const activePin: ActivePin = step === "destination" ? "destination" : "pickup";
   const [query, setQuery] = useState("");
@@ -186,11 +189,19 @@ export function BookShipmentWorkspace({
 
   return (
     <div
-      className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[#F9FAFB] lg:flex-row"
+      className={cn(
+        "flex w-full flex-col bg-[#F9FAFB] lg:flex-row",
+        fillViewport && "h-full max-h-full min-h-0 overflow-hidden",
+      )}
       data-testid="book-shipment-workspace"
     >
-      <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-zinc-200 bg-white lg:h-full lg:w-[400px] lg:flex-none lg:border-r">
-        <div className="min-h-0 flex-1 overflow-y-auto">
+      <aside
+        className={cn(
+          "flex w-full flex-col border-zinc-200 bg-white lg:h-full lg:w-[400px] lg:flex-none lg:border-r lg:overflow-hidden",
+          fillViewport ? "min-h-0 flex-1 overflow-hidden" : "min-h-[100dvh]",
+        )}
+      >
+        <div className={cn(fillViewport ? "min-h-0 flex-1 overflow-y-auto" : "flex-1")}>
           <div className="space-y-2.5 px-4 pb-2 pt-3">
             <div>
               <h1 className="text-base font-bold tracking-tight text-zinc-900" data-testid="text-booking-title">
@@ -363,7 +374,7 @@ export function BookShipmentWorkspace({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="sticky bottom-0 shrink-0 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex gap-2">
             {stepIndex > 0 && (
               <Button
