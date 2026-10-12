@@ -197,7 +197,7 @@ export default function LandingPage() {
       <MarketingHeader />
 
       {/* Hero — full-bleed photo + brand headline */}
-      <section className="relative isolate pt-[6.75rem] sm:min-h-[100svh] sm:pt-[7.5rem]">
+      <section className="relative isolate pt-[9.25rem] sm:min-h-[100svh] sm:pt-[10rem]">
         <div className="absolute inset-0 -z-10">
           <img
             src={LANDING_IMAGES.hero}

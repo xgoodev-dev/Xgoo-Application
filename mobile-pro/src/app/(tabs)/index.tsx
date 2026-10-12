@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Bell, ClipboardList, Receipt, Truck, Users } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AccessGate, VerifiedBadge } from '@/components/access-gate';
+import { TectangleShopsBanner } from '@/components/tectangle-shops-banner';
 import { AppButton, Card, PageHeader, Screen } from '@/components/ui';
 import { proApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -66,6 +67,9 @@ export default function HomeScreen() {
           }
         />
         <VerifiedBadge />
+        <View style={styles.banner}>
+          <TectangleShopsBanner />
+        </View>
         <View style={styles.grid}>
           <Stat label="Open orders" value={String(openOrders)} onPress={() => router.push('/(tabs)/orders')} />
           <Stat label="In transit" value={String(inTransit)} onPress={() => router.push('/(tabs)/shipments')} />
@@ -106,6 +110,7 @@ function Stat({ label, value, onPress }: { label: string; value: string; onPress
 }
 
 const styles = StyleSheet.create({
+  banner: { marginTop: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
   stat: { width: '47%', flexGrow: 1 },
   statLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },

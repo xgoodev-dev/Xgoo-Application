@@ -103,6 +103,14 @@ export const XGOO_TECH_PARTNER = {
   credit: "Designed and developed by",
   website: "www.tectangle.com",
   url: "https://www.tectangle.com",
+  shops: {
+    name: "Tectangle Shops",
+    url: "https://www.tectangle.com/shops",
+    eyebrow: "For XGoo Pro businesses",
+    title: "Create your ecommerce store in minutes",
+    body: "Go live this afternoon. Add products, pick a theme, and start taking UPI, card, and cash-on-delivery orders.",
+    cta: "Open Tectangle Shops",
+  },
 } as const;
 
 export {

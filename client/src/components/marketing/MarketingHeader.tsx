@@ -21,6 +21,7 @@ import { ChevronDown, Menu, PackageSearch } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XGOO_BRAND, XGOO_CUSTOMER_MODULES } from "./site-info";
 import { LaunchingSoonRunner } from "./LaunchingSoonRunner";
+import { TectangleShopsRunner } from "./TectangleShopsBanner";
 import { TrackingSidebar } from "./TrackingSidebar";
 import {
   COURIER_ROUTE_PREFIX,
@@ -334,6 +335,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
           </div>
         </div>
       </nav>
+      {pathOnly === "/" ? <TectangleShopsRunner /> : null}
       <TrackingSidebar
         open={trackOpen}
         collapsed={trackCollapsed}

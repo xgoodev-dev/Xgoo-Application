@@ -26,7 +26,7 @@ export class BookFlowErrorBoundary extends Component<Props, State> {
       <div className="mx-auto max-w-md px-4 py-10 text-center">
         <h2 className="text-lg font-bold text-zinc-900">Could not open this booking page</h2>
         <p className="mt-2 text-sm text-zinc-500">
-          Reload and try again. If you scanned a Hub counter QR, your details were not sent yet.
+          Reload this page to continue. If you already received a request number, the Hub has the booking.
         </p>
         <Button
           type="button"

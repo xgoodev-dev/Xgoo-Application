@@ -36,6 +36,7 @@ import {
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { ProductAttribution } from "@/components/marketing/ProductAttribution";
 import { TechPartnerCredit } from "@/components/marketing/TechPartnerCredit";
+import { TectangleShopsBanner } from "@/components/marketing/TectangleShopsBanner";
 import { XGOO_BRAND, XGOO_MODULES, XGOO_OPS_MODULES } from "@/components/marketing/site-info";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { captureReferralFromSearch, getStoredReferralCode } from "@/lib/referral";
@@ -762,6 +763,9 @@ function LoginForm({
       </h2>
       <AccountKindTabs value={kind} onChange={onKindChange} />
       {kind === "business" ? (
+        <TectangleShopsBanner compact className="mb-4" />
+      ) : null}
+      {kind === "business" ? (
         <CustomerGoogleSignIn
           slug={slug}
           disabled={isSubmitting}
@@ -994,6 +998,9 @@ function RegisterForm({
         Create Account
       </h2>
       <AccountKindTabs value={kind} onChange={onKindChange} />
+      {kind === "business" ? (
+        <TectangleShopsBanner compact className="mb-4" />
+      ) : null}
       {kind === "business" ? (
         <CustomerGoogleSignIn
           slug={slug}
@@ -1397,6 +1404,17 @@ function BookingTab({
       cancelled = true;
     };
   }, [slug]);
+
+  useEffect(() => {
+    if (bookStep !== "review") {
+      setConfirmReady(false);
+      return;
+    }
+    setDetailsAcknowledged(false);
+    setConfirmReady(false);
+    const t = window.setTimeout(() => setConfirmReady(true), 700);
+    return () => window.clearTimeout(t);
+  }, [bookStep]);
 
   const pickupLocation = pickupPoint
     ? { lat: pickupPoint.lat, lng: pickupPoint.lng, name: pickupPoint.label }
@@ -2232,18 +2250,6 @@ function BookingTab({
     const i = STEP_ORDER.indexOf(bookStep);
     if (i > 0) setBookStep(STEP_ORDER[i - 1]);
   }
-
-  useEffect(() => {
-    if (bookStep !== "review") {
-      setConfirmReady(false);
-      return;
-    }
-    setDetailsAcknowledged(false);
-    setConfirmReady(false);
-    // Prevent accidental double-click from Package → Confirm landing on the same button
-    const t = window.setTimeout(() => setConfirmReady(true), 700);
-    return () => window.clearTimeout(t);
-  }, [bookStep]);
 
   return (
     <Form {...form}>

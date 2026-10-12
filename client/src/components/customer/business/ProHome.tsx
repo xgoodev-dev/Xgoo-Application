@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { TectangleShopsBanner } from "@/components/marketing/TectangleShopsBanner";
 import {
   BUSINESS_ORDER_CHANNELS,
   pickupStyleLabel,
@@ -224,6 +225,8 @@ export function ProHome({
           ) : null}
         </button>
       </div>
+
+      <TectangleShopsBanner />
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
         <StatCard label="Open orders" value={openOrders.length} onClick={onOrders} />

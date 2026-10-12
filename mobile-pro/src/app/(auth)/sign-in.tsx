@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BackButton, BrandLockup, Field, Pill, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
+import { TectangleShopsBanner } from '@/components/tectangle-shops-banner';
 import { LegalLinks } from '@/components/legal-links';
 import { useAuth } from '@/lib/auth';
 import { useAppTheme } from '@/lib/theme';
@@ -82,6 +83,7 @@ export default function SignInScreen() {
           Use the same XGoo Pro account you use on the website.
         </Text>
       </View>
+      <TectangleShopsBanner />
       <View style={styles.pills}>
         <Pill label="Email" active={method === 'email'} onPress={() => setMethod('email')} />
         <Pill label="Mobile OTP" active={method === 'phone'} onPress={() => setMethod('phone')} />
