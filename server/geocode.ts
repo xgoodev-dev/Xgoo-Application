@@ -526,3 +526,67 @@ export async function getDirectionsRoute(
   setCached(cacheKey, fallbackResult);
   return fallbackResult;
 }
+
+export type StaticMapMarker = {
+  lat: number;
+  lng: number;
+  color?: string;
+  label?: string;
+};
+
+function circlePathPoints(lat: number, lng: number, radiusKm: number, steps = 32): string {
+  const latDeg = radiusKm / 111.32;
+  const lngDeg = radiusKm / (111.32 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+  const parts: string[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * 2 * Math.PI;
+    parts.push(`${(lat + latDeg * Math.sin(t)).toFixed(5)},${(lng + lngDeg * Math.cos(t)).toFixed(5)}`);
+  }
+  return parts.join("|");
+}
+
+export async function fetchGoogleStaticMap(input: {
+  lat: number;
+  lng: number;
+  zoom: number;
+  width: number;
+  height: number;
+  markers?: StaticMapMarker[];
+  circleKm?: number | null;
+}): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) return null;
+
+  const search = new URLSearchParams({
+    center: `${input.lat},${input.lng}`,
+    zoom: String(input.zoom),
+    size: `${input.width}x${input.height}`,
+    scale: "2",
+    maptype: "roadmap",
+    key: apiKey,
+  });
+
+  for (const marker of input.markers ?? []) {
+    const color = (marker.color || "0xFF4907").replace("#", "0x");
+    const label = marker.label ? `label:${marker.label.slice(0, 1)}|` : "";
+    search.append("markers", `color:${color}|${label}${marker.lat},${marker.lng}`);
+  }
+
+  if (input.circleKm && input.circleKm > 0) {
+    search.append(
+      "path",
+      `fillcolor:0xFF490722|color:0xFF4907|weight:2|${circlePathPoints(input.lat, input.lng, input.circleKm)}`,
+    );
+  }
+
+  const response = await fetch(`https://maps.googleapis.com/maps/api/staticmap?${search.toString()}`);
+  if (!response.ok) {
+    console.warn("Google Static Maps HTTP", response.status);
+    return null;
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.startsWith("image/")) return null;
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength < 400) return null;
+  return { buffer, contentType };
+}

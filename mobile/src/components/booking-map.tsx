@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from 'react';
+import { GoogleStaticBookingMap } from '@/components/booking-map-static';
 import { OpenStreetMap } from '@/components/open-street-map';
 import { isExpoGoClient } from '@/lib/notifications';
 
@@ -18,6 +19,7 @@ export function BookingMap({
   onMapPress,
 }: Props) {
   const [GoogleMap, setGoogleMap] = useState<ComponentType<Props> | null>(null);
+  const [staticFailed, setStaticFailed] = useState(false);
   const canUseGoogle = !isExpoGoClient() && Boolean(googleMapsKey);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function BookingMap({
         if (active) setGoogleMap(() => mod.GoogleBookingMap);
       })
       .catch((error) => {
-        console.warn('Google Maps unavailable, using OpenStreetMap', error);
+        console.warn('Google Maps native SDK unavailable, using Static Maps', error);
       });
     return () => {
       active = false;
@@ -46,11 +48,22 @@ export function BookingMap({
     );
   }
 
+  if (staticFailed) {
+    return (
+      <OpenStreetMap
+        latitude={latitude}
+        longitude={longitude}
+        onMapPress={onMapPress}
+      />
+    );
+  }
+
   return (
-    <OpenStreetMap
+    <GoogleStaticBookingMap
       latitude={latitude}
       longitude={longitude}
       onMapPress={onMapPress}
+      onUnavailable={() => setStaticFailed(true)}
     />
   );
 }

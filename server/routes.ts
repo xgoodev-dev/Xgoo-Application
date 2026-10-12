@@ -21,6 +21,8 @@ import {
   reverseGeocodeLatLng,
   getPlacesAutocomplete,
   getDirectionsRoute,
+  getGoogleMapsApiKey,
+  fetchGoogleStaticMap,
 } from "./geocode";
 import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
@@ -2487,6 +2489,59 @@ export async function registerRoutes(
   // ---------------------------------------------------------------------------
   // Google Maps Platform proxy endpoints (Public & Authenticated)
   // ---------------------------------------------------------------------------
+
+  app.get("/api/public/maps-config", (_req: Request, res: Response) => {
+    res.json({ configured: Boolean(getGoogleMapsApiKey()) });
+  });
+
+  app.get("/api/maps/static", async (req: Request, res: Response) => {
+    try {
+      const lat = parseFloat(String(req.query.lat ?? ""));
+      const lng = parseFloat(String(req.query.lng ?? ""));
+      const zoom = Math.min(20, Math.max(1, parseInt(String(req.query.zoom || "15"), 10) || 15));
+      const width = Math.min(640, Math.max(64, parseInt(String(req.query.w || "640"), 10) || 640));
+      const height = Math.min(640, Math.max(64, parseInt(String(req.query.h || "400"), 10) || 400));
+      const circleKmRaw = parseFloat(String(req.query.circleKm || ""));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ message: "Invalid map coordinates" });
+      }
+
+      const parseMarker = (raw: unknown, color: string, label: string) => {
+        const text = String(raw || "");
+        if (!text.includes(",")) return null;
+        const [latText, lngText] = text.split(",");
+        const markerLat = parseFloat(latText);
+        const markerLng = parseFloat(lngText);
+        if (!Number.isFinite(markerLat) || !Number.isFinite(markerLng)) return null;
+        return { lat: markerLat, lng: markerLng, color, label };
+      };
+
+      const markers = [
+        parseMarker(req.query.m, "0xFF4907", ""),
+        parseMarker(req.query.p, "0xFF4907", "P"),
+        parseMarker(req.query.d, "0x16A34A", "D"),
+      ].filter((marker): marker is NonNullable<typeof marker> => Boolean(marker));
+
+      const image = await fetchGoogleStaticMap({
+        lat,
+        lng,
+        zoom,
+        width,
+        height,
+        markers,
+        circleKm: Number.isFinite(circleKmRaw) ? circleKmRaw : null,
+      });
+      if (!image) {
+        return res.status(502).json({ message: "Google Static Map is unavailable" });
+      }
+      res.setHeader("Content-Type", image.contentType);
+      res.setHeader("Cache-Control", "public, max-age=120");
+      res.send(image.buffer);
+    } catch (error) {
+      console.error("Maps static error:", error);
+      res.status(500).json({ message: "Static map failed" });
+    }
+  });
 
   // Geocode address search
   app.get("/api/maps/geocode", async (req: Request, res: Response) => {

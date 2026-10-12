@@ -11,7 +11,6 @@ import {
   type AddressScope,
   type ShipmentMapPoint,
 } from "@/components/customer/BookShipmentMap";
-import { isGoogleMapsKeyConfigured } from "@/lib/google-maps";
 
 export type { ActivePin, AddressScope, ShipmentMapPoint };
 
@@ -161,8 +160,7 @@ export function BookShipmentWorkspace({
 
   const activePoint = activePin === "pickup" ? pickup : destination;
   const isDesktop = useIsDesktopLayout();
-  const mapsReady = isGoogleMapsKeyConfigured();
-  const showMap = Boolean(mapStep);
+  const showDesktopMap = Boolean(isDesktop && mapStep);
 
   const mapPane = (
     <div className="relative h-full min-h-0 w-full overflow-hidden">
@@ -192,186 +190,177 @@ export function BookShipmentWorkspace({
       data-testid="book-shipment-workspace"
     >
       <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-zinc-200 bg-white lg:h-full lg:w-[400px] lg:flex-none lg:border-r">
-        <div className="shrink-0 space-y-2.5 border-b border-zinc-100 px-4 pb-3 pt-3">
-          <div>
-            <h1 className="text-base font-bold tracking-tight text-zinc-900 sm:text-lg" data-testid="text-booking-title">
-              {title}
-            </h1>
-            {subtitle ? (
-              <p className="mt-0.5 line-clamp-2 text-xs font-medium text-[#FF4907]" data-testid="text-booking-hub">
-                {subtitle}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-2.5 px-4 pb-2 pt-3">
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-zinc-900" data-testid="text-booking-title">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="mt-0.5 line-clamp-1 text-xs font-medium text-[#FF4907]" data-testid="text-booking-hub">
+                  {subtitle}
+                </p>
+              ) : null}
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Step {stepIndex + 1} of {STEPS.length} — {STEPS[stepIndex]?.label}
               </p>
-            ) : null}
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Step {stepIndex + 1} of {STEPS.length} — {STEPS[stepIndex]?.label}
-            </p>
-          </div>
+            </div>
 
-          {/* Step progress */}
-          <ol
-            className={cn("grid gap-1.5", STEPS.length <= 4 ? "grid-cols-4" : "grid-cols-5")}
-            aria-label="Booking steps"
-          >
-            {STEPS.map((s, i) => {
-              const done = i < stepIndex;
-              const active = s.id === step;
-              return (
-                <li key={s.id}>
+            <ol
+              className={cn("grid gap-1", STEPS.length <= 4 ? "grid-cols-4" : "grid-cols-5")}
+              aria-label="Booking steps"
+            >
+              {STEPS.map((s, i) => {
+                const done = i < stepIndex;
+                const active = s.id === step;
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (i <= stepIndex) onStepChange(s.id);
+                      }}
+                      className={cn(
+                        "w-full rounded-md px-0.5 py-1 text-center text-[10px] font-semibold uppercase tracking-wide transition-colors",
+                        active && "bg-[#FF4907] text-white",
+                        done && !active && "bg-[#FF4907]/15 text-[#FF4907]",
+                        !done && !active && "bg-zinc-100 text-zinc-400",
+                      )}
+                      data-testid={`book-step-${s.id}`}
+                    >
+                      {s.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+
+            {mapStep && (
+              <>
+                <div className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1" role="tablist">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (i <= stepIndex) onStepChange(s.id);
-                    }}
+                    onClick={() => onScopeChange("domestic")}
+                    data-testid="scope-domestic"
                     className={cn(
-                      "w-full rounded-lg px-1 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide transition-colors",
-                      active && "bg-[#FF4907] text-white",
-                      done && !active && "bg-[#FF4907]/15 text-[#FF4907]",
-                      !done && !active && "bg-zinc-100 text-zinc-400",
+                      "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
+                      scope === "domestic" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
                     )}
-                    data-testid={`book-step-${s.id}`}
                   >
-                    {s.label}
+                    <MapPin className="h-3.5 w-3.5" />
+                    Domestic
                   </button>
-                </li>
-              );
-            })}
-          </ol>
+                  <button
+                    type="button"
+                    onClick={() => onScopeChange("international")}
+                    data-testid="scope-international"
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
+                      scope === "international" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
+                    )}
+                  >
+                    <Globe2 className="h-3.5 w-3.5" />
+                    International
+                  </button>
+                </div>
 
-          {mapStep && (
-            <>
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1" role="tablist">
-                <button
-                  type="button"
-                  onClick={() => onScopeChange("domestic")}
-                  data-testid="scope-domestic"
-                  className={cn(
-                    "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
-                    scope === "domestic" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
-                  )}
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                  Domestic
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onScopeChange("international")}
-                  data-testid="scope-international"
-                  className={cn(
-                    "flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold",
-                    scope === "international" ? "bg-white text-[#FF4907] shadow-sm" : "text-zinc-500",
-                  )}
-                >
-                  <Globe2 className="h-3.5 w-3.5" />
-                  International
-                </button>
-              </div>
-
-              <div className="relative">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                    <Input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                      placeholder={
-                        step === "pickup"
-                          ? "Search pickup address…"
-                          : scope === "international"
-                            ? "Search destination worldwide…"
-                            : "Search destination…"
-                      }
-                      className="h-10 rounded-xl border-zinc-200 bg-zinc-50 pl-9"
-                      data-testid="input-map-address-search"
-                      autoComplete="off"
-                    />
-                    {isSearching && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-zinc-400" />
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                      <Input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                        placeholder={
+                          step === "pickup"
+                            ? "Search pickup address…"
+                            : scope === "international"
+                              ? "Search destination worldwide…"
+                              : "Search destination…"
+                        }
+                        className="h-10 rounded-xl border-zinc-200 bg-zinc-50 pl-9"
+                        data-testid="input-map-address-search"
+                        autoComplete="off"
+                      />
+                      {isSearching && (
+                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-zinc-400" />
+                      )}
+                    </div>
+                    {step === "pickup" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 shrink-0 rounded-xl"
+                        onClick={detectCurrentLocation}
+                        disabled={isDetecting}
+                        data-testid="button-detect-pickup"
+                      >
+                        {isDetecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                      </Button>
                     )}
                   </div>
-                  {step === "pickup" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-10 shrink-0 rounded-xl"
-                      onClick={detectCurrentLocation}
-                      disabled={isDetecting}
-                      data-testid="button-detect-pickup"
-                    >
-                      {isDetecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-                    </Button>
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+                      {suggestions.map((s, i) => (
+                        <li key={`${s.lat}-${s.lng}-${i}`}>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                            onClick={() => applyPoint(s)}
+                          >
+                            <span className="line-clamp-2">{s.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
-                    {suggestions.map((s, i) => (
-                      <li key={`${s.lat}-${s.lng}-${i}`}>
-                        <button
-                          type="button"
-                          className="w-full px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                          onClick={() => applyPoint(s)}
-                        >
-                          <span className="line-clamp-2">{s.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              </>
+            )}
+
+            {!mapStep && (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-[#FF4907]" />
+                <span className="min-w-0 truncate font-medium text-zinc-800">{shortLabel(pickup, "Pickup")}</span>
+                <span className="text-zinc-300">→</span>
+                <span className="min-w-0 truncate font-medium text-zinc-800">
+                  {shortLabel(destination, "Destination")}
+                </span>
               </div>
-
-            </>
-          )}
-
-          {!mapStep && (
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2.5 text-xs text-zinc-600">
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-[#FF4907]" />
-              <span className="min-w-0 truncate font-medium text-zinc-800">{shortLabel(pickup, "Pickup")}</span>
-              <span className="text-zinc-300">→</span>
-              <span className="min-w-0 truncate font-medium text-zinc-800">
-                {shortLabel(destination, "Destination")}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {showMap && !isDesktop ? (
-          <div className="relative mx-4 mt-3 h-36 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
-            {mapPane}
+            )}
           </div>
-        ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {mapStep ? (
-            activePoint ? (
-              <div
-                className={cn(
-                  "mb-3 rounded-xl px-3 py-2 text-xs",
-                  step === "pickup" ? "bg-[#FF4907]/5 text-zinc-700" : "bg-green-50 text-zinc-700",
-                )}
-              >
-                <p className="font-semibold text-zinc-900">
-                  {step === "pickup" ? "Pickup set" : "Drop set"}
-                </p>
-                <p className="mt-0.5 line-clamp-2">{activePoint.label}</p>
-                <p className="mt-1 text-[11px] text-zinc-400">
-                  {showMap
-                    ? "Confirm details below, or drag the pin to adjust."
-                    : "Confirm the address details below."}
-                </p>
-              </div>
-            ) : (
-              <p className="mb-3 text-xs text-zinc-500">
-                {step === "pickup"
-                  ? showMap
-                    ? "Search or tap the map to set pickup."
-                    : "Search an address to set pickup."
-                  : showMap
-                    ? "Search or tap the map to set drop."
+          <div className="px-4 pb-4">
+            {mapStep ? (
+              activePoint ? (
+                <div
+                  className={cn(
+                    "mb-3 rounded-xl px-3 py-2 text-xs",
+                    step === "pickup" ? "bg-[#FF4907]/5 text-zinc-700" : "bg-green-50 text-zinc-700",
+                  )}
+                >
+                  <p className="font-semibold text-zinc-900">
+                    {step === "pickup" ? "Pickup set" : "Drop set"}
+                  </p>
+                  <p className="mt-0.5 line-clamp-2">{activePoint.label}</p>
+                  <p className="mt-1 text-[11px] text-zinc-400">Confirm the address details below.</p>
+                </div>
+              ) : (
+                <p className="mb-3 text-xs text-zinc-500">
+                  {step === "pickup"
+                    ? "Search an address or use current location to set pickup."
                     : "Search an address to set drop."}
-              </p>
-            )
-          ) : null}
-          {children}
+                </p>
+              )
+            ) : null}
+            {mapStep && !isDesktop ? (
+              <div className="relative mb-3 h-40 overflow-hidden rounded-xl border border-zinc-200">
+                {mapPane}
+              </div>
+            ) : null}
+            {children}
+          </div>
         </div>
 
         <div className="shrink-0 border-t border-zinc-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -414,8 +403,8 @@ export function BookShipmentWorkspace({
         </div>
       </aside>
 
-      {showMap && isDesktop ? (
-        <div className="relative min-h-0 flex-1 overflow-hidden">{mapPane}</div>
+      {showDesktopMap ? (
+        <div className="relative hidden min-h-0 flex-1 overflow-hidden lg:block">{mapPane}</div>
       ) : null}
     </div>
   );

@@ -8,6 +8,7 @@ const MAPS_SCRIPT_ID = "google-maps-js-sdk";
 const MAPS_CALLBACK = "__xgooInitGoogleMaps";
 
 let loadPromise: Promise<typeof google.maps> | null = null;
+let keyResolvePromise: Promise<string> | null = null;
 
 declare global {
   interface Window {
@@ -42,6 +43,45 @@ export function isGoogleMapsKeyConfigured(): boolean {
   return Boolean(getClientGoogleMapsApiKey());
 }
 
+export async function resolveClientGoogleMapsApiKey(): Promise<string> {
+  const existing = getClientGoogleMapsApiKey();
+  if (existing) return existing;
+  if (typeof window === "undefined") return "";
+  if (!keyResolvePromise) {
+    keyResolvePromise = fetch("/api/public/maps-config")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        const existingAfterFetch = getClientGoogleMapsApiKey();
+        if (existingAfterFetch) return existingAfterFetch;
+        return data?.configured ? existingAfterFetch : "";
+      })
+      .catch(() => getClientGoogleMapsApiKey());
+  }
+  return keyResolvePromise;
+}
+
+/** Convert a click on a Google Static Map image into lat/lng (Web Mercator). */
+export function pixelToLatLng(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  centerLat: number,
+  centerLng: number,
+  zoom: number,
+): { lat: number; lng: number } {
+  const scale = 256 * 2 ** zoom;
+  const worldX = ((centerLng + 180) / 360) * scale;
+  const sinLat = Math.sin((centerLat * Math.PI) / 180);
+  const worldY = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale;
+  const clickX = worldX + (x - width / 2);
+  const clickY = worldY + (y - height / 2);
+  const lng = (clickX / scale) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * clickY) / scale;
+  const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+  return { lat, lng };
+}
+
 function mapsNamespace(): typeof google.maps | null {
   return (window as unknown as { google?: { maps?: typeof google.maps } }).google?.maps ?? null;
 }
@@ -50,23 +90,8 @@ function mapsNamespace(): typeof google.maps | null {
  * Dynamically loads the Google Maps JavaScript API once.
  * `loading=async` requires a global callback — script.onload is not enough.
  */
-export function loadGoogleMapsScript(): Promise<typeof google.maps> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Cannot load Google Maps in a non-browser environment"));
-  }
-
-  const already = mapsNamespace();
-  if (already) return Promise.resolve(already);
-  if (loadPromise) return loadPromise;
-
-  loadPromise = new Promise<typeof google.maps>((resolve, reject) => {
-    const apiKey = getClientGoogleMapsApiKey();
-    if (!apiKey) {
-      loadPromise = null;
-      reject(new Error("Missing Google Maps API key"));
-      return;
-    }
-
+function attachGoogleMapsScript(apiKey: string): Promise<typeof google.maps> {
+  return new Promise((resolve, reject) => {
     const finish = () => {
       const maps = mapsNamespace();
       if (maps) {
@@ -112,6 +137,28 @@ export function loadGoogleMapsScript(): Promise<typeof google.maps> {
     };
     document.head.appendChild(script);
   });
+}
+
+export function loadGoogleMapsScript(): Promise<typeof google.maps> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Cannot load Google Maps in a non-browser environment"));
+  }
+
+  const already = mapsNamespace();
+  if (already) return Promise.resolve(already);
+  if (loadPromise) return loadPromise;
+
+  loadPromise = resolveClientGoogleMapsApiKey()
+    .then((apiKey) => {
+      if (!apiKey) {
+        throw new Error("Missing Google Maps API key");
+      }
+      return attachGoogleMapsScript(apiKey);
+    })
+    .catch((error) => {
+      loadPromise = null;
+      throw error;
+    });
 
   return loadPromise;
 }

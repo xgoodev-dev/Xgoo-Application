@@ -2290,20 +2290,13 @@ function BookingTab({
         >
           {bookStep === "pickup" && pickupPoint && (
             <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-900">Pickup address details</h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  Review house no., street, and landmark.
-                </p>
-              </div>
               <FormField control={form.control} name="senderAddress" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Address 1 *</FormLabel>
                   <FormControl>
-                    <Textarea
+                    <Input
                       {...field}
-                      rows={2}
-                      className="resize-none rounded-xl"
+                      className="rounded-xl"
                       placeholder="House / flat, street"
                       data-testid="input-sender-address"
                     />
@@ -2354,23 +2347,13 @@ function BookingTab({
 
           {bookStep === "destination" && destinationPoint && (
             <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-zinc-900">
-                  Drop address details
-                  {addressScope === "international" ? " (International)" : ""}
-                </h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  Edit door number, street, and locality.
-                </p>
-              </div>
               <FormField control={form.control} name="receiverAddress" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Address 1 *</FormLabel>
                   <FormControl>
-                    <Textarea
+                    <Input
                       {...field}
-                      rows={2}
-                      className="resize-none rounded-xl"
+                      className="rounded-xl"
                       placeholder="House / flat, street"
                       data-testid="input-receiver-address"
                     />

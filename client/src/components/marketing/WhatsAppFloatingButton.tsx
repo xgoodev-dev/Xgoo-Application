@@ -51,7 +51,15 @@ export function WhatsAppFloatingButton() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (isStaffPath(location) || isCustomerBookPath(location) || !visible) return null;
+  const pathOnly = location.split("?")[0] || "/";
+  if (
+    isStaffPath(location) ||
+    isCustomerBookPath(location) ||
+    pathOnly.includes("/book") ||
+    !visible
+  ) {
+    return null;
+  }
 
   const phone = resolveWhatsAppNumber();
   if (phone.length < 10) return null;
