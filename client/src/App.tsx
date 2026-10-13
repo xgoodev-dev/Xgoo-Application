@@ -39,6 +39,7 @@ import CustomersPage from "@/pages/customers";
 import PartnersPage from "@/pages/partners";
 import ReportsPage from "@/pages/reports";
 import PricingPage from "@/pages/pricing";
+import RateCalculatorPage from "@/pages/rate-calculator";
 import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
 import HubSettingsPage from "@/pages/hub-settings";
@@ -79,7 +80,8 @@ function CommandOnlyRedirect() {
       location.startsWith("/referrals") ||
       location.startsWith("/settings") ||
       location === "/partners" ||
-      location === "/pricing";
+      location === "/pricing" ||
+      location === "/rate-calculator";
     if (commandOnly && !isCommandWorkspace) setLocation("/dashboard");
   }, [isCommandWorkspace, isLoading, location, setLocation]);
 
@@ -124,6 +126,7 @@ function AuthenticatedApp() {
               <Route path="/customers" component={CustomersPage} />
               <Route path="/partners" component={PartnersPage} />
               <Route path="/pricing" component={PricingPage} />
+              <Route path="/rate-calculator" component={RateCalculatorPage} />
               <Route path="/reports" component={ReportsPage} />
               <Route path="/stores" component={StoresPage} />
               <Route path="/pro-accounts" component={ProAccountsPage} />

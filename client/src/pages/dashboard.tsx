@@ -349,9 +349,10 @@ export default function DashboardPage() {
             />
             {isCommandWorkspace ? (
             <QuickActionIcon
-              href="/pricing"
+              href="/rate-calculator"
               icon={Calculator}
-              label="Pricing"
+              label="Rate calculator"
+              testId="button-quick-rate-calculator"
               bgClassName="from-rose-500/25 to-rose-500/5 border-rose-500/25"
               iconClassName="text-rose-500"
             />

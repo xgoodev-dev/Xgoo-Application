@@ -54,6 +54,7 @@ const hubNavItems = [
 
 const commandControlItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Rate calculator", url: "/rate-calculator", icon: Calculator },
   { title: "Stores", url: "/stores", icon: Building2 },
   { title: "Pro accounts", url: "/pro-accounts", icon: Store },
   { title: "Referrals", url: "/referrals", icon: Gift },

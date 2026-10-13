@@ -10,6 +10,10 @@ import {
   triggerReceiverTrackingWhatsApp,
   triggerTrackingWhatsApp,
 } from "./integrations/whatsapp-notifications";
+import {
+  notifyShipmentStatusChannels,
+  notifyShipmentTrackingChannels,
+} from "./shipment-notifications";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
 import { storage } from "./storage";
 import { creditReferralCommission } from "./referral";
@@ -505,5 +509,15 @@ export async function notifyAwbCreated(shipment: Shipment) {
   const trackUrl = publicTrackUrl(awb, settings);
   triggerTrackingWhatsApp(settings, shipment, trackUrl);
   triggerInvoiceWhatsApp(settings, shipment, invoice.invoiceNumber, trackUrl);
-  await notifyReceiverOfShipment(shipment);
+  const request = await storage.getBookingRequestByShipmentId(shipment.id);
+  const storeName = await proStoreNameForRequest(request);
+  notifyShipmentTrackingChannels(settings, shipment, trackUrl, storeName);
+}
+
+export async function notifyShipmentStatusUpdated(shipment: Shipment) {
+  const ref = partnerAwb(shipment) || shipment.bookingNumber;
+  if (!ref) return;
+  const office = await officeById(shipment.officeId);
+  const settings = office?.whatsappSettings;
+  notifyShipmentStatusChannels(settings, shipment, publicTrackUrl(ref, settings));
 }

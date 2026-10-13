@@ -174,7 +174,7 @@ const defaultAutomation = (): WhatsAppSettings["automation"] =>
       whatsAppAutomationRuleSchema.parse(
         key === "welcome"
           ? { enabled: false, templateName: "", languageCode: "en" }
-          : key === "receiver_ack"
+          : key === "receiver_ack" || key === "tracking" || key === "shipment_status"
             ? { enabled: true, templateName: "", languageCode: "en" }
             : {},
       ),
@@ -1142,7 +1142,14 @@ export function resolveTemplateSendParams(
 /** Map booking fields to template body slots by count ({{1}}, {{2}}, …). */
 export function mapBodyParamsForTemplate(
   bodyParamCount: number,
-  values: { name: string; requestNumber: string; route?: string; bookingNumber?: string },
+  values: {
+    name: string;
+    requestNumber: string;
+    route?: string;
+    bookingNumber?: string;
+    trackUrl?: string;
+    status?: string;
+  },
   examples?: string[],
 ): string[] {
   const pool = [
@@ -1150,6 +1157,8 @@ export function mapBodyParamsForTemplate(
     values.requestNumber,
     values.bookingNumber || values.requestNumber,
     values.route || "",
+    values.status || "",
+    values.trackUrl || "",
   ].filter((v) => v.trim());
   return resolveTemplateParamValues(bodyParamCount, undefined, examples, pool);
 }

@@ -13,7 +13,7 @@ import type { BookingWorkflowStep } from "@shared/world-first";
 import { issueAutofillToken } from "./autofill-token";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { getDelhiveryConfigFromEnv, cancelDelhiveryShipment } from "../integrations/delhivery";
-import { notifyAwbCreated } from "../pickup-service";
+import { notifyAwbCreated, notifyShipmentStatusUpdated } from "../pickup-service";
 
 export class BookingEngineError extends Error {
   constructor(
@@ -372,7 +372,12 @@ export async function cancelPartnerBooking(input: {
 
   await cancelDelhiveryShipment(config, waybill);
 
-  await storage.updateShipmentStatus(shipment.id, "cancelled");
+  const cancelled = await storage.updateShipmentStatus(shipment.id, "cancelled");
+  if (cancelled) {
+    void notifyShipmentStatusUpdated(cancelled).catch((error) => {
+      console.error("[shipment notify] Cancel WhatsApp/email failed", error);
+    });
+  }
   const job = await storage.getLatestBookingJob(shipment.id);
   if (job) {
     await storage.updateBookingJob(job.id, {

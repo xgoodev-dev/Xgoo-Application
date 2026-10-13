@@ -25,6 +25,7 @@ import {
   fetchGoogleStaticMap,
 } from "./geocode";
 import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
+import { runRateCalculator, rateCalculatorRequestSchema } from "./rate-calculator";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
 import { shipmentPackageSchema } from "@shared/document-template";
@@ -100,7 +101,7 @@ import {
   triggerBookingRequestWhatsApp,
 } from "./integrations/whatsapp-notifications";
 import { triggerCustomerNotification } from "./customer-notifications";
-import { notifyAwbCreated } from "./pickup-service";
+import { notifyAwbCreated, notifyShipmentStatusUpdated } from "./pickup-service";
 import {
   getCustomerReferralDashboard,
   getOrCreateReferralSettings,
@@ -1313,6 +1314,28 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching Command store summaries:", error);
       res.status(500).json({ message: "Failed to load store revenue" });
+    }
+  });
+
+  app.post("/api/command/rate-calculator", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const data = rateCalculatorRequestSchema.parse(req.body);
+      const result = await runRateCalculator(office.id, data);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      const status = typeof (error as { status?: number }).status === "number"
+        ? (error as { status: number }).status
+        : 500;
+      const message = error instanceof Error ? error.message : "Failed to calculate rates";
+      if (status >= 500) {
+        console.error("Rate calculator error:", error);
+      }
+      res.status(status).json({ message });
     }
   });
 
@@ -3615,6 +3638,9 @@ export async function registerRoutes(
             status: validated.status,
           },
         );
+        void notifyShipmentStatusUpdated(shipment).catch((error) => {
+          console.error("[shipment notify] Status WhatsApp/email failed", error);
+        });
       }
       res.json(shipment);
     } catch (error) {
@@ -3792,7 +3818,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Delhivery API is not configured on the server." });
       }
       await cancelDelhiveryShipment(config, waybill);
-      await storage.updateShipmentStatus(shipment.id, "cancelled");
+      const cancelled = await storage.updateShipmentStatus(shipment.id, "cancelled");
+      if (cancelled) {
+        void notifyShipmentStatusUpdated(cancelled).catch((error) => {
+          console.error("[shipment notify] Cancel WhatsApp/email failed", error);
+        });
+      }
       res.json({ success: true, message: `Delhivery shipment ${waybill} cancelled successfully.` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to cancel Delhivery shipment";

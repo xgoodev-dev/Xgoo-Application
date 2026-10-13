@@ -35,6 +35,7 @@ type ShipmentNotify = Pick<
 > & {
   awbNumber?: string | null;
   externalAwb?: string | null;
+  totalAmount?: string | null;
 };
 
 async function sendAutomatedWhatsApp(
@@ -48,6 +49,7 @@ async function sendAutomatedWhatsApp(
     bookingNumber?: string;
     trackUrl?: string;
     invoiceNumber?: string;
+    status?: string;
   },
   fallbackText: string,
 ): Promise<void> {
@@ -164,6 +166,29 @@ export function triggerBookingSuccessWhatsApp(
   });
 }
 
+async function sendTrackingOrStatusWhatsApp(
+  whatsappSettingsRaw: unknown,
+  ruleKey: Extract<WhatsAppMessageTypeKey, "tracking" | "shipment_status">,
+  toPhone: string,
+  values: {
+    name: string;
+    requestNumber: string;
+    route?: string;
+    bookingNumber?: string;
+    trackUrl?: string;
+    status?: string;
+  },
+  fallbackText: string,
+): Promise<void> {
+  const settings = mergeWhatsAppSettings(whatsappSettingsRaw);
+  const rule = settings.automation[ruleKey];
+  if (rule?.enabled) {
+    await sendAutomatedWhatsApp(whatsappSettingsRaw, ruleKey, toPhone, values, fallbackText);
+    return;
+  }
+  await sendEnabledWhatsAppText(whatsappSettingsRaw, toPhone, fallbackText);
+}
+
 export async function sendTrackingWhatsApp(
   whatsappSettingsRaw: unknown,
   shipment: ShipmentNotify,
@@ -172,7 +197,10 @@ export async function sendTrackingWhatsApp(
   const awb = (shipment.awbNumber || shipment.externalAwb || shipment.bookingNumber).trim();
   const route =
     [shipment.senderCity, shipment.receiverCity].filter(Boolean).join(" → ") || "your route";
-  await sendAutomatedWhatsApp(
+  const amount = parseFloat(shipment.totalAmount || "");
+  const amountLine =
+    Number.isFinite(amount) && amount > 0 ? ` Amount: ₹${amount.toFixed(2)}.` : "";
+  await sendTrackingOrStatusWhatsApp(
     whatsappSettingsRaw,
     "tracking",
     shipment.senderPhone,
@@ -183,7 +211,7 @@ export async function sendTrackingWhatsApp(
       route,
       trackUrl,
     },
-    `Hi ${shipment.senderName}, your XGoo shipment ${shipment.bookingNumber} is booked with AWB ${awb}. Track it here: ${trackUrl}`,
+    `Hi ${shipment.senderName}, your XGoo shipment ${shipment.bookingNumber} is booked with AWB ${awb}.${amountLine} Track it here: ${trackUrl}`,
   );
 }
 
@@ -289,6 +317,56 @@ export function triggerShipmentPartyWhatsApp(
     `Hi ${input.receiverName}, your XGoo booking ${input.bookingNumber} is on the way. Track it here: ${input.trackUrl}`,
   ).catch((error) => {
     console.error("[WhatsApp shipment receiver] Failed", formatMetaGraphError(error));
+  });
+}
+
+export function triggerShipmentStatusWhatsApp(
+  whatsappSettingsRaw: unknown,
+  input: {
+    senderName: string;
+    senderPhone: string;
+    receiverName: string;
+    receiverPhone: string;
+    bookingNumber: string;
+    awb?: string | null;
+    route: string;
+    statusLabel: string;
+    trackUrl: string;
+  },
+): void {
+  const awb = input.awb?.trim() || input.bookingNumber;
+  void sendTrackingOrStatusWhatsApp(
+    whatsappSettingsRaw,
+    "shipment_status",
+    input.senderPhone,
+    {
+      name: input.senderName,
+      requestNumber: awb,
+      bookingNumber: input.bookingNumber,
+      route: input.route,
+      trackUrl: input.trackUrl,
+      status: input.statusLabel,
+    },
+    `Hi ${input.senderName}, XGoo booking ${input.bookingNumber} is now ${input.statusLabel} (AWB ${awb}). Track: ${input.trackUrl}`,
+  ).catch((error) => {
+    console.error("[WhatsApp shipment_status sender] Failed", formatMetaGraphError(error));
+  });
+  if (!input.receiverPhone.trim()) return;
+  void sendTrackingOrStatusWhatsApp(
+    whatsappSettingsRaw,
+    "shipment_status",
+    input.receiverPhone,
+    {
+      name: input.receiverName,
+      requestNumber: awb,
+      bookingNumber: input.bookingNumber,
+      route: input.route,
+      trackUrl: input.trackUrl,
+      status: input.statusLabel,
+    },
+    `Hi ${input.receiverName}, XGoo booking ${input.bookingNumber} is now ${input.statusLabel}. Track: ${input.trackUrl}`,
+  ).catch((error) => {
+    console.error("[WhatsApp shipment_status receiver] Failed", formatMetaGraphError(error));
   });
 }
 
