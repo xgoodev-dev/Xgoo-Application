@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { useLocation } from "wouter";
 import { MarketingHeader } from "./MarketingHeader";
 import { MarketingFooter } from "./MarketingFooter";
 
@@ -13,6 +14,12 @@ export function MarketingLayout({
   showSectionLinks = false,
   mainClassName = "pt-28",
 }: MarketingLayoutProps) {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
+
   return (
     <div className="marketing-surface flex min-h-screen flex-col overflow-x-hidden bg-white text-gray-900 [color-scheme:light]">
       <MarketingHeader showSectionLinks={showSectionLinks} />

@@ -1,7 +1,13 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Gift, Landmark } from "lucide-react";
-import { formatReferralRupees } from "@shared/referral";
+import {
+  DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+  DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+  formatReferralRupees,
+  referralDomesticRateLabel,
+  referralInternationalRateLabel,
+} from "@shared/referral";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +21,8 @@ type ReferralDashboard = {
     isActive: boolean;
     commissionType: "percent" | "flat";
     commissionValue: string;
+    domesticCommissionValue?: string;
+    internationalCommissionValue?: string;
     minPayoutAmount: string;
   };
   partner: null | {
@@ -36,11 +44,13 @@ type ReferralDashboard = {
   };
 };
 
-function programRateLabel(program: ReferralDashboard["program"]) {
-  if (program.commissionType === "flat") {
-    return `${formatReferralRupees(program.commissionValue)} per paid courier`;
-  }
-  return `${program.commissionValue}% of the paid quote`;
+function programRateCopy(program: ReferralDashboard["program"]) {
+  return {
+    domestic: referralDomesticRateLabel(program.domesticCommissionValue || DEFAULT_REFERRAL_DOMESTIC_PERCENT),
+    international: referralInternationalRateLabel(
+      program.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+    ),
+  };
 }
 
 async function fetchReferral(token: string): Promise<ReferralDashboard> {
@@ -153,8 +163,9 @@ export function ReferEarnPanel({
         <div>
           <h2 className="text-xl font-bold text-zinc-900">Refer and earn</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Share {product.name} with people and businesses who need to send a courier. You earn after
-            their quote is paid — not when they only fill the form.
+            Share {product.name} with people and businesses who need to send a courier. Domestic
+            referrals earn a percent of the bill; international referrals earn a flat amount. You earn
+            after the bill is paid — not when they only fill the form.
           </p>
         </div>
       </div>
@@ -169,7 +180,12 @@ export function ReferEarnPanel({
         <>
           <Card className="mt-5 border-zinc-100 p-4 shadow-none">
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Commission</p>
-            <p className="mt-1 text-lg font-bold text-zinc-900">{programRateLabel(data.program)}</p>
+            <p className="mt-1 text-lg font-bold text-zinc-900">
+              Domestic: {programRateCopy(data.program).domestic}
+            </p>
+            <p className="mt-1 text-lg font-bold text-zinc-900">
+              International: {programRateCopy(data.program).international}
+            </p>
             <p className="mt-1 text-sm text-zinc-500">
               Minimum payout {formatReferralRupees(data.program.minPayoutAmount)}. Program{" "}
               {data.program.isActive ? "is open" : "is paused by Command"}.

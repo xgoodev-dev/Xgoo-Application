@@ -13,6 +13,7 @@ import {
   Calculator,
   Files,
   BarChart3,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -347,6 +348,16 @@ export default function DashboardPage() {
               bgClassName="from-amber-500/25 to-amber-500/5 border-amber-500/25"
               iconClassName="text-amber-500"
             />
+            {!isCommandWorkspace ? (
+            <QuickActionIcon
+              href="/bot-assistant"
+              icon={Bot}
+              label="Bot Assistant"
+              testId="button-quick-bot-assistant"
+              bgClassName="from-orange-500/25 to-orange-500/5 border-orange-500/25"
+              iconClassName="text-[#FF4907]"
+            />
+            ) : null}
             {isCommandWorkspace ? (
             <QuickActionIcon
               href="/rate-calculator"

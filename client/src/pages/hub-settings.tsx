@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { HubCounterQrCard } from "@/components/hubs/HubCounterQrCard";
+import { HubBotAssistantCard } from "@/components/hubs/HubBotAssistantCard";
 import { HubServiceAreaSettings } from "@/components/hubs/HubServiceAreaSettings";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
@@ -48,6 +49,11 @@ export default function HubSettingsPage() {
       ) : hub ? (
         <>
           <HubCounterQrCard
+            officeSlug={office?.publicSlug}
+            branchId={hub.id}
+            hubName={hub.name}
+          />
+          <HubBotAssistantCard
             officeSlug={office?.publicSlug}
             branchId={hub.id}
             hubName={hub.name}

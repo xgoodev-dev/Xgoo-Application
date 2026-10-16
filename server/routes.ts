@@ -190,6 +190,7 @@ import {
 import { loginOrRegisterCustomerWithGoogle } from "./customer-google";
 import { assignPickupJob, ensurePickupTables } from "./pickup-dispatch";
 import { registerPickupRoutes } from "./pickup-routes";
+import { registerKioskRoutes } from "./kiosk-routes";
 import {
   appendCameraDraftPhoto,
   createCameraDraft,
@@ -4748,7 +4749,13 @@ export async function registerRoutes(
         customerUserId: customerUser?.id,
         referralCode: referral.referralCode,
         referredByPartnerId: referral.referredByPartnerId,
-        source: lockedHub ? "hub_qr" : "website",
+        source: lockedHub
+          ? String((req.body as { source?: string })?.source || "") === "hub_kiosk"
+            ? "hub_kiosk"
+            : "hub_qr"
+          : String((req.body as { source?: string })?.source || "") === "hub_kiosk"
+            ? "hub_kiosk"
+            : "website",
         status: "pending",
       });
 
@@ -6566,6 +6573,7 @@ Important: Focus on extracting receiver details since the sender is the customer
   });
 
   registerPickupRoutes(app);
+  registerKioskRoutes(app);
 
   app.post("/api/public/contact", async (req, res) => {
     const contactInquirySchema = z.object({

@@ -89,7 +89,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         heading: "8. Referral partners",
         paragraphs: [
           "Anyone may join the XGoo referral program from Go, Pro, or the website. A referral partner earns only when a referred person actually sends a courier and pays an accepted quote. Filling a form or creating a booking request is not enough.",
-          "Commission rates, the minimum payout, and program availability are set by XGoo Command and may change. Self-referrals and the first valid referral code on an account are enforced. Payouts are made to the bank account the partner adds; marking a payout as paid records that Command has transferred the amount.",
+          "Domestic parcel referrals earn 10% of the total bill. International courier referrals earn a flat ₹300 per paid referral. The minimum payout and program availability are set by XGoo Command and may change. Self-referrals and the first valid referral code on an account are enforced. Payouts are made to the bank account the partner adds; marking a payout as paid records that Command has transferred the amount.",
           "Referral partners are not employees or staff. We may pause a partner or the program for fraud, self-referral, or policy breaches.",
         ],
       },

@@ -1,6 +1,8 @@
 export const REFERRAL_CODE_MIN = 4;
 export const REFERRAL_CODE_MAX = 16;
-export const DEFAULT_REFERRAL_COMMISSION_PERCENT = "5";
+export const DEFAULT_REFERRAL_COMMISSION_PERCENT = "10";
+export const DEFAULT_REFERRAL_DOMESTIC_PERCENT = "10";
+export const DEFAULT_REFERRAL_INTERNATIONAL_FLAT = "300";
 export const DEFAULT_REFERRAL_MIN_PAYOUT = "100";
 
 export const REFERRAL_COMMISSION_TYPES = ["percent", "flat"] as const;
@@ -48,6 +50,39 @@ export function formatReferralRupees(value: string | number | null | undefined):
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+export function isInternationalReferral(shipmentType?: string | null): boolean {
+  return (shipmentType || "domestic").trim().toLowerCase() === "international";
+}
+
+export function resolveReferralRate(input: {
+  shipmentType?: string | null;
+  domesticCommissionType?: ReferralCommissionType | null;
+  domesticCommissionValue?: string | number | null;
+  internationalCommissionType?: ReferralCommissionType | null;
+  internationalCommissionValue?: string | number | null;
+}): { commissionType: ReferralCommissionType; commissionValue: string } {
+  if (isInternationalReferral(input.shipmentType)) {
+    return {
+      commissionType: input.internationalCommissionType === "percent" ? "percent" : "flat",
+      commissionValue: String(input.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT),
+    };
+  }
+  return {
+    commissionType: input.domesticCommissionType === "flat" ? "flat" : "percent",
+    commissionValue: String(input.domesticCommissionValue || DEFAULT_REFERRAL_DOMESTIC_PERCENT),
+  };
+}
+
+export function referralDomesticRateLabel(value: string | number = DEFAULT_REFERRAL_DOMESTIC_PERCENT): string {
+  return `${value}% of the total bill`;
+}
+
+export function referralInternationalRateLabel(
+  value: string | number = DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+): string {
+  return `${formatReferralRupees(value)} per referral`;
+}
+
 export function calculateReferralCommission(input: {
   quoteAmount: string | number;
   commissionType: ReferralCommissionType;
@@ -62,7 +97,7 @@ export function calculateReferralCommission(input: {
     case "percent":
       return Math.round(((quote * rate) / 100) * 100) / 100;
     case "flat":
-      return Math.round(Math.min(rate, quote) * 100) / 100;
+      return Math.round(rate * 100) / 100;
     default: {
       const _exhaustive: never = input.commissionType;
       return _exhaustive;

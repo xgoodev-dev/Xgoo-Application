@@ -21,6 +21,7 @@ const STAFF_PATH_PREFIXES = [
   "/reports",
   "/settings",
   "/hub-settings",
+  "/bot-assistant",
   "/stores",
   "/staff",
   "/pro-accounts",
@@ -56,6 +57,8 @@ export function WhatsAppFloatingButton() {
     isStaffPath(location) ||
     isCustomerBookPath(location) ||
     pathOnly.includes("/book") ||
+    pathOnly === "/kiosk" ||
+    pathOnly.startsWith("/kiosk/") ||
     !visible
   ) {
     return null;

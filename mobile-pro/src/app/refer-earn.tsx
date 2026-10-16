@@ -38,14 +38,12 @@ export default function ReferEarnScreen() {
       <BackButton fallback="/(tabs)/profile" />
       <Text style={[styles.title, { color: colors.text }]}>Refer and earn</Text>
       <Text style={[styles.copy, { color: colors.textMuted }]}>
-        You earn when someone you refer sends a courier and pays the quote.
+        Domestic: 10% of the total bill. International: ₹300 per paid referral.
       </Text>
       {data ? (
         <Card>
           <Text style={[styles.rate, { color: colors.text }]}>
-            {data.program.commissionType === 'flat'
-              ? `${rupees(data.program.commissionValue)} per paid courier`
-              : `${data.program.commissionValue}% of the paid quote`}
+            {`Domestic ${data.program.domesticCommissionValue || data.program.commissionValue || '10'}% of the bill · International ${rupees(data.program.internationalCommissionValue || 300)} per referral`}
           </Text>
         </Card>
       ) : null}

@@ -19,6 +19,7 @@ import {
   Building2,
   Gift,
   Store,
+  Bot,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
@@ -50,6 +51,7 @@ const hubNavItems = [
   { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
   { title: "Reports", url: "/reports", icon: FileText },
+  { title: "Bot Assistant", url: "/bot-assistant", icon: Bot },
 ];
 
 const commandControlItems = [

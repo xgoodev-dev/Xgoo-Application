@@ -62,6 +62,11 @@ function FooterNavLink({
 export function MarketingFooter() {
   const [, navigate] = useLocation();
 
+  const go = (href: string) => {
+    navigate(href);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
   return (
     <footer className="border-t border-white/10 pb-28 pt-12 sm:py-14" style={{ background: "#141414" }}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -69,7 +74,7 @@ export function MarketingFooter() {
           <div className="sm:col-span-2 lg:col-span-1">
             <button
               type="button"
-              onClick={() => navigate("/")}
+              onClick={() => go("/")}
               className="flex items-center gap-2.5 transition-opacity hover:opacity-90"
             >
               <img src={xgooLogo} alt="XGoo" className="h-10 w-10 rounded-lg" />
@@ -107,7 +112,7 @@ export function MarketingFooter() {
             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Company</h3>
             <nav className="mt-4 flex flex-col gap-2.5">
               {COMPANY_LINKS.map((link) => (
-                <FooterNavLink key={link.href} link={link} onNavigate={navigate} />
+                <FooterNavLink key={link.href} link={link} onNavigate={go} />
               ))}
             </nav>
           </div>
@@ -117,7 +122,7 @@ export function MarketingFooter() {
             <nav className="mt-4 flex flex-col gap-2.5">
               <FooterNavLink
                 link={{ label: "International Courier", href: INTERNATIONAL_COURIER_PATH }}
-                onNavigate={navigate}
+                onNavigate={go}
               />
               {listPublishedCourierRoutes().map((route) => (
                 <FooterNavLink
@@ -126,7 +131,7 @@ export function MarketingFooter() {
                     label: `Hyderabad to ${route.countryName}`,
                     href: courierRoutePath(route.slug),
                   }}
-                  onNavigate={navigate}
+                  onNavigate={go}
                 />
               ))}
             </nav>
@@ -136,7 +141,7 @@ export function MarketingFooter() {
             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Policies</h3>
             <nav className="mt-4 flex flex-col gap-2.5">
               {POLICY_LINKS.map((link) => (
-                <FooterNavLink key={link.href} link={link} onNavigate={navigate} />
+                <FooterNavLink key={link.href} link={link} onNavigate={go} />
               ))}
             </nav>
           </div>
@@ -144,15 +149,15 @@ export function MarketingFooter() {
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-white/55">Support</h3>
             <nav className="mt-4 flex flex-col gap-2.5">
-              <FooterNavLink link={{ label: "Help & Contact", href: "/contact" }} onNavigate={navigate} />
+              <FooterNavLink link={{ label: "Help & Contact", href: "/contact" }} onNavigate={go} />
               {XGOO_OPS_MODULES.map((module) => (
                 <FooterNavLink
                   key={module.id}
                   link={{ label: module.name, href: module.path }}
-                  onNavigate={navigate}
+                  onNavigate={go}
                 />
               ))}
-              <FooterNavLink link={{ label: "Book Online", href: "/book" }} onNavigate={navigate} />
+              <FooterNavLink link={{ label: "Book Online", href: "/book" }} onNavigate={go} />
               <a
                 href={`mailto:${XGOO_CONTACT.email}?subject=XGoo%20Support`}
                 className="text-sm text-white/45 transition-colors hover:text-white"

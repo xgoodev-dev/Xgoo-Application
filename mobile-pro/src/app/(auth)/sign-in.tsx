@@ -34,14 +34,10 @@ export default function SignInScreen() {
     }
     setLoading(true);
     try {
-      const result = await requestOtp(phone, 'login');
+      await requestOtp(phone, 'login');
       setOtpSent(true);
       setOtp('');
       setResendIn(45);
-      Alert.alert(
-        'OTP sent',
-        result.debugOtp ? `Use this code: ${result.debugOtp}` : 'Until WhatsApp is configured, use 123456.',
-      );
     } catch (error) {
       Alert.alert('Could not send OTP', error instanceof Error ? error.message : 'Please try again.');
     } finally {

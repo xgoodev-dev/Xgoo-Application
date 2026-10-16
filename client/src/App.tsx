@@ -43,6 +43,8 @@ import RateCalculatorPage from "@/pages/rate-calculator";
 import DocumentsPage from "@/pages/documents";
 import SettingsPage from "@/pages/settings";
 import HubSettingsPage from "@/pages/hub-settings";
+import BotAssistantPage from "@/pages/bot-assistant";
+import KioskPage from "@/pages/kiosk";
 import StoresPage from "@/pages/stores";
 import ProAccountsPage from "@/pages/pro-accounts";
 import StaffPage from "@/pages/staff";
@@ -133,6 +135,7 @@ function AuthenticatedApp() {
               <Route path="/referrals" component={ReferralsPage} />
               <Route path="/staff" component={StaffPage} />
               <Route path="/hub-settings" component={HubSettingsPage} />
+              <Route path="/bot-assistant" component={BotAssistantPage} />
               <Route path="/settings" component={SettingsPage} />
               <Route component={NotFound} />
             </Switch>
@@ -218,6 +221,8 @@ function Router() {
       <Route path="/r/:code" component={ReferralCodeRedirectPage} />
       <Route path="/book" component={CustomerPortalPage} />
       <Route path="/book/:slug" component={CustomerPortalPage} />
+      <Route path="/kiosk" component={KioskPage} />
+      <Route path="/kiosk/:slug" component={KioskPage} />
       <Route path="/track" component={TrackPage} />
       <Route path="/track/:ref" component={TrackPage} />
       <Route path="/quote/:token" component={QuoteAcceptPage} />

@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Gift, Landmark, Share2, Truck } from "lucide-react";
-import { formatReferralRupees } from "@shared/referral";
+import {
+  DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+  DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+  formatReferralRupees,
+  referralDomesticRateLabel,
+  referralInternationalRateLabel,
+} from "@shared/referral";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,18 +20,10 @@ import { SEO_PAGES, buildBreadcrumbJsonLd } from "@/lib/seo";
 
 type PublicProgram = {
   isActive: boolean;
-  commissionType: "percent" | "flat";
-  commissionValue: string;
   minPayoutAmount: string;
+  domesticCommissionValue?: string;
+  internationalCommissionValue?: string;
 };
-
-function rateCopy(program?: PublicProgram) {
-  if (!program) return "Command sets the live commission for every paid courier.";
-  if (program.commissionType === "flat") {
-    return `${formatReferralRupees(program.commissionValue)} when the person you refer pays an accepted quote.`;
-  }
-  return `${program.commissionValue}% of the paid quote when the person you refer actually sends a courier.`;
-}
 
 export function ReferralCodeRedirectPage() {
   const params = useParams<{ code?: string }>();
@@ -69,7 +67,7 @@ export default function ReferPage() {
           { name: "Refer and earn", path: "/refer" },
         ])}
       />
-      <section className="bg-zinc-950 px-4 pb-16 pt-28 text-white sm:px-6 lg:px-8">
+      <section className="bg-zinc-950 px-4 pb-16 pt-8 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl">
           <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Referral partners</p>
           <h1 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">
@@ -77,7 +75,7 @@ export default function ReferPage() {
           </h1>
           <p className="mt-4 max-w-2xl text-base text-white/70">
             Anyone can join — {XGOO_MODULES.go.name}, {XGOO_MODULES.pro.name}, or a public visitor. Refer
-            individuals or businesses. You earn only after they send a courier and pay the quote.
+            people and businesses. You earn after they send a courier and the bill is paid.
           </p>
           <p className="mt-3 text-sm text-white/55">{XGOO_BRAND_FOUNDATION.brandBelief.quote}</p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -95,15 +93,33 @@ export default function ReferPage() {
       </section>
 
       <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
-        <Card className="border-zinc-200 p-5 shadow-none">
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Live rate</p>
-          <p className="mt-2 text-2xl font-bold text-zinc-900">{rateCopy(program)}</p>
-          <p className="mt-2 text-sm text-zinc-500">
-            {program
-              ? `Minimum payout ${formatReferralRupees(program.minPayoutAmount)}. ${program.isActive ? "The program is open." : "Command has paused new earnings."}`
-              : "Rates are set in XGoo Command."}
-          </p>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="border-zinc-200 p-5 shadow-none">
+            <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Domestic parcel</p>
+            <p className="mt-2 text-2xl font-bold text-zinc-900">
+              {referralDomesticRateLabel(program?.domesticCommissionValue || DEFAULT_REFERRAL_DOMESTIC_PERCENT)}
+            </p>
+            <p className="mt-2 text-sm text-zinc-500">
+              Paid when the referred domestic shipment bill is paid.
+            </p>
+          </Card>
+          <Card className="border-zinc-200 p-5 shadow-none">
+            <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">International courier</p>
+            <p className="mt-2 text-2xl font-bold text-zinc-900">
+              {referralInternationalRateLabel(
+                program?.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+              )}
+            </p>
+            <p className="mt-2 text-sm text-zinc-500">
+              A flat amount for each paid international referral.
+            </p>
+          </Card>
+        </div>
+        <p className="mt-4 text-sm text-zinc-500">
+          {program
+            ? `Minimum payout ${formatReferralRupees(program.minPayoutAmount)}. ${program.isActive ? "The program is open." : "Command has paused new earnings."}`
+            : "Join from Go or Pro, then share your personal link."}
+        </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <Step
@@ -114,7 +130,7 @@ export default function ReferPage() {
           <Step
             icon={Truck}
             title="They send a courier"
-            body="When the referred person books and pays the accepted quote, the earning is created."
+            body="When they book a domestic or international courier and pay the bill, your earning is created."
           />
           <Step
             icon={Landmark}

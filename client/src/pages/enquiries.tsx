@@ -126,6 +126,7 @@ const sourceLabels: Record<string, string> = {
   customer_portal: "XGoo Go / Pro",
   website: "Website",
   hub_qr: "Hub counter",
+  hub_kiosk: "Bot Assistant",
   staff_portal: "Walk-in",
   api: "API",
   legacy: "Legacy",
@@ -154,6 +155,7 @@ function enquiryChannel(request: BookingRequest): EnquiryChannel {
     case "in_store":
     case "staff_portal":
     case "hub_qr":
+    case "hub_kiosk":
       return "walkin";
     case "phone":
       return "call";

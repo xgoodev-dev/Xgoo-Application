@@ -15,6 +15,8 @@ import {
 import {
   calculateReferralCommission,
   DEFAULT_REFERRAL_COMMISSION_PERCENT,
+  DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+  DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
   DEFAULT_REFERRAL_MIN_PAYOUT,
   generateReferralCode,
   isValidReferralCode,
@@ -22,6 +24,7 @@ import {
   maskBankAccountNumber,
   normalizeReferralCode,
   referralSharePath,
+  resolveReferralRate,
   type ReferralCommissionType,
   type ReferralPartnerStatus,
 } from "@shared/referral";
@@ -42,15 +45,21 @@ export const referralBankSchema = z.object({
     .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, "Enter a valid IFSC"),
 });
 
+const commissionAmountSchema = z
+  .string()
+  .trim()
+  .refine((value) => {
+    const amount = Number.parseFloat(value);
+    return Number.isFinite(amount) && amount > 0 && amount <= 100000;
+  }, "Enter a valid commission amount");
+
 export const referralSettingsUpdateSchema = z.object({
-  commissionType: z.enum(["percent", "flat"]),
-  commissionValue: z
-    .string()
-    .trim()
-    .refine((value) => {
-      const amount = Number.parseFloat(value);
-      return Number.isFinite(amount) && amount > 0 && amount <= 100000;
-    }, "Enter a valid commission amount"),
+  commissionType: z.enum(["percent", "flat"]).optional(),
+  commissionValue: commissionAmountSchema.optional(),
+  domesticCommissionType: z.enum(["percent", "flat"]).default("percent"),
+  domesticCommissionValue: commissionAmountSchema.default(DEFAULT_REFERRAL_DOMESTIC_PERCENT),
+  internationalCommissionType: z.enum(["percent", "flat"]).default("flat"),
+  internationalCommissionValue: commissionAmountSchema.default(DEFAULT_REFERRAL_INTERNATIONAL_FLAT),
   minPayoutAmount: z
     .string()
     .trim()
@@ -87,12 +96,28 @@ export function ensureReferralSchema() {
           id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
           office_id varchar NOT NULL UNIQUE REFERENCES offices(id),
           commission_type varchar(20) NOT NULL DEFAULT 'percent',
-          commission_value decimal(10, 2) NOT NULL DEFAULT 5,
+          commission_value decimal(10, 2) NOT NULL DEFAULT 10,
           min_payout_amount decimal(12, 2) NOT NULL DEFAULT 100,
           is_active boolean NOT NULL DEFAULT true,
           created_at timestamp DEFAULT now(),
           updated_at timestamp DEFAULT now()
         )
+      `);
+      await db.execute(sql`
+        ALTER TABLE referral_settings
+          ADD COLUMN IF NOT EXISTS domestic_commission_type varchar(20) NOT NULL DEFAULT 'percent'
+      `);
+      await db.execute(sql`
+        ALTER TABLE referral_settings
+          ADD COLUMN IF NOT EXISTS domestic_commission_value decimal(10, 2) NOT NULL DEFAULT 10
+      `);
+      await db.execute(sql`
+        ALTER TABLE referral_settings
+          ADD COLUMN IF NOT EXISTS international_commission_type varchar(20) NOT NULL DEFAULT 'flat'
+      `);
+      await db.execute(sql`
+        ALTER TABLE referral_settings
+          ADD COLUMN IF NOT EXISTS international_commission_value decimal(10, 2) NOT NULL DEFAULT 300
       `);
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS referral_partners (
@@ -153,10 +178,20 @@ function asPartnerStatus(value: string | null | undefined): ReferralPartnerStatu
 }
 
 function publicSettings(settings: ReferralSettings) {
+  const domesticType = asCommissionType(settings.domesticCommissionType || "percent");
+  const domesticValue = String(settings.domesticCommissionValue || DEFAULT_REFERRAL_DOMESTIC_PERCENT);
+  const internationalType = asCommissionType(settings.internationalCommissionType || "flat");
+  const internationalValue = String(
+    settings.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+  );
   return {
     isActive: Boolean(settings.isActive),
-    commissionType: asCommissionType(settings.commissionType),
-    commissionValue: String(settings.commissionValue || DEFAULT_REFERRAL_COMMISSION_PERCENT),
+    commissionType: domesticType,
+    commissionValue: domesticValue,
+    domesticCommissionType: domesticType,
+    domesticCommissionValue: domesticValue,
+    internationalCommissionType: internationalType,
+    internationalCommissionValue: internationalValue,
     minPayoutAmount: String(settings.minPayoutAmount || DEFAULT_REFERRAL_MIN_PAYOUT),
   };
 }
@@ -175,6 +210,10 @@ export async function getOrCreateReferralSettings(officeId: string): Promise<Ref
       officeId,
       commissionType: "percent",
       commissionValue: DEFAULT_REFERRAL_COMMISSION_PERCENT,
+      domesticCommissionType: "percent",
+      domesticCommissionValue: DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+      internationalCommissionType: "flat",
+      internationalCommissionValue: DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
       minPayoutAmount: DEFAULT_REFERRAL_MIN_PAYOUT,
       isActive: true,
     })
@@ -190,8 +229,12 @@ export async function updateReferralSettings(
   const [updated] = await db
     .update(referralSettings)
     .set({
-      commissionType: input.commissionType,
-      commissionValue: input.commissionValue,
+      commissionType: input.domesticCommissionType,
+      commissionValue: input.domesticCommissionValue,
+      domesticCommissionType: input.domesticCommissionType,
+      domesticCommissionValue: input.domesticCommissionValue,
+      internationalCommissionType: input.internationalCommissionType,
+      internationalCommissionValue: input.internationalCommissionValue,
       minPayoutAmount: input.minPayoutAmount,
       isActive: input.isActive,
       updatedAt: new Date(),
@@ -454,11 +497,17 @@ export async function creditReferralCommission(input: {
     .limit(1);
   if (existing) return existing;
 
-  const commissionType = asCommissionType(settings.commissionType);
+  const rate = resolveReferralRate({
+    shipmentType: request.shipmentType,
+    domesticCommissionType: asCommissionType(settings.domesticCommissionType || settings.commissionType),
+    domesticCommissionValue: settings.domesticCommissionValue || settings.commissionValue,
+    internationalCommissionType: asCommissionType(settings.internationalCommissionType || "flat"),
+    internationalCommissionValue: settings.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+  });
   const commissionAmount = calculateReferralCommission({
     quoteAmount: quotation.totalAmount,
-    commissionType,
-    commissionValue: settings.commissionValue,
+    commissionType: rate.commissionType,
+    commissionValue: rate.commissionValue,
   });
   if (commissionAmount <= 0) return null;
 
@@ -471,8 +520,8 @@ export async function creditReferralCommission(input: {
         bookingRequestId: request.id,
         quotationId: quotation.id,
         quoteAmount: String(quotation.totalAmount),
-        commissionType,
-        commissionValue: String(settings.commissionValue),
+        commissionType: rate.commissionType,
+        commissionValue: rate.commissionValue,
         commissionAmount: commissionAmount.toFixed(2),
         status: "pending",
       })

@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
-import { formatReferralRupees } from "@shared/referral";
+import {
+  DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+  DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+  formatReferralRupees,
+} from "@shared/referral";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +17,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 type ReferralSettings = {
-  commissionType: "percent" | "flat";
-  commissionValue: string;
+  domesticCommissionType: "percent" | "flat";
+  domesticCommissionValue: string;
+  internationalCommissionType: "percent" | "flat";
+  internationalCommissionValue: string;
   minPayoutAmount: string;
   isActive: boolean;
 };
@@ -50,8 +56,10 @@ export function CommandReferrals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ReferralSettings>({
-    commissionType: "percent",
-    commissionValue: "5",
+    domesticCommissionType: "percent",
+    domesticCommissionValue: DEFAULT_REFERRAL_DOMESTIC_PERCENT,
+    internationalCommissionType: "flat",
+    internationalCommissionValue: DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
     minPayoutAmount: "100",
     isActive: true,
   });
@@ -62,8 +70,12 @@ export function CommandReferrals() {
       const res = await apiRequest("GET", "/api/command/referral/settings");
       const data = (await res.json()) as ReferralSettings;
       setForm({
-        commissionType: data.commissionType === "flat" ? "flat" : "percent",
-        commissionValue: String(data.commissionValue || "5"),
+        domesticCommissionType: data.domesticCommissionType === "flat" ? "flat" : "percent",
+        domesticCommissionValue: String(data.domesticCommissionValue || DEFAULT_REFERRAL_DOMESTIC_PERCENT),
+        internationalCommissionType: data.internationalCommissionType === "percent" ? "percent" : "flat",
+        internationalCommissionValue: String(
+          data.internationalCommissionValue || DEFAULT_REFERRAL_INTERNATIONAL_FLAT,
+        ),
         minPayoutAmount: String(data.minPayoutAmount || "100"),
         isActive: Boolean(data.isActive),
       });
@@ -137,8 +149,8 @@ export function CommandReferrals() {
         <CardHeader>
           <CardTitle>Commission rates</CardTitle>
           <CardDescription>
-            Anyone can join as a referral partner. They earn when the referred person actually sends a
-            courier and pays the quote.
+            Domestic referrals earn a percent of the total bill. International referrals earn a flat
+            amount per paid booking.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -153,31 +165,26 @@ export function CommandReferrals() {
             />
           </div>
           <div>
-            <Label htmlFor="referral-type">Commission type</Label>
-            <select
-              id="referral-type"
-              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={form.commissionType}
+            <Label htmlFor="referral-domestic">Domestic parcel (%)</Label>
+            <Input
+              id="referral-domestic"
+              value={form.domesticCommissionValue}
               onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  commissionType: event.target.value === "flat" ? "flat" : "percent",
-                }))
+                setForm((current) => ({ ...current, domesticCommissionValue: event.target.value }))
               }
-            >
-              <option value="percent">Percent of paid quote</option>
-              <option value="flat">Flat amount per paid quote</option>
-            </select>
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Percent of the total bill.</p>
           </div>
           <div>
-            <Label htmlFor="referral-value">
-              {form.commissionType === "flat" ? "Amount (₹)" : "Percent"}
-            </Label>
+            <Label htmlFor="referral-international">International courier (₹)</Label>
             <Input
-              id="referral-value"
-              value={form.commissionValue}
-              onChange={(event) => setForm((current) => ({ ...current, commissionValue: event.target.value }))}
+              id="referral-international"
+              value={form.internationalCommissionValue}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, internationalCommissionValue: event.target.value }))
+              }
             />
+            <p className="mt-1 text-xs text-muted-foreground">Flat amount per paid referral.</p>
           </div>
           <div>
             <Label htmlFor="referral-min">Minimum payout (₹)</Label>

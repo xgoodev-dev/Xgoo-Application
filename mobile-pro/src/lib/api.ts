@@ -126,6 +126,8 @@ export type ReferralDashboard = {
     isActive: boolean;
     commissionType: 'percent' | 'flat';
     commissionValue: string;
+    domesticCommissionValue?: string;
+    internationalCommissionValue?: string;
     minPayoutAmount: string;
   };
   partner: null | {

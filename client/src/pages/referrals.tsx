@@ -18,7 +18,8 @@ export default function ReferralsPage() {
       <div>
         <h1 className="text-2xl font-bold">Referral program</h1>
         <p className="text-sm text-muted-foreground">
-          Set commission rates, review partners, and mark bank payouts after a referred person pays a quote.
+          Domestic referrals earn 10% of the total bill. International referrals earn ₹300 each. Review
+          partners and mark bank payouts after the bill is paid.
         </p>
       </div>
       <CommandReferrals />

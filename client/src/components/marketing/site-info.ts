@@ -54,6 +54,15 @@ export type XgooModuleId = keyof typeof XGOO_MODULES;
 export const XGOO_CUSTOMER_MODULES = [XGOO_MODULES.go, XGOO_MODULES.pro] as const;
 export const XGOO_OPS_MODULES = [XGOO_MODULES.hub, XGOO_MODULES.command] as const;
 
+/** In-store kiosk receptionist — a Hub store feature, not a separate login product. */
+export const XGOO_HUB_BOT = {
+  name: "XGoo Bot Assistant",
+  shortName: "Bot",
+  meaning: "Walk-in receptionist for this Hub store",
+  path: "/bot-assistant",
+  kioskPath: "/kiosk",
+} as const;
+
 /** Company origin — historical facts for About and landing. Keep brand slogans in brand-foundation.ts. */
 export const XGOO_ORIGIN = {
   foundedYear: 2021,

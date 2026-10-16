@@ -77,7 +77,7 @@ export const SEO_PAGES = {
     path: "/refer",
     title: "Refer and Earn | XGoo Referral Partners",
     description:
-      "Join the XGoo referral program. Share your link with people and businesses who need to send a courier, and earn when they pay the quote.",
+      "Join the XGoo referral program. Earn 10% of the total bill on domestic parcels and a flat ₹300 on each international courier referral after the bill is paid.",
     keywords: ["XGoo referral", "refer and earn", "courier referral", "referral partner"],
   },
   terms: {

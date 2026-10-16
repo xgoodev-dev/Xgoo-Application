@@ -31,16 +31,10 @@ export default function SignInScreen() {
     }
     setLoading(true);
     try {
-      const result = await requestOtp(phone, 'login');
+      await requestOtp(phone, 'login');
       setStep('otp');
       setOtp('');
       setResendIn(45);
-      Alert.alert(
-        'OTP sent',
-        result.debugOtp
-          ? `Use this code: ${result.debugOtp}`
-          : "Until WhatsApp is configured, use 123456.",
-      );
     } catch (error) {
       Alert.alert('Could not send OTP', error instanceof Error ? error.message : 'Please try again.');
     } finally {
@@ -105,7 +99,6 @@ export default function SignInScreen() {
               autoComplete="one-time-code"
               placeholder="6-digit code"
               maxLength={6}
-              helperText="Until WhatsApp OTP is set up, use 123456"
             />
             <AppButton title="Verify and sign in" icon={LogIn} loading={loading} onPress={submit} />
             <Pressable disabled={resendIn > 0 || loading} onPress={() => void sendCode()}>
