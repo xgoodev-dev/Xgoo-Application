@@ -18,6 +18,7 @@ import {
 } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AddressSuggestField, type PlaceSuggestion } from '@/components/address-suggest-field';
 import { BookingMap } from '@/components/booking-map';
 import { AppButton, Card, Field, Screen } from '@/components/ui';
 import {
@@ -218,6 +219,35 @@ export default function BookingScreen() {
     }));
   };
 
+  const applyPlace = (type: 'sender' | 'receiver', place: PlaceSuggestion) => {
+    if (type === 'sender') {
+      setForm((current) => ({
+        ...current,
+        senderAddress: place.address,
+        senderCity: place.city || current.senderCity,
+        senderState: place.state || current.senderState,
+        senderPincode: place.pincode || current.senderPincode,
+        pickupLat: place.lat != null ? String(place.lat) : current.pickupLat,
+        pickupLng: place.lng != null ? String(place.lng) : current.pickupLng,
+        pickupLocationName: place.label || place.address,
+      }));
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      receiverAddress: place.address,
+      receiverCity: place.city || current.receiverCity,
+      receiverState: place.state || current.receiverState,
+      receiverPincode: place.pincode || current.receiverPincode,
+      destinationLat: place.lat != null ? String(place.lat) : current.destinationLat,
+      destinationLng: place.lng != null ? String(place.lng) : current.destinationLng,
+      destinationCountry:
+        current.shipmentType === 'international'
+          ? place.country || current.destinationCountry
+          : current.destinationCountry,
+    }));
+  };
+
   const selectAddress = (address: CustomerAddress, type: 'sender' | 'receiver') => {
     if (type === 'sender') {
       setForm((current) => ({
@@ -274,7 +304,7 @@ export default function BookingScreen() {
       );
     } catch (error) {
       Alert.alert(
-        'Could not fetch live location',
+        'Could not fetch current location',
         error instanceof Error
           ? error.message
           : 'Turn on GPS and internet access, then try again.',
@@ -364,7 +394,7 @@ export default function BookingScreen() {
     if (!canContinue) {
       const messages = [
         'Choose Domestic or International to continue.',
-        'Enter the pickup address or use Live location.',
+        'Enter the pickup address or use Current location.',
         isInternational
           ? 'Enter destination country, full address, and city. Map pin is optional.'
           : 'Enter the receiver’s delivery address. This is different from the pickup address.',
@@ -494,11 +524,12 @@ export default function BookingScreen() {
       {step === 1 ? (
         <LocationStep
           title="Set the pickup address"
-          hint="Use live location, tap the map, choose a saved pickup, or type the sender’s address in India."
+          hint="Pin the map, use current location, or type the pickup address to pick from saved and Google results."
           type="sender"
           mode="domestic"
           addresses={(addresses.data || []).filter((item) => item.addressType === 'sender')}
           onSelect={selectAddress}
+          onSelectPlace={(place) => applyPlace('sender', place)}
           fields={{
             address: form.senderAddress,
             city: form.senderCity || '',
@@ -510,7 +541,6 @@ export default function BookingScreen() {
             if (key === 'Country') return;
             update(`sender${key}` as keyof BookingForm, value as never);
           }}
-          accent={colors.accent}
         >
           <View style={[styles.mapWrap, { borderColor: colors.border }]}>
             <BookingMap
@@ -532,7 +562,7 @@ export default function BookingScreen() {
             >
               <Navigation size={18} color={colors.accent} />
               <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>
-                {locating ? 'Finding location…' : 'Use live location'}
+                {locating ? 'Finding location…' : 'Current location'}
               </Text>
             </Pressable>
             {resolvingMap ? (
@@ -566,7 +596,7 @@ export default function BookingScreen() {
             hint={
               isInternational
                 ? 'Type the destination country and full address. You can also place an optional pin on the map.'
-                : 'Now enter the receiver’s destination. Your pickup address is already saved above.'
+                : 'Type the delivery address to choose a saved place or a Google result. Pickup is already set above.'
             }
             type="receiver"
             mode={isInternational ? 'international' : 'domestic'}
@@ -576,6 +606,7 @@ export default function BookingScreen() {
                 : (addresses.data || []).filter((item) => item.addressType === 'receiver')
             }
             onSelect={selectAddress}
+            onSelectPlace={(place) => applyPlace('receiver', place)}
             fields={{
               address: form.receiverAddress,
               city: form.receiverCity || '',
@@ -590,7 +621,6 @@ export default function BookingScreen() {
               }
               update(`receiver${key}` as keyof BookingForm, value as never);
             }}
-            accent={colors.success}
             manualFirst={isInternational}
           >
             <View style={[styles.mapWrap, { borderColor: colors.border }]}>
@@ -853,9 +883,9 @@ function LocationStep({
   mode,
   addresses,
   onSelect,
+  onSelectPlace,
   fields,
   onField,
-  accent,
   children,
   manualFirst = false,
 }: {
@@ -865,6 +895,7 @@ function LocationStep({
   mode: 'domestic' | 'international';
   addresses: CustomerAddress[];
   onSelect: (address: CustomerAddress, type: 'sender' | 'receiver') => void;
+  onSelectPlace: (place: PlaceSuggestion) => void;
   fields: {
     address: string;
     city: string;
@@ -876,7 +907,6 @@ function LocationStep({
     key: 'Address' | 'City' | 'State' | 'Pincode' | 'Country',
     value: string,
   ) => void;
-  accent: string;
   children?: React.ReactNode;
   manualFirst?: boolean;
 }) {
@@ -898,21 +928,24 @@ function LocationStep({
           placeholder="e.g. United States, UAE, Canada"
         />
       ) : null}
-      <Field
+      <AddressSuggestField
         label={
           type === 'sender'
             ? 'Pickup full address'
             : mode === 'international'
               ? 'Full destination address'
-              : 'Receiver full address'
+              : 'Delivery full address'
         }
         multiline
         value={fields.address}
+        saved={addresses}
         onChangeText={(value) => onField('Address', value)}
+        onSelectSaved={(address) => onSelect(address, type)}
+        onSelectPlace={onSelectPlace}
         placeholder={
           mode === 'international'
             ? 'Street, building, area, landmark'
-            : 'House/building, street, area'
+            : 'House, street, area — tap for saved addresses'
         }
       />
       <View style={styles.row}>
@@ -936,41 +969,17 @@ function LocationStep({
     </>
   );
 
-  const addressesBlock = addresses.length ? (
-    <>
-      <Text style={[styles.groupTitle, { color: colors.text }]}>Saved addresses</Text>
-      <View style={styles.savedList}>
-        {addresses.map((address) => (
-          <Card key={address.id} onPress={() => onSelect(address, type)} style={styles.savedCard}>
-            <View style={[styles.savedIcon, { backgroundColor: `${accent}18` }]}>
-              <MapPin size={17} color={accent} />
-            </View>
-            <View style={styles.flex}>
-              <Text style={[styles.savedTitle, { color: colors.text }]}>{address.label}</Text>
-              <Text numberOfLines={1} style={[styles.savedText, { color: colors.textMuted }]}>
-                {[address.address, address.city].filter(Boolean).join(', ')}
-              </Text>
-            </View>
-            {address.isDefault ? <Check size={17} color={accent} /> : null}
-          </Card>
-        ))}
-      </View>
-    </>
-  ) : null;
-
   return (
     <View style={styles.stepBody}>
       <StepHeading icon={MapPin} title={title} copy={hint} />
       {manualFirst ? (
         <>
           {formFields}
-          {addressesBlock}
           {children}
         </>
       ) : (
         <>
           {children}
-          {addressesBlock}
           {formFields}
         </>
       )}
@@ -1105,7 +1114,7 @@ const styles = StyleSheet.create({
     minWidth: 72,
     alignItems: 'center',
   },
-  mapWrap: { height: 210, borderRadius: 0, borderWidth: 1, overflow: 'hidden' },
+  mapWrap: { height: 240, borderRadius: 0, borderWidth: 1, overflow: 'hidden' },
   mapHint: { fontSize: 10, lineHeight: 15, marginTop: -4 },
   confirmedPickup: {
     flexDirection: 'row',

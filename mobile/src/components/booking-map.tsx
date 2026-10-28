@@ -1,7 +1,6 @@
-import { useEffect, useState, type ComponentType } from 'react';
-import { GoogleStaticBookingMap } from '@/components/booking-map-static';
-import { OpenStreetMap } from '@/components/open-street-map';
-import { isExpoGoClient } from '@/lib/notifications';
+import Constants from 'expo-constants';
+import { GoogleBookingMap } from '@/components/booking-map-google';
+import { ExpoGoGoogleMap } from '@/components/booking-map-google-web';
 
 type Props = {
   latitude?: number | null;
@@ -10,60 +9,9 @@ type Props = {
   onMapPress: (latitude: number, longitude: number) => void;
 };
 
-const googleMapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
-
-export function BookingMap({
-  latitude = null,
-  longitude = null,
-  markerColor,
-  onMapPress,
-}: Props) {
-  const [GoogleMap, setGoogleMap] = useState<ComponentType<Props> | null>(null);
-  const [staticFailed, setStaticFailed] = useState(false);
-  const canUseGoogle = !isExpoGoClient() && Boolean(googleMapsKey);
-
-  useEffect(() => {
-    if (!canUseGoogle) return;
-    let active = true;
-    void import('./booking-map-google')
-      .then((mod) => {
-        if (active) setGoogleMap(() => mod.GoogleBookingMap);
-      })
-      .catch((error) => {
-        console.warn('Google Maps native SDK unavailable, using Static Maps', error);
-      });
-    return () => {
-      active = false;
-    };
-  }, [canUseGoogle]);
-
-  if (GoogleMap) {
-    return (
-      <GoogleMap
-        latitude={latitude}
-        longitude={longitude}
-        markerColor={markerColor}
-        onMapPress={onMapPress}
-      />
-    );
+export function BookingMap(props: Props) {
+  if (Constants.appOwnership === 'expo') {
+    return <ExpoGoGoogleMap {...props} />;
   }
-
-  if (staticFailed) {
-    return (
-      <OpenStreetMap
-        latitude={latitude}
-        longitude={longitude}
-        onMapPress={onMapPress}
-      />
-    );
-  }
-
-  return (
-    <GoogleStaticBookingMap
-      latitude={latitude}
-      longitude={longitude}
-      onMapPress={onMapPress}
-      onUnavailable={() => setStaticFailed(true)}
-    />
-  );
+  return <GoogleBookingMap {...props} />;
 }

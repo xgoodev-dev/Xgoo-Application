@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { PickupFuelDesk } from "@/components/settings/PickupFuelDesk";
 import { PickupPartners } from "@/components/settings/PickupPartners";
 import { StaffManagement } from "@/components/settings/StaffManagement";
 import { useStaffAccess } from "@/hooks/use-staff-access";
@@ -29,6 +30,7 @@ export default function StaffPage() {
       </div>
       <StaffManagement />
       <PickupPartners />
+      <PickupFuelDesk />
     </div>
   );
 }

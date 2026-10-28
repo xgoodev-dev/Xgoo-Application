@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Plus, Printer, SkipForward, X } from "lucide-react";
+import { Check, Loader2, Plus, Printer, Search, SkipForward, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -19,8 +19,11 @@ import {
   ProSurface,
   ProTableFrame,
   ProTableHead,
+  ProToolbar,
   proCellClass,
   proMobileInputClass,
+  proSearchClass,
+  proSelectClass,
 } from "./pro-table";
 
 type BusinessProfile = {
@@ -49,6 +52,7 @@ type BusinessDestination = {
 
 type BusinessDailyJob = {
   id: string;
+  jobDate?: string | null;
   receiverName: string;
   receiverPhone?: string | null;
   receiverCity?: string | null;
@@ -64,7 +68,18 @@ type BusinessDailyJob = {
   xgooOrderId?: string | null;
   status: "planned" | "skipped" | "submitted";
   bookingRequestId?: string | null;
+  createdAt?: string | Date | null;
 };
+
+type PickupPeriod = "today" | "previous" | "all";
+type PickupStatusFilter = "all" | BusinessDailyJob["status"];
+type PickupSort = "newest" | "oldest" | "customer" | "status";
+
+const PICKUP_PERIODS: Array<{ id: PickupPeriod; label: string }> = [
+  { id: "today", label: "Today" },
+  { id: "previous", label: "Previous" },
+  { id: "all", label: "All pickups" },
+];
 
 const EMPTY_DRAFT = {
   destinationId: "",
@@ -87,6 +102,28 @@ const JOB_STATUS: Record<BusinessDailyJob["status"], string> = {
   skipped: "Skipped",
   submitted: "Sent",
 };
+
+function jobTime(job: BusinessDailyJob) {
+  const created = job.createdAt ? new Date(job.createdAt).getTime() : 0;
+  return Number.isFinite(created) ? created : 0;
+}
+
+function comparePickupJobs(a: BusinessDailyJob, b: BusinessDailyJob, sort: PickupSort) {
+  switch (sort) {
+    case "newest":
+      return (b.jobDate || "").localeCompare(a.jobDate || "") || jobTime(b) - jobTime(a);
+    case "oldest":
+      return (a.jobDate || "").localeCompare(b.jobDate || "") || jobTime(a) - jobTime(b);
+    case "customer":
+      return a.receiverName.localeCompare(b.receiverName);
+    case "status":
+      return a.status.localeCompare(b.status) || a.receiverName.localeCompare(b.receiverName);
+    default: {
+      const _never: never = sort;
+      return _never;
+    }
+  }
+}
 
 function isPickupDraftDirty(draft: typeof EMPTY_DRAFT) {
   return Boolean(
@@ -127,6 +164,10 @@ export function PickupPanel({
   const date = todayIsoDate();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [period, setPeriod] = useState<PickupPeriod>("today");
+  const [statusFilter, setStatusFilter] = useState<PickupStatusFilter>("all");
+  const [sort, setSort] = useState<PickupSort>("newest");
+  const [search, setSearch] = useState("");
   const pickerRef = useRef<HTMLTableCellElement>(null);
   const mobilePickerRef = useRef<HTMLDivElement>(null);
 
@@ -142,8 +183,8 @@ export function PickupPanel({
   }, [pickerOpen]);
 
   const todayQuery = useQuery({
-    queryKey: ["/api/customer/business/today", date],
-    queryFn: () => api.today(date),
+    queryKey: ["/api/customer/business/today", date, "all"],
+    queryFn: () => api.today(date, "all"),
   });
 
   const data = todayQuery.data as
@@ -271,8 +312,34 @@ export function PickupPanel({
       toast({ title: "Could not confirm", description: error.message, variant: "destructive" }),
   });
 
-  const planned = data?.jobs.filter((job) => job.status === "planned") || [];
+  const allJobs = data?.jobs || [];
+  const planned = allJobs.filter((job) => job.status === "planned" && (job.jobDate || date) === date);
+  const visibleJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allJobs
+      .filter((job) => {
+        const jobDate = job.jobDate || date;
+        if (period === "today") return jobDate === date;
+        if (period === "previous") return jobDate < date;
+        return true;
+      })
+      .filter((job) => (statusFilter === "all" ? true : job.status === statusFilter))
+      .filter((job) => {
+        if (!q) return true;
+        return [
+          job.xgooOrderId,
+          job.receiverName,
+          job.receiverPhone,
+          job.receiverCity,
+          job.receiverAddress,
+          job.contentDescription,
+          job.jobDate,
+        ].some((value) => value?.toString().toLowerCase().includes(q));
+      })
+      .sort((a, b) => comparePickupJobs(a, b, sort));
+  }, [allJobs, date, period, search, sort, statusFilter]);
   const pickupStyle = data?.pickupStyle || data?.profile.pickupStyle || "standing";
+  const showJobDate = period !== "today";
 
   if (todayQuery.isLoading) {
     return (
@@ -286,7 +353,7 @@ export function PickupPanel({
     <div className="flex h-full min-h-0 flex-col py-4" data-testid="business-today">
       <ProPageHeader
         title="Pickup"
-        description={`${data?.profile.storeName || data?.profile.companyName || "Your store"} · ${date}. Add parcels, then request collection.`}
+        description={`${data?.profile.storeName || data?.profile.companyName || "Your store"} · ${date}. Filter current and previous pickup lists, then request today's collection.`}
         actions={
           <>
             {onOpenOrders ? (
@@ -310,6 +377,55 @@ export function PickupPanel({
           </>
         }
       />
+      <ProToolbar>
+        <div className="relative min-w-[12rem] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <input
+            className={`${proSearchClass} pl-8`}
+            placeholder="Search XGoo ID, customer, phone, city…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            data-testid="input-pickup-search"
+          />
+        </div>
+        <select
+          className={proSelectClass}
+          value={period}
+          onChange={(event) => setPeriod(event.target.value as PickupPeriod)}
+          aria-label="Pickup period"
+          data-testid="select-pickup-period"
+        >
+          {PICKUP_PERIODS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <select
+          className={proSelectClass}
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as PickupStatusFilter)}
+          aria-label="Pickup status"
+          data-testid="select-pickup-status"
+        >
+          <option value="all">All statuses</option>
+          <option value="planned">Planned</option>
+          <option value="skipped">Skipped</option>
+          <option value="submitted">Sent</option>
+        </select>
+        <select
+          className={proSelectClass}
+          value={sort}
+          onChange={(event) => setSort(event.target.value as PickupSort)}
+          aria-label="Sort pickups"
+          data-testid="select-pickup-sort"
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="customer">Customer A–Z</option>
+          <option value="status">Status</option>
+        </select>
+      </ProToolbar>
       {pickupStyle === "standing" && data?.standingDay === false ? (
         <p className="mb-3 text-sm text-zinc-500">
           Today is outside standing pickup days.{" "}
@@ -416,12 +532,13 @@ export function PickupPanel({
             ) : null}
           </div>
         </ProSurface>
-        {(data?.jobs || []).map((job) => (
+        {visibleJobs.map((job) => (
           <ProSurface key={job.id} className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="font-mono text-xs font-semibold text-zinc-900">{job.xgooOrderId || "—"}</p>
               <ProChip accent={job.status === "planned"}>{JOB_STATUS[job.status]}</ProChip>
             </div>
+            {showJobDate ? <p className="text-xs text-zinc-400">{job.jobDate || date}</p> : null}
             <p className="font-semibold text-zinc-900">{job.receiverName}</p>
             <p className="text-sm text-zinc-500">
               {job.receiverPhone || "—"}
@@ -485,12 +602,18 @@ export function PickupPanel({
             </div>
           </ProSurface>
         ))}
+        {visibleJobs.length === 0 ? (
+          <p className="px-1 py-6 text-center text-sm text-zinc-500">
+            No pickup parcels match these filters.
+          </p>
+        ) : null}
       </div>
       <div className="hidden min-h-0 flex-1 md:block">
       <ProTableFrame minWidth="1360px">
         <ProTableHead
           columns={[
             { label: "XGoo ID", width: "10rem" },
+            ...(showJobDate ? [{ label: "Date", width: "7.5rem" }] : []),
             { label: "Customer" },
             { label: "Phone" },
             { label: "Type", width: "8rem" },
@@ -508,6 +631,7 @@ export function PickupPanel({
         <tbody>
           <tr className="border-b border-[#FF4907]/30 bg-[#FFF7F3]">
             <td className="px-2 py-1 text-xs text-zinc-400">Assigned on add</td>
+            {showJobDate ? <td className="px-2 py-1 text-xs text-zinc-400">{date}</td> : null}
             <td
               className="relative px-1 py-1"
               ref={pickerRef}
@@ -671,11 +795,14 @@ export function PickupPanel({
               </div>
             </td>
           </tr>
-          {(data?.jobs || []).map((job) => (
+          {visibleJobs.map((job) => (
             <tr key={job.id} className="border-b border-zinc-100" data-testid={`today-job-${job.id}`}>
               <td className="px-2 py-2 font-mono text-xs font-semibold text-zinc-900">
                 {job.xgooOrderId || "—"}
               </td>
+              {showJobDate ? (
+                <td className="px-2 py-2 text-xs text-zinc-500">{job.jobDate || date}</td>
+              ) : null}
               <td className="px-2 py-2 font-medium text-zinc-900">{job.receiverName}</td>
               <td className="px-2 py-2 text-zinc-600">{job.receiverPhone || "—"}</td>
               <td className="px-2 py-2 text-zinc-600">{shipmentScopeLabel(job.shipmentType)}</td>
@@ -788,6 +915,16 @@ export function PickupPanel({
               </td>
             </tr>
           ))}
+          {visibleJobs.length === 0 ? (
+            <tr>
+              <td
+                className="px-2 py-8 text-center text-sm text-zinc-500"
+                colSpan={showJobDate ? 14 : 13}
+              >
+                No pickup parcels match these filters.
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </ProTableFrame>
       </div>

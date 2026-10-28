@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { LogIn } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppButton, BackButton, BrandLockup, Field, Pill, Screen } from '@/components/ui';
+import { AppButton, BackButton, BrandLockup, Field, OtpBoxes, Pill, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { TectangleShopsBanner } from '@/components/tectangle-shops-banner';
 import { LegalLinks } from '@/components/legal-links';
@@ -106,7 +106,7 @@ export default function SignInScreen() {
             editable={!otpSent}
           />
           {otpSent ? (
-            <Field label="OTP" keyboardType="number-pad" maxLength={6} value={otp} onChangeText={setOtp} />
+            <OtpBoxes value={otp} onChangeText={setOtp} />
           ) : null}
           {!otpSent ? (
             <AppButton title="Send OTP" loading={loading} onPress={() => void sendCode()} />

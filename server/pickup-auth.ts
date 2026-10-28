@@ -97,7 +97,7 @@ export async function requireOfficeStore(office: Office, branchId: string | null
 
 export async function createPickupPartnerAccount(input: {
   office: Office;
-  branchId: string;
+  branchId?: string | null;
   name: string;
   phone: string;
   password: string;
@@ -105,23 +105,22 @@ export async function createPickupPartnerAccount(input: {
   govtIdType: string;
   govtIdNumber: string;
   signupSource: "hub" | "self";
+  status?: "active" | "pending";
 }) {
   const phone = normalizePickupPhone(input.phone);
   if (phone.length < 10) {
     throw Object.assign(new Error("Enter a valid 10-digit mobile number."), { status: 400 });
   }
-  await requireOfficeStore(input.office, input.branchId);
-  const existing = await storage.getPickupPartnerByPhone(input.office.id, phone);
-  if (existing) {
-    throw Object.assign(new Error("A pickup partner with this mobile number already exists."), {
-      status: 400,
-    });
+  const status = input.status || (input.signupSource === "self" ? "pending" : "active");
+  if (status === "active") {
+    await requireOfficeStore(input.office, input.branchId);
   }
+  const existing = await storage.getPickupPartnerByPhone(input.office.id, phone);
   const govt = assertGovtId(input);
   const passwordHash = await hashPickupPassword(input.password);
-  return storage.createPickupPartner({
+  const payload = {
     officeId: input.office.id,
-    branchId: input.branchId,
+    branchId: input.branchId || null,
     name: input.name.trim(),
     phone,
     passwordHash,
@@ -129,7 +128,18 @@ export async function createPickupPartnerAccount(input: {
     govtIdType: govt.govtIdType,
     govtIdNumber: govt.govtIdNumber,
     signupSource: input.signupSource,
-    status: "active",
-    availability: "offline",
-  });
+    status,
+    availability: "offline" as const,
+  };
+  if (existing) {
+    if (existing.status === "active") {
+      throw Object.assign(new Error("A pickup partner with this mobile number already exists."), {
+        status: 400,
+      });
+    }
+    return (
+      (await storage.updatePickupPartner(existing.id, payload)) ?? existing
+    );
+  }
+  return storage.createPickupPartner(payload);
 }

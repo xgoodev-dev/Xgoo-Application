@@ -10,12 +10,12 @@ import {
   Store,
   Users,
 } from 'lucide-react-native';
-import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { AppButton, Card, PageHeader, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { useAuth } from '@/lib/auth';
 import { useProProfile } from '@/lib/profile';
-import { publicSiteUrl } from '@/lib/server';
+import { getApiUrl, publicSiteUrl } from '@/lib/server';
 import { XGOO_PRO } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
@@ -29,16 +29,27 @@ export default function ProfileScreen() {
     <Screen>
       <PageHeader title="More" subtitle={XGOO_PRO.name} />
       <Card style={styles.profile}>
-        <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
-          <Text style={styles.avatarText}>
-            {(profile?.storeName || user?.name || 'XG')
-              .split(' ')
-              .map((part) => part[0])
-              .slice(0, 2)
-              .join('')
-              .toUpperCase()}
-          </Text>
-        </View>
+        {profile?.logoUrl ? (
+          <Image
+            source={{
+              uri: profile.logoUrl.startsWith('http')
+                ? profile.logoUrl
+                : `${getApiUrl()}${profile.logoUrl}`,
+            }}
+            style={styles.logo}
+          />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
+            <Text style={styles.avatarText}>
+              {(profile?.storeName || user?.name || 'XG')
+                .split(' ')
+                .map((part) => part[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()}
+            </Text>
+          </View>
+        )}
         <View style={{ flex: 1 }}>
           <Text style={[styles.name, { color: colors.text }]}>
             {profile?.storeName || profile?.companyName || user?.name}
@@ -105,6 +116,7 @@ function MenuRow({
 const styles = StyleSheet.create({
   profile: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatar: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  logo: { width: 56, height: 56, borderRadius: 18 },
   avatarText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
   name: { fontSize: 18, fontWeight: '800' },
   meta: { fontSize: 12, marginTop: 3 },

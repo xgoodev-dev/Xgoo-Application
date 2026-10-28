@@ -33,6 +33,7 @@ export type BusinessProfile = {
   pickupPincode?: string | null;
   pickupPhone?: string | null;
   pickupTimeSlot?: string | null;
+  logoUrl?: string | null;
   pickupStyle?: 'standing' | 'on_demand' | string | null;
   billingCycle?: 'daily' | 'weekly' | 'monthly' | string | null;
   weekdays?: Record<string, boolean> | null;

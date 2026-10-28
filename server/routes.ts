@@ -24,6 +24,7 @@ import {
   getGoogleMapsApiKey,
   fetchGoogleStaticMap,
 } from "./geocode";
+import { parseInteractiveMapQuery, renderGoogleMapsInteractivePage } from "./maps-interactive";
 import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
 import { runRateCalculator, rateCalculatorRequestSchema } from "./rate-calculator";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
@@ -2515,7 +2516,34 @@ export async function registerRoutes(
   // ---------------------------------------------------------------------------
 
   app.get("/api/public/maps-config", (_req: Request, res: Response) => {
-    res.json({ configured: Boolean(getGoogleMapsApiKey()) });
+    const browserKey = (
+      process.env.VITE_GOOGLE_MAPS_API_KEY ||
+      process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      ""
+    ).trim();
+    res.json({
+      configured: Boolean(getGoogleMapsApiKey() || browserKey),
+      browserKey,
+    });
+  });
+
+  app.get("/api/maps/interactive", (req: Request, res: Response) => {
+    const parsed = parseInteractiveMapQuery(req.query as Record<string, unknown>);
+    if (parsed.lat < -90 || parsed.lat > 90 || parsed.lng < -180 || parsed.lng > 180) {
+      return res.status(400).type("html").send("Invalid map coordinates");
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(
+      renderGoogleMapsInteractivePage({
+        lat: parsed.lat,
+        lng: parsed.lng,
+        zoom: parsed.zoom,
+        markerLat: parsed.markerLat,
+        markerLng: parsed.markerLng,
+        markerColor: typeof req.query.color === "string" ? req.query.color : "#FF4907",
+      }),
+    );
   });
 
   app.get("/api/maps/static", async (req: Request, res: Response) => {
@@ -5724,6 +5752,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post(
+    "/api/customer/business/logo",
+    isCustomerAuthenticated,
+    upload.single("logo"),
+    async (req: any, res) => {
+      try {
+        if (!requireBusinessCustomer(req, res)) return;
+        const file = req.file as Express.Multer.File | undefined;
+        if (!file) {
+          return res.status(400).json({ message: "Choose a store logo image to upload." });
+        }
+        if (!String(file.mimetype || "").startsWith("image/")) {
+          return res.status(400).json({ message: "Upload a JPG, PNG, or WebP image." });
+        }
+        const logoUrl = `/objects/${file.filename}`;
+        res.json(await updateBusinessProfile(req.customerUser.id, { logoUrl }));
+      } catch (error) {
+        console.error("Error uploading store logo:", error);
+        res.status(500).json({ message: "Failed to upload store logo" });
+      }
+    },
+  );
+
   app.post("/api/customer/business/application", isCustomerAuthenticated, async (req: any, res) => {
     try {
       if (!requireBusinessCustomer(req, res)) return;
@@ -5884,7 +5935,10 @@ export async function registerRoutes(
     try {
       if (!(await requireApprovedBusiness(req, res))) return;
       const date = parseJobDate(req.query.date);
-      res.json(await getBusinessToday(req.customerUser.id, date));
+      const scopeRaw = String(req.query.scope || "today");
+      const scope =
+        scopeRaw === "previous" || scopeRaw === "all" ? scopeRaw : "today";
+      res.json(await getBusinessToday(req.customerUser.id, date, scope));
     } catch (error) {
       const status = typeof (error as { status?: number })?.status === "number"
         ? (error as { status: number }).status

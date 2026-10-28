@@ -1,5 +1,11 @@
 import { Platform } from 'react-native';
-import { getApiUrl, OFFICE_SLUG, normalizeMobilePhone } from '@/lib/server';
+import {
+  getApiUrl,
+  isPrivateLanUrl,
+  OFFICE_SLUG,
+  PRODUCTION_API_URL,
+  normalizeMobilePhone,
+} from '@/lib/server';
 
 export { getApiUrl, OFFICE_SLUG, normalizeMobilePhone } from '@/lib/server';
 
@@ -160,9 +166,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(
+const REQUEST_TIMEOUT_MS = 18_000;
+
+async function fetchApi<T>(
+  baseUrl: string,
   path: string,
-  options: RequestInit = {},
+  options: RequestInit,
   token?: string | null,
 ): Promise<T> {
   const headers = new Headers(options.headers);
@@ -171,24 +180,50 @@ export async function api<T>(
   }
   if (token) headers.set('x-customer-token', token);
 
-  const API_URL = getApiUrl();
-  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    response = await fetch(`${API_URL}${path}`, { ...options, headers });
-  } catch {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detail = Array.isArray(payload?.errors)
+        ? payload.errors.map((item: { message?: string }) => item.message).filter(Boolean).join(', ')
+        : null;
+      throw new ApiError(detail || payload?.message || 'Request failed', response.status);
+    }
+    return payload as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    const aborted = error instanceof Error && error.name === 'AbortError';
     throw new ApiError(
-      `Cannot reach XGoo Go at ${API_URL}. Check your internet connection and try again.`,
+      aborted
+        ? 'XGoo took too long to respond. Check your internet connection and try again.'
+        : `Cannot reach XGoo Go at ${baseUrl}. Check your internet connection and try again.`,
       0,
     );
+  } finally {
+    clearTimeout(timer);
   }
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail = Array.isArray(payload?.errors)
-      ? payload.errors.map((item: { message?: string }) => item.message).filter(Boolean).join(', ')
-      : null;
-    throw new ApiError(detail || payload?.message || 'Request failed', response.status);
+}
+
+export async function api<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string | null,
+): Promise<T> {
+  const API_URL = getApiUrl();
+  try {
+    return await fetchApi<T>(API_URL, path, options, token);
+  } catch (error) {
+    if (API_URL !== PRODUCTION_API_URL && isPrivateLanUrl(API_URL)) {
+      return fetchApi<T>(PRODUCTION_API_URL, path, options, token);
+    }
+    throw error;
   }
-  return payload as T;
 }
 
 export const customerApi = {
@@ -280,6 +315,19 @@ export const customerApi = {
       },
       token,
     ),
+  searchPlaces: (query: string) =>
+    api<
+      Array<{
+        lat: number;
+        lng: number;
+        displayName: string;
+        address: string;
+        city: string;
+        state: string;
+        pincode: string;
+        country?: string;
+      }>
+    >(`/api/maps/geocode?q=${encodeURIComponent(query)}&limit=6`),
   pickupSettings: () =>
     api<PickupSettings>(`/api/public/office/${OFFICE_SLUG}/pickup-settings`),
   appBanners: () =>

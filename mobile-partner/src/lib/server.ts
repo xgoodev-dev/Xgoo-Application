@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+export const PRODUCTION_API_URL = 'https://www.xgoo.in';
+
 export const OFFICE_SLUG = process.env.EXPO_PUBLIC_OFFICE_SLUG || 'demo-office';
 
 function hostFromExpo() {
@@ -22,19 +24,20 @@ function hostFromExpo() {
 }
 
 function developmentApiUrl() {
+  const port = process.env.EXPO_PUBLIC_API_PORT || '3005';
   const host = hostFromExpo();
   if (host && host !== 'localhost' && host !== '127.0.0.1') {
-    return `http://${host}:3000`;
+    return `http://${host}:${port}`;
   }
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000';
+  if (Platform.OS === 'android') return `http://10.0.2.2:${port}`;
+  return `http://localhost:${port}`;
 }
 
 export function getApiUrl() {
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
   if (configured) return configured;
   if (typeof __DEV__ !== 'undefined' && __DEV__) return developmentApiUrl();
-  return 'https://www.xgoo.in';
+  return PRODUCTION_API_URL;
 }
 
 export function normalizeMobilePhone(phone: string) {

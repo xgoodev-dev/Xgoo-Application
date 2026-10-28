@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 import { injectPublicAppConfig } from "./public-app-config";
+import { injectStoreShareMeta } from "./store-share-meta";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
@@ -16,16 +17,20 @@ export function serveStatic(app: Express) {
 
   const indexPath = path.resolve(distPath, "index.html");
 
-  const sendHtmlWithConfig = (_req: express.Request, res: express.Response) => {
-    try {
-      const html = injectPublicAppConfig(fs.readFileSync(indexPath, "utf-8"));
-
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(html);
-    } catch (err) {
-      console.error("Error serving index.html:", err);
-      res.sendFile(indexPath);
-    }
+  const sendHtmlWithConfig = (req: express.Request, res: express.Response) => {
+    void (async () => {
+      try {
+        const html = await injectStoreShareMeta(
+          injectPublicAppConfig(fs.readFileSync(indexPath, "utf-8")),
+          req,
+        );
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(html);
+      } catch (err) {
+        console.error("Error serving index.html:", err);
+        res.sendFile(indexPath);
+      }
+    })();
   };
 
   app.get("/", sendHtmlWithConfig);

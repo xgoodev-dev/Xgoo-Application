@@ -11,7 +11,8 @@
       "icon": "./assets/images/xgoo-logo.png",
       "bundleIdentifier": "com.murthyenterprises.xgoopickup",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "XGoo Pickup uses your location when you tap Live so you can confirm where you are while collecting a parcel."
+        "NSLocationWhenInUseUsageDescription": "XGoo Pickup uses your location on duty to measure kilometres travelled from sign-in to sign-out, and when you confirm a pickup point.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "XGoo Pickup tracks kilometres in the background while you are signed in on duty, so fuel cost can be calculated when you sign out."
       }
     },
     "android": {
@@ -25,7 +26,10 @@
       "usesCleartextTraffic": true,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -34,6 +38,15 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "XGoo Pickup uses your location on duty to measure kilometres travelled from sign-in to sign-out.",
+          "locationAlwaysAndWhenInUsePermission": "XGoo Pickup tracks kilometres while you are signed in so fuel cost can be calculated at sign-out.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

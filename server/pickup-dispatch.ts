@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { BookingRequest } from "@shared/schema";
 import { db } from "./db";
+import { ensurePickupFuelTables } from "./pickup-fuel";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
 import { storage } from "./storage";
 
@@ -106,6 +107,7 @@ export async function ensurePickupTables() {
       await db.execute(sql`
         CREATE INDEX IF NOT EXISTS idx_payments_quotation ON payments (quotation_id)
       `);
+      await ensurePickupFuelTables();
     })().catch((error) => {
       tablesReady = null;
       throw error;

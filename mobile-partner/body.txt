@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover" />
+    <meta name="theme-color" content="#FF4907" />
+    <meta name="author" content="NSGroup" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta
+      name="description"
+      content="Book parcel pickups online with XGoo, an NSGroup product. Doorstep pickup, live tracking, and trusted courier networks. Send it. Delivered."
+    />
+    <meta
+      name="keywords"
+      content="XGoo, courier booking, book parcel online, doorstep pickup, track shipment, NSGroup, domestic courier, international courier"
+    />
+    <link rel="canonical" href="https://www.xgoo.in/" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+
+    <meta property="og:site_name" content="XGoo" />
+    <meta property="og:locale" content="en_IN" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.xgoo.in/" />
+    <meta property="og:title" content="XGoo | Book Courier Online — Send It. Delivered." />
+    <meta
+      property="og:description"
+      content="Book parcel pickups online with XGoo. Doorstep pickup, live tracking, and trusted courier networks from NSGroup."
+    />
+    <meta property="og:image" content="https://www.xgoo.in/og-image.jpg" />
+    <meta property="og:image:alt" content="XGoo courier delivering a parcel" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="XGoo | Book Courier Online — Send It. Delivered." />
+    <meta
+      name="twitter:description"
+      content="Book parcel pickups online with XGoo. Doorstep pickup, live tracking, and trusted courier networks."
+    />
+    <meta name="twitter:image" content="https://www.xgoo.in/og-image.jpg" />
+
+    <title>XGoo | Book Courier Online — Send It. Delivered.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  <script>window.__APP_CONFIG__ = {"VITE_SUPABASE_URL":"https://phufduubvvnhphdxyoux.supabase.co","VITE_SUPABASE_ANON_KEY":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBodWZkdXVidnZuaHBoZHh5b3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNDY0NDAsImV4cCI6MjA4NjcyMjQ0MH0.TClS9tlG8Xcg7SDsRPZZwEoVjFhfRUjLqNXzZhwt890","VITE_GOOGLE_CLIENT_ID":"341081099840-7acel0gff3u0mnroheemndd41f25i8ph.apps.googleusercontent.com","VITE_GOOGLE_MAPS_API_KEY":"AIzaSyCEXw3dtzv0j3nxX2pCdC09rX8Jm1oKMQU","VITE_DEFAULT_OFFICE_SLUG":"demo-office","VITE_SITE_URL":"https://www.xgoo.in","VITE_META_PIXEL_ID":"1654482905665528","VITE_WHATSAPP_NUMBER":""};</script></head>
+  <body>
+    <noscript>
+      <img
+        height="1"
+        width="1"
+        style="display:none"
+        src="https://www.facebook.com/tr?id=1654482905665528&ev=PageView&noscript=1"
+        alt=""
+      />
+      <p>
+        XGoo courier booking by NSGroup.
+        <a href="/book">Book a parcel</a>,
+        <a href="/about">about us</a>,
+        <a href="/contact">contact</a>.
+      </p>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx?v=Bk-eOuSTauxaqqZBq3YYy"></script>
+  </body>
+</html>

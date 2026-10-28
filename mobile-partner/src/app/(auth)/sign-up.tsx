@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
-import { ArrowLeft, UserPlus } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, Send } from 'lucide-react-native';
+import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { LegalLinks } from '@/components/legal-links';
-import { pickupApi, type PickupStore } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { getApiUrl } from '@/lib/server';
 import { useAppTheme } from '@/lib/theme';
 
 const GOVT_ID_OPTIONS = [
@@ -19,32 +19,13 @@ const GOVT_ID_OPTIONS = [
 export default function SignUpScreen() {
   const { signUp } = useAuth();
   const { colors } = useAppTheme();
-  const [stores, setStores] = useState<PickupStore[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [address, setAddress] = useState('');
   const [govtIdType, setGovtIdType] = useState<(typeof GOVT_ID_OPTIONS)[number]['id']>('aadhaar');
   const [govtIdNumber, setGovtIdNumber] = useState('');
-  const [branchId, setBranchId] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    pickupApi
-      .stores()
-      .then((list) => {
-        if (!active) return;
-        setStores(list);
-        setBranchId((current) => current || list[0]?.id || '');
-      })
-      .catch(() => {
-        if (active) setStores([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const submit = async () => {
     if (
@@ -52,26 +33,26 @@ export default function SignUpScreen() {
       phone.replace(/\D/g, '').length < 10 ||
       password.length < 8 ||
       address.trim().length < 4 ||
-      govtIdNumber.trim().length < 4 ||
-      !branchId
+      govtIdNumber.trim().length < 4
     ) {
-      Alert.alert('Check your details', 'Name, mobile, password, address, government ID, and store are required.');
+      Alert.alert('Check your details', 'Name, mobile, password, address, and government ID are required.');
       return;
     }
     setLoading(true);
     try {
-      await signUp({
+      const result = await signUp({
         name: name.trim(),
         phone,
         password,
         address: address.trim(),
         govtIdType,
         govtIdNumber,
-        branchId,
       });
-      router.replace('/(tabs)');
+      Alert.alert('Sent for activation', result.message, [
+        { text: 'Sign in', onPress: () => router.replace('/(auth)/sign-in') },
+      ]);
     } catch (error) {
-      Alert.alert('Could not create account', error instanceof Error ? error.message : 'Please try again.');
+      Alert.alert('Could not send request', error instanceof Error ? error.message : 'Please try again.');
     } finally {
       setLoading(false);
     }
@@ -86,7 +67,7 @@ export default function SignUpScreen() {
       <View style={styles.copy}>
         <Text style={[styles.title, { color: colors.text }]}>Create partner account</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Join one store. You will only collect doorstep orders assigned to that store.
+          Send your details to Hub. After a store is assigned and your account is activated, sign in with password or OTP.
         </Text>
       </View>
       <View style={styles.form}>
@@ -144,32 +125,13 @@ export default function SignUpScreen() {
           autoCapitalize="characters"
           placeholder="Enter the ID number"
         />
-        <Text style={[styles.section, { color: colors.text }]}>Assigned store</Text>
-        <View style={styles.stores}>
-          {stores.map((store) => {
-            const selected = store.id === branchId;
-            return (
-              <Pressable
-                key={store.id}
-                onPress={() => setBranchId(store.id)}
-                style={[
-                  styles.store,
-                  {
-                    borderColor: selected ? colors.accent : colors.border,
-                    backgroundColor: colors.surface,
-                  },
-                ]}
-              >
-                <Text style={{ color: colors.text, fontWeight: '700' }}>{store.name}</Text>
-                {store.city ? (
-                  <Text style={{ color: colors.textMuted, marginTop: 2, fontSize: 12 }}>{store.city}</Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
-        <AppButton title="Create account" icon={UserPlus} loading={loading} onPress={submit} />
-        <LegalLinks prefix="By creating an account you agree to our" />
+        <AppButton title="Send to Activate" icon={Send} loading={loading} onPress={submit} />
+        {typeof __DEV__ !== 'undefined' && __DEV__ ? (
+          <Text style={{ color: colors.textMuted, textAlign: 'center', fontSize: 12 }}>
+            Talking to {getApiUrl()}
+          </Text>
+        ) : null}
+        <LegalLinks prefix="By sending this request you agree to our" />
       </View>
       <TechPartnerCredit style={styles.credit} />
     </Screen>
@@ -177,7 +139,7 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingTop: 16, paddingBottom: 36 },
+  content: { paddingTop: 16, paddingBottom: 48 },
   back: { width: 42, height: 42, justifyContent: 'center', marginLeft: -8, marginBottom: 20 },
   copy: { marginTop: 20, marginBottom: 22 },
   title: { fontSize: 30, fontWeight: '900', letterSpacing: -0.8 },
@@ -186,7 +148,5 @@ const styles = StyleSheet.create({
   section: { fontSize: 13, fontWeight: '800', marginTop: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  stores: { gap: 8 },
-  store: { borderWidth: 1, borderRadius: 12, padding: 12 },
   credit: { marginTop: 24 },
 });

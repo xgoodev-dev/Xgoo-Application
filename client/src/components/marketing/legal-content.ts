@@ -170,7 +170,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         paragraphs: [
           `${GO} (website and app) and ${PRO} / ${HUB} headers may use precise location only when you tap to fetch live location or to set a pickup point on the map. Permission is optional. If you decline, you can type the address.`,
           `${PICKUP} may use precise location when you tap Live in the header so you can confirm where you are while collecting. We do not request background location, and we do not continuously track you when the app is closed.`,
-          "Coordinates may be sent to OpenStreetMap Nominatim to reverse-geocode an address label. Location is used to operate pickup and is not sold.",
+          "Coordinates and address search text may be sent to Google Maps to reverse-geocode an address label and show the map. Location is used to operate pickup and is not sold.",
         ],
       },
       {
@@ -185,7 +185,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         heading: "5. Sharing of information",
         paragraphs: [
           "Courier partners receive the shipment and contact details needed to collect, move, and deliver the parcel.",
-          `WhatsApp / Meta may process phone numbers and message content when we send OTP or shipment updates. Google may process identity when you sign in to ${PRO} with Google. OpenStreetMap Nominatim may receive coordinates or address search text for geocoding. Expo / Google (Firebase Cloud Messaging) may process push tokens to deliver notifications.`,
+          `WhatsApp / Meta may process phone numbers and message content when we send OTP or shipment updates. Google may process identity when you sign in to ${PRO} with Google, and Google Maps may receive coordinates or address search text for maps and geocoding. Expo / Google (Firebase Cloud Messaging) may process push tokens to deliver notifications.`,
           "Payment records (cash, UPI, bank transfer, or credit) are stored to operate Bills and Hub accounting. We do not collect full card PAN inside the current apps.",
           `${HUB} and ${COMMAND} staff can access bookings and partner records for the stores they are authorised to operate. We do not sell personal information. We may disclose information if required by law or a lawful government request.`,
         ],

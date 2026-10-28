@@ -58,7 +58,7 @@ function whatsappOtpReady(office: Office) {
   return isCustomerOtpWhatsAppReady(officeWhatsAppSettings(office));
 }
 
-async function ensureOtpTable() {
+export async function ensureCustomerOtpTable() {
   if (!tableReady) {
     tableReady = db.execute(sql`
       CREATE TABLE IF NOT EXISTS customer_otps (
@@ -128,7 +128,7 @@ export async function sendCustomerOtp(input: {
   phone: string;
   purpose: CustomerOtpPurpose;
 }) {
-  await ensureOtpTable();
+  await ensureCustomerOtpTable();
   await ensureReferralSchema();
   const phone = normalizeCustomerPhone(input.phone);
   if (phone.length < 10) {
@@ -266,7 +266,7 @@ export async function consumeCustomerOtp(input: {
   purpose: CustomerOtpPurpose;
   otp: string;
 }) {
-  await ensureOtpTable();
+  await ensureCustomerOtpTable();
   await ensureReferralSchema();
   const phone = normalizeCustomerPhone(input.phone);
   const otp = input.otp.replace(/\D/g, "");

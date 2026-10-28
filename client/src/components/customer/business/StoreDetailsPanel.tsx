@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LocateFixed } from "lucide-react";
+import { ImagePlus, LocateFixed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { useCurrentLocation } from "@/hooks/use-current-location";
 import { storeCustomerOrderPath } from "@shared/business-courier";
 import { businessApi } from "./business-api";
 import type { ProProfileStatus } from "./ProAccessGate";
+import { shareProCustomerLink } from "./share-store-link";
+import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 
 export function StoreDetailsPanel({
   token,
@@ -34,6 +36,8 @@ export function StoreDetailsPanel({
   const [pickupState, setPickupState] = useState(profile?.pickupState || "");
   const [pickupPincode, setPickupPincode] = useState(profile?.pickupPincode || "");
   const { label: liveLabel, locating, live, refresh } = useCurrentLocation(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoPreview, setLogoPreview] = useState(profile?.logoUrl || "");
 
   useEffect(() => {
     const next = profileQuery.data ?? initialProfile;
@@ -44,6 +48,7 @@ export function StoreDetailsPanel({
     setPickupCity(next.pickupCity || "");
     setPickupState(next.pickupState || "");
     setPickupPincode(next.pickupPincode || "");
+    setLogoPreview(next.logoUrl || "");
   }, [profileQuery.data, initialProfile]);
 
   useEffect(() => {
@@ -72,6 +77,21 @@ export function StoreDetailsPanel({
       toast({ title: "Could not save", description: error.message, variant: "destructive" }),
   });
 
+  const uploadLogo = useMutation({
+    mutationFn: (file: File) => businessApi(token).uploadLogo(file),
+    onSuccess: (result) => {
+      const next = (result as { logoUrl?: string | null }).logoUrl || "";
+      setLogoPreview(next);
+      void queryClient.invalidateQueries({ queryKey: ["/api/customer/business/profile"] });
+      toast({
+        title: "Store logo updated",
+        description: "This logo is used for the store and when you share the customer link.",
+      });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Could not upload logo", description: error.message, variant: "destructive" }),
+  });
+
   if (!profile && profileQuery.isError) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-5 md:px-6">
@@ -90,7 +110,8 @@ export function StoreDetailsPanel({
       </button>
       <h2 className="text-xl font-bold text-zinc-900">Store details</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Store name is what customers and the Pro header use. Owner name is separate, under Personal information.
+        Store name is what customers and the Pro header use. Upload a store logo to show it with the
+        XGoo logo on your shared customer link. Owner name is separate, under Personal information.
       </p>
       {profileQuery.isFetching && !profile ? (
         <p className="mt-2 text-xs text-zinc-400">Loading saved store details…</p>
@@ -103,10 +124,20 @@ export function StoreDetailsPanel({
             className="font-medium text-[#FF4907] underline-offset-2 hover:underline"
             onClick={() => {
               const url = `${window.location.origin}${storeCustomerOrderPath(profile.id!)}`;
-              void navigator.clipboard.writeText(url).then(
-                () => toast({ title: "Customer link copied" }),
-                () => toast({ title: "Copy this link", description: url }),
-              );
+              void shareProCustomerLink({
+                url,
+                storeName: profile.storeName || profile.companyName || "our store",
+                storeLogoUrl: logoPreview || profile.logoUrl,
+                xgooLogoUrl: xgooLogo,
+                via: "whatsapp",
+              })
+                .then((result) =>
+                  toast({
+                    title: result === "shared" ? "Store link ready to send" : "Customer link copied",
+                    description: "The store logo and XGoo logo go with this link.",
+                  }),
+                )
+                .catch(() => toast({ title: "Copy this link", description: url }));
             }}
             data-testid="button-copy-store-order-link"
           >
@@ -116,6 +147,48 @@ export function StoreDetailsPanel({
       ) : null}
       <Card className="mt-4 border-zinc-100 shadow-none">
         <CardContent className="space-y-3 pt-6">
+          <div>
+            <p className="text-sm font-medium text-zinc-700">Store logo</p>
+            <div className="mt-2 flex items-center gap-3">
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Store logo"
+                  className="h-16 w-16 rounded-xl object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400">
+                  <ImagePlus className="h-6 w-6" />
+                </div>
+              )}
+              <div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    setLogoPreview(URL.createObjectURL(file));
+                    uploadLogo.mutate(file);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-none"
+                  disabled={uploadLogo.isPending}
+                  onClick={() => logoInputRef.current?.click()}
+                  data-testid="button-upload-store-logo"
+                >
+                  {uploadLogo.isPending ? "Uploading…" : logoPreview ? "Change logo" : "Upload logo"}
+                </Button>
+                <p className="mt-1 text-xs text-zinc-500">JPG, PNG, or WebP. Used for this store and customer shares.</p>
+              </div>
+            </div>
+          </div>
           <label className="block text-sm font-medium text-zinc-700">
             Store name
             <Input

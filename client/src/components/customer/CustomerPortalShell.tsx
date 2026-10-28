@@ -53,6 +53,8 @@ export type CustomerPortalShellProps = {
   locationFallback?: string | null;
   /** XGoo Pro store / business name shown next to the logo. */
   businessName?: string | null;
+  /** Store logo shown next to the XGoo logo in Pro. */
+  businessLogoUrl?: string | null;
   /** Hide booking when this Go/Pro account is outside the Hub service range. */
   coverageLocked?: boolean;
   /** Counter QR / guest book: let the page scroll instead of locking the viewport. */
@@ -142,18 +144,39 @@ function SidebarNav({
   );
 }
 
-function SidebarBrand({ isBusiness, businessName }: { isBusiness?: boolean; businessName?: string | null }) {
+function SidebarBrand({
+  isBusiness,
+  businessName,
+  businessLogoUrl,
+}: {
+  isBusiness?: boolean;
+  businessName?: string | null;
+  businessLogoUrl?: string | null;
+}) {
   const product = isBusiness ? XGOO_MODULES.pro : XGOO_MODULES.go;
   const storeLabel = businessName?.trim();
+  const storeLogo = businessLogoUrl?.trim();
   return (
     <div className="flex items-center gap-2.5 px-5 py-6">
+      {isBusiness ? (
+        storeLogo ? (
+          <img src={storeLogo} alt={storeLabel || "Store"} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+        ) : storeLabel ? (
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FF4907] text-[11px] font-extrabold text-white"
+            aria-hidden
+          >
+            {initialsFromName(storeLabel)}
+          </div>
+        ) : null
+      ) : null}
       <img src={xgooLogo} alt={product.name} className="h-9 w-9 object-contain shrink-0" />
       <div className="min-w-0">
         <span className="block text-xl font-bold leading-none tracking-tight text-white">
-          {product.name}
+          {storeLabel || product.name}
         </span>
-        <span className="mt-1 block truncate text-[10px] text-zinc-500" title={storeLabel || product.meaning}>
-          {storeLabel || product.meaning}
+        <span className="mt-1 block truncate text-[10px] text-zinc-500" title={storeLabel ? product.name : product.meaning}>
+          {storeLabel ? product.name : product.meaning}
         </span>
       </div>
     </div>
@@ -270,11 +293,12 @@ function SidebarBody({
   onHelp,
   officePhone,
   businessName,
+  businessLogoUrl,
   onNavigate,
 }: Omit<CustomerPortalShellProps, "children"> & { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col" style={{ backgroundColor: SIDEBAR_BG }}>
-      <SidebarBrand isBusiness={isBusiness} businessName={businessName} />
+      <SidebarBrand isBusiness={isBusiness} businessName={businessName} businessLogoUrl={businessLogoUrl} />
       <SidebarNav
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -324,6 +348,7 @@ export function CustomerPortalShell({
   officePhone,
   locationFallback,
   businessName,
+  businessLogoUrl,
   children,
 }: CustomerPortalShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -359,6 +384,7 @@ export function CustomerPortalShell({
           onHelp={onHelp}
           officePhone={officePhone}
           businessName={businessName}
+          businessLogoUrl={businessLogoUrl}
         />
       </aside>
 
@@ -386,6 +412,7 @@ export function CustomerPortalShell({
             onHelp={onHelp}
             officePhone={officePhone}
             businessName={businessName}
+            businessLogoUrl={businessLogoUrl}
             onNavigate={() => setMobileOpen(false)}
           />
         </SheetContent>
@@ -411,6 +438,20 @@ export function CustomerPortalShell({
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex min-w-0 flex-1 items-center gap-2">
+            {isBusiness && businessLogoUrl?.trim() ? (
+              <img
+                src={businessLogoUrl}
+                alt={storeLabel || "Store"}
+                className="h-7 w-7 shrink-0 rounded-md object-cover md:hidden"
+              />
+            ) : isBusiness && storeLabel ? (
+              <div
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#FF4907] text-[10px] font-extrabold text-white md:hidden"
+                aria-hidden
+              >
+                {initialsFromName(storeLabel)}
+              </div>
+            ) : null}
             <img src={xgooLogo} alt="" className="h-7 w-7 object-contain md:hidden" />
             <div className="min-w-0">
               <span className="block truncate text-sm font-bold tracking-tight text-zinc-900 md:hidden">

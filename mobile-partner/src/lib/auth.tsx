@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { Platform } from 'react-native';
 import { pickupApi, type PickupPartner } from '@/lib/api';
+import { startDutyTracking, stopDutyTracking } from '@/lib/duty-tracker';
 import { canUseRemotePush, registerForPushNotifications } from '@/lib/notifications';
 
 type AuthContextValue = {
@@ -19,7 +20,7 @@ type AuthContextValue = {
   requestOtp: (phone: string) => Promise<{ debugOtp?: string }>;
   signIn: (phone: string, otp: string) => Promise<void>;
   signInWithPassword: (phone: string, password: string) => Promise<void>;
-  signUp: (input: Parameters<typeof pickupApi.signup>[0]) => Promise<void>;
+  signUp: (input: Parameters<typeof pickupApi.signup>[0]) => Promise<{ pending: true; message: string }>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setAvailability: (availability: PickupPartner['availability']) => Promise<void>;
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await saveToken(session.token);
     setToken(session.token);
     setUser(session.user);
+    void startDutyTracking(session.token);
   }, []);
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (!active) return;
         setToken(saved);
         setUser(current);
+        void startDutyTracking(saved);
       })
       .catch(() => saveToken(null))
       .finally(() => active && setLoading(false));
@@ -113,16 +116,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [establishSession],
   );
 
-  const signUp = useCallback(
-    async (input: Parameters<typeof pickupApi.signup>[0]) => {
-      const session = await pickupApi.signup(input);
-      await establishSession(session);
-    },
-    [establishSession],
-  );
+  const signUp = useCallback(async (input: Parameters<typeof pickupApi.signup>[0]) => {
+    return pickupApi.signup(input);
+  }, []);
 
   const signOut = useCallback(async () => {
     const currentToken = token;
+    await stopDutyTracking();
     setToken(null);
     setUser(null);
     await saveToken(null);

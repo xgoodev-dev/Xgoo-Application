@@ -1,6 +1,7 @@
 import type { Express, NextFunction, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { PICKUP_FUEL_CLAIM_STATUSES, PICKUP_VEHICLE_TYPES } from "@shared/pickup-fuel";
 import { bookingRequests, PICKUP_GOVT_ID_TYPES, type PickupPartner } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { db } from "./db";
@@ -21,6 +22,7 @@ import {
 } from "./pickup-dispatch";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
 import {
+  assertPickupPartnerCanLogin,
   consumePickupPartnerOtp,
   issuePickupPartnerSession,
   normalizePickupPhone,
@@ -38,6 +40,20 @@ import {
   raisePickupShipmentAtHub,
   rejectPickupQuotation,
 } from "./pickup-service";
+import {
+  closePartnerShift,
+  getOfficeFuelRate,
+  getOpenShift,
+  listOfficeFuelClaims,
+  listPartnerClaims,
+  listPartnerShifts,
+  presentShift,
+  recordShiftPoints,
+  requestFuelClaim,
+  reviewFuelClaim,
+  saveOfficeFuelRate,
+  startPartnerShift,
+} from "./pickup-fuel";
 import { storage } from "./storage";
 
 const ACTIVE_JOB_STATUSES = new Set([
@@ -94,6 +110,10 @@ const partnerAccountSchema = z.object({
   branchId: z.string().uuid(),
 });
 
+const selfSignupSchema = partnerAccountSchema.omit({ branchId: true }).extend({
+  branchId: z.string().uuid().optional(),
+});
+
 async function enrichJob(job: Awaited<ReturnType<typeof storage.getPickupJob>>) {
   if (!job) return null;
   const request = await storage.getBookingRequest(job.bookingRequestId);
@@ -146,17 +166,17 @@ export function registerPickupRoutes(app: Express) {
       if (!office) return res.status(404).json({ message: "Office not found" });
       await ensurePickupTables();
       const body = z.object({ phone: z.string().min(10), otp: z.string().min(6) }).parse(req.body);
-      const phone = await consumePickupPartnerOtp({
+      const phone = normalizePickupPhone(body.phone);
+      assertPickupPartnerCanLogin(await storage.getPickupPartnerByPhone(office.id, phone));
+      await consumePickupPartnerOtp({
         officeId: office.id,
-        phone: body.phone,
+        phone,
         otp: body.otp,
       });
-      const partner = await storage.getPickupPartnerByPhone(office.id, phone);
-      if (!partner || partner.status !== "active") {
-        return res.status(401).json({ message: "No XGoo Pickup partner found for this mobile number." });
-      }
-      const ready = await assignSoleStoreIfNeeded(partner);
-      const session = await issuePickupPartnerSession(ready);
+      const partner = assertPickupPartnerCanLogin(
+        await storage.getPickupPartnerByPhone(office.id, phone),
+      );
+      const session = await issuePickupPartnerSession(partner);
       res.json({ token: session.token, user: await toPublicPickupPartner(session.user) });
     } catch (error) {
       if (error instanceof z.ZodError || (error as { status?: number })?.status) {
@@ -179,10 +199,10 @@ export function registerPickupRoutes(app: Express) {
       const office = await storage.getOfficeBySlug(req.params.slug);
       if (!office) return res.status(404).json({ message: "Office not found" });
       await ensurePickupTables();
-      const body = partnerAccountSchema.parse(req.body);
-      const partner = await createPickupPartnerAccount({
+      const body = selfSignupSchema.parse(req.body);
+      await createPickupPartnerAccount({
         office,
-        branchId: body.branchId,
+        branchId: null,
         name: body.name,
         phone: body.phone,
         password: body.password,
@@ -190,13 +210,17 @@ export function registerPickupRoutes(app: Express) {
         govtIdType: body.govtIdType,
         govtIdNumber: body.govtIdNumber,
         signupSource: "self",
+        status: "pending",
       });
-      const session = await issuePickupPartnerSession(partner);
-      res.json({ token: session.token, user: await toPublicPickupPartner(session.user) });
+      res.json({
+        pending: true,
+        message:
+          "Request sent. Hub will assign a store and activate your account. You can then sign in with password or OTP.",
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
-          message: "Enter name, mobile, password, address, government ID, and store.",
+          message: "Enter name, mobile, password, address, and government ID.",
         });
       }
       if ((error as { status?: number })?.status) {
@@ -214,13 +238,11 @@ export function registerPickupRoutes(app: Express) {
       await ensurePickupTables();
       const body = z.object({ phone: z.string().min(10), password: z.string().min(1) }).parse(req.body);
       const phone = normalizePickupPhone(body.phone);
-      const partner = await storage.getPickupPartnerByPhone(office.id, phone);
-      if (!partner || partner.status !== "active") {
-        return res.status(401).json({ message: "No XGoo Pickup partner found for this mobile number." });
-      }
+      const partner = assertPickupPartnerCanLogin(
+        await storage.getPickupPartnerByPhone(office.id, phone),
+      );
       await verifyPickupPassword(body.password, partner.passwordHash);
-      const ready = await assignSoleStoreIfNeeded(partner);
-      const session = await issuePickupPartnerSession(ready);
+      const session = await issuePickupPartnerSession(partner);
       res.json({ token: session.token, user: await toPublicPickupPartner(session.user) });
     } catch (error) {
       if (error instanceof z.ZodError || (error as { status?: number })?.status) {
@@ -262,10 +284,178 @@ export function registerPickupRoutes(app: Express) {
     }
   });
 
-  app.post("/api/pickup/logout", isPickupAuthenticated, async (req, res) => {
+  app.post("/api/pickup/logout", isPickupAuthenticated, async (req: any, res) => {
     const token = req.headers["x-pickup-token"] as string;
+    await closePartnerShift(req.pickupPartner).catch((error) => {
+      console.warn("Could not close pickup duty shift", error);
+    });
     await storage.deletePickupPartnerSession(token);
     res.json({ success: true });
+  });
+
+  app.get("/api/pickup/duty", isPickupAuthenticated, async (req: any, res) => {
+    const rate = await getOfficeFuelRate(req.pickupPartner.officeId);
+    const open = await getOpenShift(req.pickupPartner.id);
+    const shifts = await listPartnerShifts(req.pickupPartner.id);
+    const claims = await listPartnerClaims(req.pickupPartner.id);
+    res.json({
+      rate,
+      current: open ? presentShift(open, rate) : null,
+      shifts: shifts.map((shift) => presentShift(shift, rate)),
+      claims,
+    });
+  });
+
+  app.post("/api/pickup/duty/start", isPickupAuthenticated, async (req: any, res) => {
+    const rate = await getOfficeFuelRate(req.pickupPartner.officeId);
+    const shift = await startPartnerShift(req.pickupPartner);
+    res.json(presentShift(shift, rate));
+  });
+
+  app.post("/api/pickup/duty/ping", isPickupAuthenticated, async (req: any, res) => {
+    try {
+      const body = z
+        .object({
+          lat: z.number().optional(),
+          lng: z.number().optional(),
+          accuracy: z.number().optional(),
+          recordedAt: z.string().optional(),
+          points: z
+            .array(
+              z.object({
+                lat: z.number(),
+                lng: z.number(),
+                accuracy: z.number().optional(),
+                recordedAt: z.string().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .parse(req.body);
+      const points =
+        body.points && body.points.length > 0
+          ? body.points
+          : body.lat != null && body.lng != null
+            ? [{ lat: body.lat, lng: body.lng, accuracy: body.accuracy, recordedAt: body.recordedAt }]
+            : [];
+      if (points.length === 0) {
+        return res.status(400).json({ message: "Location is required" });
+      }
+      res.json(await recordShiftPoints(req.pickupPartner, points.slice(0, 40)));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid location" });
+      }
+      res.status(500).json({ message: "Could not record travel" });
+    }
+  });
+
+  app.post("/api/pickup/duty/stop", isPickupAuthenticated, async (req: any, res) => {
+    const body = z
+      .object({
+        lat: z.number().optional(),
+        lng: z.number().optional(),
+      })
+      .parse(req.body || {});
+    const shift = await closePartnerShift(
+      req.pickupPartner,
+      body.lat != null && body.lng != null ? { lat: body.lat, lng: body.lng } : undefined,
+    );
+    res.json({ shift });
+  });
+
+  app.post("/api/pickup/fuel/claims", isPickupAuthenticated, async (req: any, res) => {
+    try {
+      const body = z
+        .object({
+          shiftId: z.string().min(1),
+          notes: z.string().max(500).optional(),
+        })
+        .parse(req.body);
+      res.json(await requestFuelClaim(req.pickupPartner, body.shiftId, body.notes));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Choose a closed duty to request fuel." });
+      }
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Could not request fuel",
+      });
+    }
+  });
+
+  const saveFuelRates = async (req: any, res: Response) => {
+    const context = await requireStaffPartnerAccess(req, res);
+    if (!context) return;
+    try {
+      const body = z
+        .object({
+          vehicleType: z.enum(PICKUP_VEHICLE_TYPES).optional(),
+          mileageKmPerLitre: z.coerce.number().positive().max(80).optional(),
+          fuelPricePerLitre: z.coerce.number().positive().max(300).optional(),
+        })
+        .parse(req.body);
+      res.json(await saveOfficeFuelRate(context.office.id, body));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Enter a valid mileage and fuel price." });
+      }
+      console.error("Could not save fuel rates:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Could not save fuel rates",
+      });
+    }
+  };
+
+  app.get("/api/pickup-fuel/rates", isAuthenticated, async (req: any, res) => {
+    const context = await requireStaffPartnerAccess(req, res);
+    if (!context) return;
+    try {
+      res.json(await getOfficeFuelRate(context.office.id));
+    } catch (error) {
+      console.error("Could not load fuel rates:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Could not load fuel rates",
+      });
+    }
+  });
+
+  app.patch("/api/pickup-fuel/rates", isAuthenticated, saveFuelRates);
+  app.put("/api/pickup-fuel/rates", isAuthenticated, saveFuelRates);
+  app.post("/api/pickup-fuel/rates", isAuthenticated, saveFuelRates);
+
+  app.get("/api/pickup-fuel/claims", isAuthenticated, async (req: any, res) => {
+    const context = await requireStaffPartnerAccess(req, res);
+    if (!context) return;
+    res.json(await listOfficeFuelClaims(context.office.id, context.branchId));
+  });
+
+  app.patch("/api/pickup-fuel/claims/:id", isAuthenticated, async (req: any, res) => {
+    const context = await requireStaffPartnerAccess(req, res);
+    if (!context) return;
+    try {
+      const body = z
+        .object({
+          status: z.enum(PICKUP_FUEL_CLAIM_STATUSES),
+          reviewNotes: z.string().max(500).optional(),
+        })
+        .parse(req.body);
+      res.json(
+        await reviewFuelClaim(req.params.id, context.office.id, {
+          status: body.status,
+          reviewNotes: body.reviewNotes,
+          reviewerUserId: req.user?.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Choose a valid fuel request status." });
+      }
+      const status = (error as { status?: number }).status || 500;
+      res.status(status).json({
+        message: error instanceof Error ? error.message : "Could not update fuel request",
+      });
+    }
   });
 
   app.post("/api/pickup/push-token", isPickupAuthenticated, async (req: any, res) => {
@@ -642,8 +832,20 @@ export function registerPickupRoutes(app: Express) {
     const context = await requireStaffPartnerAccess(req, res);
     if (!context) return;
     await ensurePickupTables();
-    const partners = await storage.getPickupPartnersByOffice(context.office.id, context.branchId);
-    const ready = await Promise.all(partners.map((partner) => assignSoleStoreIfNeeded(partner)));
+    const all = await storage.getPickupPartnersByOffice(context.office.id);
+    const partners = context.branchId
+      ? all.filter(
+          (partner) =>
+            partner.branchId === context.branchId ||
+            (partner.status === "pending" && !partner.branchId),
+        )
+      : all;
+    const ready = await Promise.all(
+      partners.map((partner) =>
+        partner.status === "pending" ? partner : assignSoleStoreIfNeeded(partner),
+      ),
+    );
+    ready.sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
     res.json(await Promise.all(ready.map((partner) => toPublicPickupPartner(partner))));
   });
 
@@ -689,7 +891,8 @@ export function registerPickupRoutes(app: Express) {
       if (!partner || partner.officeId !== context.office.id) {
         return res.status(404).json({ message: "Partner not found" });
       }
-      if (context.branchId && partner.branchId !== context.branchId) {
+      const canAccessUnassignedPending = partner.status === "pending" && !partner.branchId;
+      if (context.branchId && partner.branchId !== context.branchId && !canAccessUnassignedPending) {
         return res.status(403).json({ message: "Access denied" });
       }
       const body = z
@@ -698,15 +901,27 @@ export function registerPickupRoutes(app: Express) {
           address: z.string().trim().min(4).max(500).optional(),
           govtIdType: z.enum(PICKUP_GOVT_ID_TYPES).optional(),
           govtIdNumber: z.string().trim().min(4).max(80).optional(),
-          status: z.enum(["active", "inactive"]).optional(),
+          status: z.enum(["pending", "active", "inactive"]).optional(),
           availability: z.enum(["offline", "available", "busy"]).optional(),
           branchId: z.string().uuid().optional(),
           password: z.string().min(8).optional(),
         })
         .parse(req.body);
-      const nextBranchId = context.isSuperAdmin ? body.branchId ?? partner.branchId : partner.branchId;
-      if (body.branchId && context.isSuperAdmin) {
-        await requireOfficeStore(context.office, body.branchId);
+      let nextBranchId = partner.branchId;
+      if (context.isSuperAdmin && body.branchId) {
+        nextBranchId = body.branchId;
+      } else if (context.branchId && canAccessUnassignedPending) {
+        nextBranchId = context.branchId;
+      }
+      if (body.branchId || body.status === "active") {
+        try {
+          await requireOfficeStore(context.office, nextBranchId);
+        } catch (error) {
+          if (body.status === "active") {
+            return res.status(400).json({ message: "Assign a store before activating this partner." });
+          }
+          throw error;
+        }
       }
       const updated = await storage.updatePickupPartner(partner.id, {
         name: body.name,

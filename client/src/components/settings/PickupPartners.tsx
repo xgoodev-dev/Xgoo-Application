@@ -59,6 +59,8 @@ export function PickupPartners() {
   const { isCommandWorkspace, isSuperAdmin, canManageHubStaff, branchId: managerStoreId } = useStaffAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [passwordPartner, setPasswordPartner] = useState<HubPickupPartner | null>(null);
+  const [reviewPartner, setReviewPartner] = useState<HubPickupPartner | null>(null);
+  const [activateStoreId, setActivateStoreId] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [form, setForm] = useState(emptyForm);
   const canPickStore = isCommandWorkspace || (isSuperAdmin && !managerStoreId);
@@ -66,6 +68,7 @@ export function PickupPartners() {
   const { data: partners = [], isLoading } = useQuery<HubPickupPartner[]>({
     queryKey: ["/api/pickup-partners"],
     enabled: canManageHubStaff,
+    refetchInterval: 8000,
   });
   const { data: branches = [] } = useQuery<BranchWithServiceAreas[]>({
     queryKey: ["/api/branches"],
@@ -75,6 +78,8 @@ export function PickupPartners() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["/api/pickup-partners"] });
 
   const assignedStoreId = canPickStore ? form.branchId : managerStoreId || "";
+  const pendingPartners = partners.filter((partner) => partner.status === "pending");
+  const activePartners = partners.filter((partner) => partner.status !== "pending");
 
   const addPartner = useMutation({
     mutationFn: () =>
@@ -98,11 +103,17 @@ export function PickupPartners() {
   const updatePartner = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
       apiRequest("PATCH", `/api/pickup-partners/${id}`, patch),
-    onSuccess: () => {
-      toast({ title: "Partner updated" });
+    onSuccess: (_data, variables) => {
+      const activated = variables.patch.status === "active";
+      toast({
+        title: activated ? "Partner activated" : "Partner updated",
+        description: activated ? "They can now sign in with their password or OTP." : undefined,
+      });
       refresh();
       setPasswordPartner(null);
+      setReviewPartner(null);
       setNewPassword("");
+      setActivateStoreId("");
     },
     onError: (error: Error) =>
       toast({ title: "Could not update partner", description: error.message, variant: "destructive" }),
@@ -118,6 +129,24 @@ export function PickupPartners() {
     form.govtIdNumber.trim().length >= 4 &&
     Boolean(assignedStoreId);
 
+  const storeNameFor = (partner: HubPickupPartner) =>
+    partner.storeName ||
+    branches.find((branch) => branch.id === partner.branchId)?.name ||
+    "No store assigned";
+
+  const activatePartner = (partner: HubPickupPartner, storeId?: string) => {
+    const branchId = canPickStore ? storeId || partner.branchId || activateStoreId : managerStoreId || partner.branchId;
+    if (!branchId) {
+      toast({
+        title: "Assign a store first",
+        description: "Choose a store, then activate this partner.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updatePartner.mutate({ id: partner.id, patch: { status: "active", branchId } });
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
@@ -125,8 +154,8 @@ export function PickupPartners() {
           <CardTitle>{XGOO_MODULES.pickup.name} partners</CardTitle>
           <CardDescription>
             {isCommandWorkspace
-              ? "Create a store-assigned account. That partner only collects doorstep orders for the chosen store."
-              : `Create or manage ${XGOO_MODULES.pickup.name} accounts for this ${XGOO_MODULES.hub.name} store. Partners only receive this store’s doorstep orders.`}
+              ? "App requests appear here. Open one, assign a store, and activate so they can sign in with password or OTP."
+              : `App requests appear here. Open one and activate it for this ${XGOO_MODULES.hub.name} store so they can sign in with password or OTP.`}
           </CardDescription>
         </div>
         <Button onClick={() => setDialogOpen(true)}>
@@ -134,14 +163,54 @@ export function PickupPartners() {
           Add partner
         </Button>
       </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : partners.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No pickup partners yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {partners.map((partner) => (
+      <CardContent className="space-y-6">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Activation requests</h3>
+            {pendingPartners.length > 0 ? <Badge>{pendingPartners.length}</Badge> : null}
+          </div>
+          {isLoading ? (
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          ) : pendingPartners.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No app requests yet. Partners who tap Send to Activate in the {XGOO_MODULES.pickup.name} app
+              appear here so you can add them and activate the account.
+            </p>
+          ) : (
+            pendingPartners.map((partner) => (
+              <button
+                key={partner.id}
+                type="button"
+                className="flex w-full flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-left transition hover:bg-primary/10"
+                onClick={() => {
+                  setReviewPartner(partner);
+                  setActivateStoreId(partner.branchId || managerStoreId || "");
+                }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">{partner.name}</p>
+                  <Badge>Needs activation</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{partner.phone}</p>
+                <p className="text-sm text-muted-foreground">
+                  {storeNameFor(partner)}
+                  {partner.address ? ` · ${partner.address}` : ""}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {govtIdLabel(partner.govtIdType)} {partner.govtIdNumber || "not added"}
+                </p>
+                <p className="text-xs font-medium text-primary">Click to assign a store and activate</p>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold">Active partners</h3>
+          {isLoading ? null : activePartners.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activated pickup partners yet.</p>
+          ) : (
+            activePartners.map((partner) => (
               <div
                 key={partner.id}
                 className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between"
@@ -150,7 +219,7 @@ export function PickupPartners() {
                   <p className="font-medium">{partner.name}</p>
                   <p className="text-sm text-muted-foreground">{partner.phone}</p>
                   <p className="text-sm text-muted-foreground">
-                    {partner.storeName || branches.find((branch) => branch.id === partner.branchId)?.name || "No store"}
+                    {storeNameFor(partner)}
                     {partner.address ? ` · ${partner.address}` : ""}
                   </p>
                   <p className="text-sm text-muted-foreground">
@@ -175,9 +244,9 @@ export function PickupPartners() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Badge variant="outline">{partner.storeName || "This store"}</Badge>
+                    <Badge variant="outline">{storeNameFor(partner)}</Badge>
                   )}
-                  <Badge variant="outline">{partner.signupSource === "self" ? "Signed up" : "Store created"}</Badge>
+                  <Badge variant="outline">{partner.signupSource === "self" ? "App request" : "Store created"}</Badge>
                   <Badge variant="outline">{partner.availability}</Badge>
                   <Select
                     value={partner.status}
@@ -204,9 +273,9 @@ export function PickupPartners() {
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </CardContent>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -306,6 +375,58 @@ export function PickupPartners() {
               Save partner
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(reviewPartner)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewPartner(null);
+            setActivateStoreId("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activate {reviewPartner?.name}</DialogTitle>
+          </DialogHeader>
+          {reviewPartner ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{reviewPartner.phone}</p>
+              {reviewPartner.address ? <p className="text-sm">{reviewPartner.address}</p> : null}
+              <p className="text-sm text-muted-foreground">
+                {govtIdLabel(reviewPartner.govtIdType)} {reviewPartner.govtIdNumber || "not added"}
+              </p>
+              {canPickStore ? (
+                <div className="space-y-1.5">
+                  <Label>Assign store</Label>
+                  <Select value={activateStoreId} onValueChange={setActivateStoreId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a store" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <p className="text-sm">This partner will be added to this store and can then sign in.</p>
+              )}
+              <Button
+                className="w-full"
+                disabled={updatePartner.isPending || (canPickStore && !activateStoreId)}
+                onClick={() => activatePartner(reviewPartner, activateStoreId)}
+              >
+                {updatePartner.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Activate account
+              </Button>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Globe2, Loader2, LocateFixed, MapPin, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Globe2, Loader2, LocateFixed, MapPin, Search, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,20 @@ import {
 export type { ActivePin, AddressScope, ShipmentMapPoint };
 
 export type BookFlowStep = "pickup" | "destination" | "details" | "package" | "review";
+
+export type SavedMapAddress = {
+  id: string;
+  label: string;
+  address: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  lat?: number;
+  lng?: number;
+  name?: string;
+  phone?: string;
+  isDefault?: boolean;
+};
 
 const STEPS: { id: BookFlowStep; label: string }[] = [
   { id: "pickup", label: "Pickup" },
@@ -47,6 +61,9 @@ type BookShipmentWorkspaceProps = {
   subtitle?: string;
   /** When false, the form grows with the page instead of locking to the viewport. */
   fillViewport?: boolean;
+  savedPickup?: SavedMapAddress[];
+  savedDestination?: SavedMapAddress[];
+  onSelectSaved?: (item: SavedMapAddress, pin: ActivePin) => void;
 };
 
 function useIsDesktopLayout() {
@@ -90,6 +107,9 @@ export function BookShipmentWorkspace({
   title = "Book a shipment",
   subtitle,
   fillViewport = true,
+  savedPickup = [],
+  savedDestination = [],
+  onSelectSaved,
 }: BookShipmentWorkspaceProps) {
   const activePin: ActivePin = step === "destination" ? "destination" : "pickup";
   const [query, setQuery] = useState("");
@@ -115,6 +135,7 @@ export function BookShipmentWorkspace({
     if (q.length < 3) {
       setSuggestions([]);
       setIsSearching(false);
+      setShowSuggestions(true);
       return;
     }
     setIsSearching(true);
@@ -140,6 +161,33 @@ export function BookShipmentWorkspace({
     setQuery(point.label);
     setShowSuggestions(false);
     setSuggestions([]);
+  };
+
+  const savedForStep = (activePin === "pickup" ? savedPickup : savedDestination).filter((item) => {
+    if (!query.trim()) return true;
+    const hay = [item.label, item.address, item.city, item.state, item.pincode]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(query.trim().toLowerCase());
+  }).slice(0, 5);
+
+  const applySaved = (item: SavedMapAddress) => {
+    onSelectSaved?.(item, activePin);
+    if (item.lat != null && item.lng != null && Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+      applyPoint({
+        lat: item.lat,
+        lng: item.lng,
+        label: item.address,
+        address: item.address,
+        city: item.city,
+        state: item.state,
+        pincode: item.pincode,
+      });
+      return;
+    }
+    setQuery(item.address);
+    setShowSuggestions(false);
   };
 
   async function detectCurrentLocation() {
@@ -282,7 +330,7 @@ export function BookShipmentWorkspace({
                       <Input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                        onFocus={() => setShowSuggestions(true)}
                         placeholder={
                           step === "pickup"
                             ? "Search pickup address…"
@@ -311,8 +359,40 @@ export function BookShipmentWorkspace({
                       </Button>
                     )}
                   </div>
-                  {showSuggestions && suggestions.length > 0 && (
-                    <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+                  {showSuggestions && (savedForStep.length > 0 || suggestions.length > 0) && (
+                    <ul className="absolute z-30 mt-1 max-h-56 w-full overflow-auto border border-zinc-200 bg-white py-1 shadow-lg">
+                      {savedForStep.length > 0 ? (
+                        <li className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                          Saved
+                        </li>
+                      ) : null}
+                      {savedForStep.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-zinc-50"
+                            onClick={() => applySaved(item)}
+                          >
+                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FF4907]" />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
+                                <span className="truncate">{item.label || "Saved address"}</span>
+                                {item.isDefault ? (
+                                  <Star className="h-3 w-3 fill-[#FF4907] text-[#FF4907]" />
+                                ) : null}
+                              </span>
+                              <span className="mt-0.5 line-clamp-2 text-xs text-zinc-500">
+                                {[item.address, item.city].filter(Boolean).join(", ")}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                      {suggestions.length > 0 ? (
+                        <li className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                          Places
+                        </li>
+                      ) : null}
                       {suggestions.map((s, i) => (
                         <li key={`${s.lat}-${s.lng}-${i}`}>
                           <button

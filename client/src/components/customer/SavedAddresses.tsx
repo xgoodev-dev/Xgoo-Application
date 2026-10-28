@@ -28,6 +28,20 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { CustomerAddress } from "@shared/schema";
 
+export function useSavedAddresses(token?: string | null) {
+  return useQuery<CustomerAddress[]>({
+    queryKey: ["/api/customer/addresses", token],
+    enabled: Boolean(token),
+    queryFn: async () => {
+      const res = await fetch("/api/customer/addresses", {
+        headers: { "x-customer-token": token! },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+}
+
 const addressFormSchema = z.object({
   label: z.string().min(1, "Label is required"),
   name: z.string().min(1, "Name is required"),

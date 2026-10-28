@@ -351,6 +351,118 @@ export function Field({
   );
 }
 
+const OTP_LENGTH = 6;
+
+export function OtpBoxes({
+  value,
+  onChangeText,
+  autoFocus = true,
+  error,
+  label = 'OTP',
+  editable = true,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  autoFocus?: boolean;
+  error?: string;
+  label?: string;
+  editable?: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const fieldRef = useRef<View>(null);
+  const inputRefs = useRef<Array<TextInput | null>>(Array.from({ length: OTP_LENGTH }, () => null));
+  const keyboardScroll = useContext(KeyboardScrollContext);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const digits = value.replace(/\D/g, '').slice(0, OTP_LENGTH);
+  const emptyFill = colors.mode === 'dark' ? colors.surfaceMuted : '#F2F2F4';
+  const nextIndex = Math.min(digits.length, OTP_LENGTH - 1);
+
+  const focusBox = (index: number) => {
+    const target = Math.min(Math.max(index, 0), OTP_LENGTH - 1);
+    inputRefs.current[target]?.focus();
+  };
+
+  const writeDigit = (index: number, text: string) => {
+    const cleaned = text.replace(/\D/g, '');
+    if (cleaned.length >= OTP_LENGTH) {
+      onChangeText(cleaned.slice(0, OTP_LENGTH));
+      focusBox(OTP_LENGTH - 1);
+      return;
+    }
+    if (cleaned.length === 0) {
+      onChangeText(digits.slice(0, index) + digits.slice(index + 1));
+      if (index > 0) focusBox(index - 1);
+      return;
+    }
+    const digit = cleaned.slice(-1);
+    const writeAt = Math.min(index, digits.length);
+    const next =
+      writeAt < digits.length
+        ? digits.slice(0, writeAt) + digit + digits.slice(writeAt + 1)
+        : digits + digit;
+    onChangeText(next.slice(0, OTP_LENGTH));
+    if (next.length < OTP_LENGTH) focusBox(next.length);
+    else if (writeAt < OTP_LENGTH - 1) focusBox(writeAt + 1);
+  };
+
+  return (
+    <View ref={fieldRef} style={styles.field} collapsable={false}>
+      {label ? <Text style={[styles.label, { color: colors.text }]}>{label}</Text> : null}
+      <View style={styles.otpRow}>
+        {Array.from({ length: OTP_LENGTH }, (_, index) => {
+          const digit = digits[index] ?? '';
+          const active = focusedIndex === index;
+          return (
+            <TextInput
+              key={index}
+              ref={(node) => {
+                inputRefs.current[index] = node;
+              }}
+              value={digit}
+              onChangeText={(text) => writeDigit(index, text)}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key !== 'Backspace' || digit) return;
+                onChangeText(digits.slice(0, Math.max(0, index)));
+                if (index > 0) focusBox(index - 1);
+              }}
+              onFocus={() => {
+                setFocusedIndex(index);
+                setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 60 : 120);
+                setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 280 : 320);
+              }}
+              onBlur={() => setFocusedIndex((current) => (current === index ? null : current))}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              showSoftInputOnFocus
+              autoComplete={index === 0 ? 'one-time-code' : 'off'}
+              textContentType={index === 0 ? 'oneTimeCode' : 'none'}
+              importantForAutofill={index === 0 ? 'yes' : 'no'}
+              maxLength={OTP_LENGTH}
+              autoFocus={autoFocus && index === nextIndex}
+              editable={editable}
+              selectTextOnFocus
+              caretHidden={false}
+              blurOnSubmit={false}
+              underlineColorAndroid="transparent"
+              selectionColor={colors.accent}
+              accessibilityLabel={`OTP digit ${index + 1} of ${OTP_LENGTH}`}
+              style={[
+                styles.otpBox,
+                {
+                  backgroundColor: emptyFill,
+                  borderColor: error ? colors.danger : active ? colors.accent : 'transparent',
+                  color: digit ? colors.accent : colors.textMuted,
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
+      {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
+    </View>
+  );
+}
+
 export function Pill({
   label,
   active,
@@ -467,6 +579,24 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' },
   helper: { fontSize: 11, lineHeight: 15 },
   error: { fontSize: 11 },
+  otpRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    width: '100%',
+  },
+  otpBox: {
+    flex: 1,
+    height: 62,
+    minHeight: 62,
+    padding: 0,
+    margin: 0,
+    borderRadius: 0,
+    borderWidth: 2,
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   pill: {
     minHeight: 34,
     justifyContent: 'center',

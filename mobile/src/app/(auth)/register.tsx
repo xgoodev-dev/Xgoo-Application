@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppButton, BrandLockup, Field, Screen } from '@/components/ui';
+import { AppButton, BrandLockup, Field, OtpBoxes, Screen } from '@/components/ui';
 import { TechPartnerCredit } from '@/components/tech-partner-credit';
 import { LegalLinks } from '@/components/legal-links';
 import { useAuth } from '@/lib/auth';
@@ -109,15 +109,7 @@ export default function RegisterScreen() {
           </>
         ) : (
           <>
-            <Field
-              label="OTP"
-              value={otp}
-              onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
-              keyboardType="number-pad"
-              autoComplete="one-time-code"
-              placeholder="6-digit code"
-              maxLength={6}
-            />
+            <OtpBoxes value={otp} onChangeText={setOtp} />
             <AppButton title="Verify and create account" icon={ArrowRight} loading={loading} onPress={submit} />
             <Pressable disabled={resendIn > 0 || loading} onPress={() => void sendCode()}>
               <Text style={{ color: resendIn > 0 ? colors.textMuted : colors.accent, fontWeight: '700', textAlign: 'center' }}>

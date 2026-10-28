@@ -179,6 +179,7 @@ export const businessProfilePatchSchema = z.object({
   pickupStyle: businessPickupStyleSchema.optional(),
   weekdays: businessWeekdaysSchema.optional(),
   billingCycle: businessBillingCycleSchema.optional(),
+  logoUrl: z.string().trim().max(500).optional().nullable(),
 });
 
 export const BUSINESS_SETTLEMENT_MODES = [

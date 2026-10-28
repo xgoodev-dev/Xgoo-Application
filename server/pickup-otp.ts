@@ -14,6 +14,8 @@ import {
   configForMessaging,
   sendWhatsAppTemplateMessage,
 } from "./integrations/whatsapp";
+import { ensureCustomerOtpTable } from "./customer-otp";
+import { startPartnerShift } from "./pickup-fuel";
 import { storage } from "./storage";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -64,12 +66,16 @@ async function sendOtpWhatsApp(office: Office, phone: string, code: string) {
   );
   const template = getTemplateDefinition(settings.templates, templateName, languageCode);
 
-  await sendWhatsAppTemplateMessage(config, {
+  const send = sendWhatsAppTemplateMessage(config, {
     to: phone,
     templateName,
     languageCode,
     components: buildOtpTemplateComponents(code, template),
   });
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("WhatsApp OTP timed out.")), 12_000);
+  });
+  await Promise.race([send, timeout]);
 }
 
 export async function issuePickupPartnerSession(partner: PickupPartner) {
@@ -80,21 +86,45 @@ export async function issuePickupPartnerSession(partner: PickupPartner) {
     token,
     expiresAt,
   });
+  await startPartnerShift(partner).catch((error) => {
+    console.warn("Could not start pickup duty shift", error);
+  });
   return { user: partner, token };
 }
 
+export function assertPickupPartnerCanLogin(partner: PickupPartner | undefined) {
+  if (!partner) {
+    throw Object.assign(new Error("No XGoo Pickup partner found for this mobile number."), {
+      status: 404,
+    });
+  }
+  if (partner.status === "pending") {
+    throw Object.assign(
+      new Error("Hub has not activated this partner yet. Wait until a store is assigned."),
+      { status: 403 },
+    );
+  }
+  if (partner.status !== "active") {
+    throw Object.assign(new Error("This pickup partner account is inactive."), { status: 403 });
+  }
+  if (!partner.branchId) {
+    throw Object.assign(
+      new Error("Hub must assign a store before this partner can sign in."),
+      { status: 403 },
+    );
+  }
+  return partner;
+}
+
 export async function sendPickupPartnerOtp(input: { office: Office; phone: string }) {
+  await ensureCustomerOtpTable();
   const phone = normalizePickupPhone(input.phone);
   if (phone.length < 10) {
     throw Object.assign(new Error("Enter a valid 10-digit mobile number."), { status: 400 });
   }
 
   const partner = await storage.getPickupPartnerByPhone(input.office.id, phone);
-  if (!partner || partner.status !== "active") {
-    throw Object.assign(new Error("No XGoo Pickup partner found for this mobile number."), {
-      status: 404,
-    });
-  }
+  assertPickupPartnerCanLogin(partner);
 
   const recent = await db
     .select()
@@ -149,14 +179,33 @@ export async function sendPickupPartnerOtp(input: { office: Office; phone: strin
         status: 503,
       });
     }
-    await sendOtpWhatsApp(input.office, phone, code);
+    try {
+      await sendOtpWhatsApp(input.office, phone, code);
+    } catch (error) {
+      console.error("Pickup OTP WhatsApp send failed:", error);
+      if (!isDummyOtpEnabled()) {
+        throw Object.assign(new Error("Could not send the OTP just now. Please try again in a moment."), {
+          status: 502,
+        });
+      }
+      const fallbackHash = await bcrypt.hash(DUMMY_PICKUP_OTP, 10);
+      await db
+        .update(customerOtps)
+        .set({ codeHash: fallbackHash })
+        .where(
+          and(
+            eq(customerOtps.officeId, input.office.id),
+            eq(customerOtps.phone, phone),
+            eq(customerOtps.purpose, PICKUP_OTP_PURPOSE),
+          ),
+        );
+    }
   }
 
   return {
     phone,
     expiresInSec: OTP_TTL_MS / 1000,
     channel: dummy ? ("dummy" as const) : ("whatsapp" as const),
-    ...(dummy ? { debugOtp: DUMMY_PICKUP_OTP } : {}),
   };
 }
 
@@ -165,10 +214,24 @@ export async function consumePickupPartnerOtp(input: {
   phone: string;
   otp: string;
 }) {
+  await ensureCustomerOtpTable();
   const phone = normalizePickupPhone(input.phone);
   const otp = input.otp.replace(/\D/g, "");
   if (otp.length !== 6) {
     throw Object.assign(new Error("Enter the 6-digit OTP."), { status: 400 });
+  }
+
+  if (isDummyOtpEnabled() && otp === DUMMY_PICKUP_OTP) {
+    await db
+      .delete(customerOtps)
+      .where(
+        and(
+          eq(customerOtps.officeId, input.officeId),
+          eq(customerOtps.phone, phone),
+          eq(customerOtps.purpose, PICKUP_OTP_PURPOSE),
+        ),
+      );
+    return phone;
   }
 
   const [row] = await db

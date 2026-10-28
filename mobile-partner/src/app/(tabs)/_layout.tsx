@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Briefcase, CircleUserRound, Clock3, Inbox } from 'lucide-react-native';
+import { Briefcase, CircleUserRound, Clock3, Fuel, Inbox } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LocationBar } from '@/components/location-bar';
@@ -60,6 +60,13 @@ export default function TabsLayout() {
         options={{
           title: 'History',
           tabBarIcon: ({ color, size }) => <Clock3 size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="fuel"
+        options={{
+          title: 'Fuel',
+          tabBarIcon: ({ color, size }) => <Fuel size={size} color={color} />,
         }}
       />
       <Tabs.Screen

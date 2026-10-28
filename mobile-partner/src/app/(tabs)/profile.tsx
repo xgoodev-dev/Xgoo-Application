@@ -37,7 +37,8 @@ export default function ProfileScreen() {
       </Card>
       <View style={styles.footer}>
         <Text style={[styles.hint, { color: colors.textMuted }]}>
-          {XGOO_PICKUP.name} only receives doorstep pickup requests. Hub walk-in bookings stay in Hub.
+          {XGOO_PICKUP.name} tracks working hours and kilometres from sign-in to sign-out. Request
+          fuel cost from the Fuel tab after you sign out.
         </Text>
         <LegalLinks />
         <AppButton title="Sign out" variant="secondary" onPress={() => void signOut()} />

@@ -7,6 +7,16 @@ export const proCellClass =
 export const proMobileInputClass =
   "h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#FF4907]";
 
+export const proSelectClass =
+  "h-9 rounded-none border border-zinc-200 bg-white px-2 text-sm text-zinc-700 outline-none";
+
+export const proSearchClass =
+  "h-9 min-w-[11rem] flex-1 rounded-none border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400";
+
+export function ProToolbar({ children }: { children: ReactNode }) {
+  return <div className="mb-3 flex flex-wrap items-center gap-2">{children}</div>;
+}
+
 export function ProPageHeader({
   title,
   description,

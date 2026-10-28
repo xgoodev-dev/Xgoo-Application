@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   bookingRequests,
@@ -88,6 +88,7 @@ async function runBusinessCourierTableSetup() {
         pickup_lng decimal(10, 7),
         pickup_time_slot varchar(40),
         pickup_phone varchar(20),
+        logo_url varchar(500),
         weekdays jsonb NOT NULL DEFAULT '{"sun":false,"mon":true,"tue":true,"wed":true,"thu":true,"fri":true,"sat":true}'::jsonb,
         created_at timestamp DEFAULT now(),
         updated_at timestamp DEFAULT now()
@@ -147,6 +148,7 @@ async function runBusinessCourierTableSetup() {
         ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS verified_by_user_id varchar;
         ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS pickup_style varchar(20) NOT NULL DEFAULT 'standing';
         ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS billing_cycle varchar(20) NOT NULL DEFAULT 'weekly';
+        ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS logo_url varchar(500);
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS address_line2 text;
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS shipment_type varchar(30) NOT NULL DEFAULT 'domestic';
         ALTER TABLE business_destinations ADD COLUMN IF NOT EXISTS destination_country varchar(100);
@@ -333,6 +335,7 @@ async function readOrInsertBusinessProfile(customerUserId: string): Promise<Busi
 }
 
 export async function getOrCreateBusinessProfile(customerUserId: string): Promise<BusinessProfile> {
+  await ensureBusinessCourierTables();
   try {
     return await withTimeout(
       readOrInsertBusinessProfile(customerUserId),
@@ -341,6 +344,7 @@ export async function getOrCreateBusinessProfile(customerUserId: string): Promis
     );
   } catch (error) {
     if (!isMissingRelationError(error)) throw error;
+    tablesReady = null;
     await ensureBusinessCourierTables();
     return withTimeout(
       readOrInsertBusinessProfile(customerUserId),
@@ -373,6 +377,7 @@ export async function updateBusinessProfile(
     pickupStyle: "standing" | "on_demand";
     billingCycle: BusinessBillingCycle;
     weekdays: BusinessWeekdays;
+    logoUrl: string | null;
   }>,
 ) {
   const current = await getOrCreateBusinessProfile(customerUserId);
@@ -764,11 +769,25 @@ export async function deleteBusinessDestination(customerUserId: string, id: stri
   return deleted.length > 0;
 }
 
+export type BusinessPickupScope = "today" | "previous" | "all";
+
 async function jobsForDate(customerUserId: string, jobDate: string): Promise<BusinessDailyJob[]> {
+  return jobsForPickupScope(customerUserId, "today", jobDate);
+}
+
+async function jobsForPickupScope(
+  customerUserId: string,
+  scope: BusinessPickupScope,
+  today: string,
+): Promise<BusinessDailyJob[]> {
+  const filters = [eq(businessDailyJobs.customerUserId, customerUserId)];
+  if (scope === "today") filters.push(eq(businessDailyJobs.jobDate, today));
+  if (scope === "previous") filters.push(lt(businessDailyJobs.jobDate, today));
   return db
     .select()
     .from(businessDailyJobs)
-    .where(and(eq(businessDailyJobs.customerUserId, customerUserId), eq(businessDailyJobs.jobDate, jobDate)));
+    .where(and(...filters))
+    .orderBy(desc(businessDailyJobs.jobDate), desc(businessDailyJobs.createdAt));
 }
 
 function jobFromDestination(
@@ -948,6 +967,7 @@ function notifyStoreBuyerOrderReceived(customerUserId: string, order: BusinessOr
 }
 
 export async function getPublicStorefront(storeId: string) {
+  await ensureBusinessCourierTables();
   const [profile] = await db
     .select()
     .from(businessProfiles)
@@ -959,6 +979,7 @@ export async function getPublicStorefront(storeId: string) {
   return {
     id: profile.id,
     storeName: profile.storeName?.trim() || profile.companyName?.trim() || "Store",
+    logoUrl: profile.logoUrl?.trim() || null,
   };
 }
 
@@ -1081,16 +1102,22 @@ export async function cancelBusinessOrder(customerUserId: string, orderId: strin
   return updated;
 }
 
-export async function getBusinessToday(customerUserId: string, jobDate = todayIsoDate()) {
+export async function getBusinessToday(
+  customerUserId: string,
+  jobDate = todayIsoDate(),
+  scope: BusinessPickupScope = "today",
+) {
   await ensureXgooOrderIdColumns();
   const profile = await getOrCreateBusinessProfile(customerUserId);
   const weekdays = mergeBusinessWeekdays(profile.weekdays);
   const standingDay = isBusinessPickupDay(weekdays, jobDate);
-  const jobs = await jobsForDate(customerUserId, jobDate);
-  const pickupDay = profile.pickupStyle === "on_demand" || standingDay || jobs.length > 0;
+  const jobs = await jobsForPickupScope(customerUserId, scope, jobDate);
+  const todayJobs = scope === "today" ? jobs : await jobsForPickupScope(customerUserId, "today", jobDate);
+  const pickupDay = profile.pickupStyle === "on_demand" || standingDay || todayJobs.length > 0;
 
   return {
     date: jobDate,
+    scope,
     pickupDay,
     standingDay,
     pickupStyle: profile.pickupStyle || "standing",

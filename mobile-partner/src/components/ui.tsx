@@ -87,6 +87,7 @@ export function Screen({
   const scrollRef = useRef<ScrollView>(null);
   const scrollHostRef = useRef<View>(null);
   const scrollYRef = useRef(0);
+  const focusedRef = useRef<View | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
@@ -109,19 +110,19 @@ export function Screen({
 
   const scrollToFocused = useCallback(
     (target: View | null) => {
-      if (!target || !scrollRef.current || !scrollHostRef.current) return;
+      if (target) focusedRef.current = target;
+      const node = target || focusedRef.current;
+      if (!node || !scrollRef.current || !scrollHostRef.current) return;
       requestAnimationFrame(() => {
-        target.measureInWindow((_x, y, _width, height) => {
+        node.measureInWindow((_x, y, _width, height) => {
           scrollHostRef.current?.measureInWindow((_sx, sy, _sw, sh) => {
-            // Keep a cushion above the keypad / footer button area.
-            const cushion = Platform.OS === 'android' ? 28 : 20;
-            const visibleBottom =
-              sy + sh - (Platform.OS === 'ios' ? Math.max(0, keyboardHeight * 0.15) : 0) - cushion;
+            const cushion = 20;
+            const visibleBottom = sy + sh - keyboardHeight - cushion;
             const fieldBottom = y + height;
-            if (fieldBottom <= visibleBottom) return;
+            if (fieldBottom <= visibleBottom && y >= sy + 8) return;
             const delta = fieldBottom - visibleBottom;
             scrollRef.current?.scrollTo({
-              y: Math.max(0, scrollYRef.current + delta + 12),
+              y: Math.max(0, scrollYRef.current + delta + 24),
               animated: true,
             });
           });
@@ -131,19 +132,15 @@ export function Screen({
     [keyboardHeight],
   );
 
-  // Android already resizes the window (`softwareKeyboardLayoutMode: resize`).
-  // Extra full keyboard padding would double-count; keep a small scroll cushion instead.
-  const keyboardPadding =
-    keyboard && keyboardHeight > 0
-      ? Platform.OS === 'ios'
-        ? 24
-        : 48
-      : keyboard
-        ? 36
-        : 0;
+  useEffect(() => {
+    if (!keyboard || keyboardHeight <= 0) return;
+    const timer = setTimeout(() => scrollToFocused(focusedRef.current), 50);
+    return () => clearTimeout(timer);
+  }, [keyboard, keyboardHeight, scrollToFocused]);
 
   const basePaddingBottom =
     typeof contentStyle?.paddingBottom === 'number' ? contentStyle.paddingBottom : 24;
+  const keyboardPadding = keyboard ? Math.max(36, keyboardHeight + 28) : 0;
 
   const content = scroll ? (
     <View ref={scrollHostRef} style={styles.flex} collapsable={false}>
@@ -151,7 +148,7 @@ export function Screen({
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        automaticallyAdjustKeyboardInsets={keyboard && Platform.OS === 'ios'}
+        automaticallyAdjustKeyboardInsets={keyboard}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         onScroll={onScroll}
@@ -160,9 +157,7 @@ export function Screen({
           styles.screenContent,
           padded && styles.screenPadding,
           contentStyle,
-          keyboard
-            ? { paddingBottom: Math.max(30, basePaddingBottom + keyboardPadding) }
-            : null,
+          keyboard ? { paddingBottom: Math.max(basePaddingBottom, keyboardPadding) } : null,
         ]}
       >
         {children}
@@ -321,15 +316,128 @@ export function Field({
         ]}
         onFocus={(event) => {
           onFocus?.(event);
-          // Wait for keyboard animation / window resize, then bring field into view.
-          setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 60 : 120);
-          setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 280 : 320);
+          keyboardScroll?.scrollToFocused(fieldRef.current);
+          setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), 80);
+          setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), 280);
+          setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), 480);
         }}
         {...props}
       />
       {helperText && !error ? (
         <Text style={[styles.helper, { color: colors.textMuted }]}>{helperText}</Text>
       ) : null}
+      {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
+    </View>
+  );
+}
+
+const OTP_LENGTH = 6;
+
+export function OtpBoxes({
+  value,
+  onChangeText,
+  autoFocus = true,
+  error,
+  label = 'OTP',
+  editable = true,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  autoFocus?: boolean;
+  error?: string;
+  label?: string;
+  editable?: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const fieldRef = useRef<View>(null);
+  const inputRefs = useRef<Array<TextInput | null>>(Array.from({ length: OTP_LENGTH }, () => null));
+  const keyboardScroll = useContext(KeyboardScrollContext);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const digits = value.replace(/\D/g, '').slice(0, OTP_LENGTH);
+  const emptyFill = colors.mode === 'dark' ? colors.surfaceMuted : '#F2F2F4';
+  const nextIndex = Math.min(digits.length, OTP_LENGTH - 1);
+
+  const focusBox = (index: number) => {
+    const target = Math.min(Math.max(index, 0), OTP_LENGTH - 1);
+    inputRefs.current[target]?.focus();
+  };
+
+  const writeDigit = (index: number, text: string) => {
+    const cleaned = text.replace(/\D/g, '');
+    if (cleaned.length >= OTP_LENGTH) {
+      onChangeText(cleaned.slice(0, OTP_LENGTH));
+      focusBox(OTP_LENGTH - 1);
+      return;
+    }
+    if (cleaned.length === 0) {
+      onChangeText(digits.slice(0, index) + digits.slice(index + 1));
+      if (index > 0) focusBox(index - 1);
+      return;
+    }
+    const digit = cleaned.slice(-1);
+    const writeAt = Math.min(index, digits.length);
+    const next =
+      writeAt < digits.length
+        ? digits.slice(0, writeAt) + digit + digits.slice(writeAt + 1)
+        : digits + digit;
+    onChangeText(next.slice(0, OTP_LENGTH));
+    if (next.length < OTP_LENGTH) focusBox(next.length);
+    else if (writeAt < OTP_LENGTH - 1) focusBox(writeAt + 1);
+  };
+
+  return (
+    <View ref={fieldRef} style={styles.field} collapsable={false}>
+      {label ? <Text style={[styles.label, { color: colors.text }]}>{label}</Text> : null}
+      <View style={styles.otpRow}>
+        {Array.from({ length: OTP_LENGTH }, (_, index) => {
+          const digit = digits[index] ?? '';
+          const active = focusedIndex === index;
+          return (
+            <TextInput
+              key={index}
+              ref={(node) => {
+                inputRefs.current[index] = node;
+              }}
+              value={digit}
+              onChangeText={(text) => writeDigit(index, text)}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key !== 'Backspace' || digit) return;
+                onChangeText(digits.slice(0, Math.max(0, index)));
+                if (index > 0) focusBox(index - 1);
+              }}
+              onFocus={() => {
+                setFocusedIndex(index);
+                setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 60 : 120);
+                setTimeout(() => keyboardScroll?.scrollToFocused(fieldRef.current), Platform.OS === 'ios' ? 280 : 320);
+              }}
+              onBlur={() => setFocusedIndex((current) => (current === index ? null : current))}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              showSoftInputOnFocus
+              autoComplete={index === 0 ? 'one-time-code' : 'off'}
+              textContentType={index === 0 ? 'oneTimeCode' : 'none'}
+              importantForAutofill={index === 0 ? 'yes' : 'no'}
+              maxLength={OTP_LENGTH}
+              autoFocus={autoFocus && index === nextIndex}
+              editable={editable}
+              selectTextOnFocus
+              caretHidden={false}
+              blurOnSubmit={false}
+              underlineColorAndroid="transparent"
+              selectionColor={colors.accent}
+              accessibilityLabel={`OTP digit ${index + 1} of ${OTP_LENGTH}`}
+              style={[
+                styles.otpBox,
+                {
+                  backgroundColor: emptyFill,
+                  borderColor: error ? colors.danger : active ? colors.accent : 'transparent',
+                  color: digit ? colors.accent : colors.textMuted,
+                },
+              ]}
+            />
+          );
+        })}
+      </View>
       {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     </View>
   );
@@ -450,6 +558,24 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' },
   helper: { fontSize: 11, lineHeight: 15 },
   error: { fontSize: 11 },
+  otpRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    width: '100%',
+  },
+  otpBox: {
+    flex: 1,
+    height: 62,
+    minHeight: 62,
+    padding: 0,
+    margin: 0,
+    borderRadius: 0,
+    borderWidth: 2,
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   pill: {
     minHeight: 34,
     justifyContent: 'center',

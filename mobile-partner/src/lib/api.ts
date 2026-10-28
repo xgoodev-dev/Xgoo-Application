@@ -31,7 +31,51 @@ export type PickupSignupInput = {
   address: string;
   govtIdType: 'aadhaar' | 'pan' | 'driving_license' | 'voter_id';
   govtIdNumber: string;
-  branchId: string;
+};
+
+export type PickupSignupResult = {
+  pending: true;
+  message: string;
+};
+
+export type PickupFuelRate = {
+  officeId: string;
+  vehicleType: string;
+  mileageKmPerLitre: string;
+  fuelPricePerLitre: string;
+};
+
+export type PickupShift = {
+  id: string;
+  status: 'open' | 'closed' | string;
+  startedAt: string;
+  endedAt?: string | null;
+  durationMinutes: number;
+  distanceKm: string;
+  fuelLitres: string;
+  fuelCost: string;
+  mileageKmPerLitre?: string | null;
+  fuelPricePerLitre?: string | null;
+};
+
+export type PickupFuelClaim = {
+  id: string;
+  shiftId: string;
+  distanceKm: string;
+  fuelLitres: string;
+  amount: string;
+  status: 'requested' | 'approved' | 'rejected' | 'paid' | string;
+  notes?: string | null;
+  reviewNotes?: string | null;
+  requestedAt?: string | null;
+  paidAt?: string | null;
+};
+
+export type PickupDutySnapshot = {
+  rate: PickupFuelRate;
+  current: PickupShift | null;
+  shifts: PickupShift[];
+  claims: PickupFuelClaim[];
 };
 
 export type PickupJob = {
@@ -94,13 +138,68 @@ async function parseError(res: Response) {
   throw new Error((body as { message?: string }).message || `Request failed (${res.status})`);
 }
 
+const REQUEST_TIMEOUT_MS = 18_000;
+
+function isCanceledFetch(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const text = `${error.name} ${error.message}`.toLowerCase();
+  return (
+    error.name === 'AbortError' ||
+    text.includes('abort') ||
+    text.includes('canceled') ||
+    text.includes('cancelled')
+  );
+}
+
+function isNetworkFetch(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const text = `${error.name} ${error.message}`.toLowerCase();
+  return (
+    isCanceledFetch(error) ||
+    error.name === 'TypeError' ||
+    text.includes('network') ||
+    text.includes('failed to fetch') ||
+    text.includes('fetch failed')
+  );
+}
+
 async function request<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
+  const apiUrl = getApiUrl();
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('x-pickup-token', token);
-  const res = await fetch(`${getApiUrl()}${path}`, { ...init, headers });
-  if (!res.ok) await parseError(res);
-  return (await res.json()) as T;
+
+  const run = async () => {
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), REQUEST_TIMEOUT_MS);
+    });
+    const res = await Promise.race([
+      fetch(`${apiUrl}${path}`, { ...init, headers }),
+      timeout,
+    ]);
+    if (!res.ok) await parseError(res);
+    return (await res.json()) as T;
+  };
+
+  try {
+    return await run();
+  } catch (firstError) {
+    let error: unknown = firstError;
+    if (isCanceledFetch(firstError)) {
+      try {
+        return await run();
+      } catch (retryError) {
+        error = retryError;
+      }
+    }
+    if (error instanceof Error && error.message === 'timeout') {
+      throw new Error('XGoo took too long to respond. Check your internet connection and try again.');
+    }
+    if (isNetworkFetch(error)) {
+      throw new Error(`Cannot reach XGoo Pickup at ${apiUrl}. Check your internet connection and try again.`);
+    }
+    throw error;
+  }
 }
 
 export const pickupApi = {
@@ -113,17 +212,25 @@ export const pickupApi = {
   stores() {
     return request<PickupStore[]>(`/api/public/office/${OFFICE_SLUG}/pickup/stores`);
   },
-  signup(input: PickupSignupInput) {
-    return request<{ token: string; user: PickupPartner }>(
+  async signup(input: PickupSignupInput) {
+    const stores = await pickupApi.stores().catch(() => [] as PickupStore[]);
+    const result = await request<PickupSignupResult & { token?: string }>(
       `/api/public/office/${OFFICE_SLUG}/pickup/signup`,
       {
         method: 'POST',
         body: JSON.stringify({
           ...input,
           phone: normalizeMobilePhone(input.phone),
+          ...(stores[0]?.id ? { branchId: stores[0].id } : {}),
         }),
       },
     );
+    return {
+      pending: true as const,
+      message:
+        result.message ||
+        'Request sent. Hub will assign a store and activate your account. You can then sign in with password or OTP.',
+    };
   },
   loginWithPassword(phone: string, password: string) {
     return request<{ token: string; user: PickupPartner }>(
@@ -145,6 +252,36 @@ export const pickupApi = {
   },
   logout(token: string) {
     return request<{ success: boolean }>('/api/pickup/logout', { method: 'POST' }, token);
+  },
+  duty(token: string) {
+    return request<PickupDutySnapshot>('/api/pickup/duty', {}, token);
+  },
+  startDuty(token: string) {
+    return request<PickupShift>('/api/pickup/duty/start', { method: 'POST', body: JSON.stringify({}) }, token);
+  },
+  pingDuty(
+    token: string,
+    points: Array<{ lat: number; lng: number; accuracy?: number; recordedAt?: string }>,
+  ) {
+    return request<PickupShift>(
+      '/api/pickup/duty/ping',
+      { method: 'POST', body: JSON.stringify({ points }) },
+      token,
+    );
+  },
+  stopDuty(token: string, point?: { lat: number; lng: number }) {
+    return request<{ shift: PickupShift | null }>(
+      '/api/pickup/duty/stop',
+      { method: 'POST', body: JSON.stringify(point || {}) },
+      token,
+    );
+  },
+  requestFuel(token: string, shiftId: string, notes?: string) {
+    return request<PickupFuelClaim>(
+      '/api/pickup/fuel/claims',
+      { method: 'POST', body: JSON.stringify({ shiftId, notes }) },
+      token,
+    );
   },
   registerPushToken(token: string, input: { token: string; platform: string }) {
     return request('/api/pickup/push-token', { method: 'POST', body: JSON.stringify(input) }, token);

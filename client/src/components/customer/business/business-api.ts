@@ -31,6 +31,15 @@ export function businessApi(token: string) {
         headers,
         body: JSON.stringify(body),
       }).then(parseJson),
+    uploadLogo: (file: File) => {
+      const body = new FormData();
+      body.append("logo", file);
+      return fetch("/api/customer/business/logo", {
+        method: "POST",
+        headers: { "x-customer-token": token },
+        body,
+      }).then(parseJson);
+    },
     submitApplication: (body: Record<string, unknown>) =>
       fetch("/api/customer/business/application", {
         method: "POST",
@@ -56,10 +65,11 @@ export function businessApi(token: string) {
         method: "DELETE",
         headers,
       }).then(parseJson),
-    today: (date: string) =>
-      fetch(`/api/customer/business/today?date=${encodeURIComponent(date)}`, { headers }).then(
-        parseJson,
-      ),
+    today: (date: string, scope: "today" | "previous" | "all" = "today") =>
+      fetch(
+        `/api/customer/business/today?date=${encodeURIComponent(date)}&scope=${encodeURIComponent(scope)}`,
+        { headers },
+      ).then(parseJson),
     addTodayJob: (body: Record<string, unknown>) =>
       fetch("/api/customer/business/today/jobs", {
         method: "POST",

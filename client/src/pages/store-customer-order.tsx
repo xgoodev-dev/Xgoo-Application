@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { XGOO_BRAND, XGOO_MODULES } from "@/components/marketing/site-info";
+import { PageSeo } from "@/components/seo/PageSeo";
+import { absoluteUrl } from "@/lib/seo";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 
 const ORANGE = "#FF4907";
@@ -89,6 +91,12 @@ export default function StoreCustomerOrderPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 [color-scheme:light]">
+      <PageSeo
+        title={`${storeName} · ${XGOO_BRAND.productName}`}
+        description={`Add your delivery address for your order from ${storeName}. Pickup and tracking with ${XGOO_BRAND.productName}.`}
+        path={`/s/${encodeURIComponent(storeId)}`}
+        image={storeLogo ? absoluteUrl(storeLogo) : undefined}
+      />
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4 px-4 py-4">
           <div className="flex min-w-0 items-center gap-3">

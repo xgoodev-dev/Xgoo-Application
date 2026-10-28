@@ -135,9 +135,17 @@ export function GoProfile({
       <h2 className="text-xl font-bold text-zinc-900">Profile</h2>
       <p className="mt-1 text-sm text-zinc-500">Your {product.name} account.</p>
       <Card className="mt-5 flex items-center gap-4 border-zinc-100 p-4 shadow-none">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FF4907] text-lg font-extrabold text-white">
-          {initialsFromName(userName)}
-        </div>
+        {module === "pro" && storeProfile?.logoUrl ? (
+          <img
+            src={storeProfile.logoUrl}
+            alt={storeName || "Store logo"}
+            className="h-16 w-16 rounded-2xl object-cover"
+          />
+        ) : (
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FF4907] text-lg font-extrabold text-white">
+            {initialsFromName(module === "pro" ? storeName || userName : userName)}
+          </div>
+        )}
         <div className="min-w-0">
           <p className="truncate text-lg font-bold text-zinc-900">
             {module === "pro" && storeName?.trim() ? storeName.trim() : userName}

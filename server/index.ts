@@ -58,8 +58,11 @@ app.use((req, res, next) => {
   express.urlencoded({ extended: false })(req, res, next);
 });
 
-// Serve local uploads
-app.use("/objects", express.static("uploads"));
+// Serve local uploads (CORS so share-card canvas can read store logos)
+app.use("/objects", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  next();
+}, express.static("uploads"));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -118,6 +121,11 @@ app.use((req, res, next) => {
     }
 
     return res.status(status).json({ message });
+  });
+
+  app.use("/api", (_req, res) => {
+    if (res.headersSent) return;
+    res.status(404).json({ message: "API route not found" });
   });
 
   // importantly only setup vite in development and after

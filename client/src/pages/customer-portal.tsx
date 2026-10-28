@@ -67,7 +67,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AddressPicker, SavedAddressesManager, saveAddressFromBooking, suggestAddressLabel } from "@/components/customer/SavedAddresses";
+import { SavedAddressesManager, saveAddressFromBooking, suggestAddressLabel, useSavedAddresses } from "@/components/customer/SavedAddresses";
+import { GooglePlacesAutocomplete } from "@/components/maps/GooglePlacesAutocomplete";
 import type { SavedAddressValue } from "@/components/customer/SavedAddresses";
 import { BookingTrackingPanel } from "@/components/customer/BookingTrackingPanel";
 import {
@@ -108,6 +109,7 @@ import {
 } from "@/components/customer/TrackingLoadsWorkspace";
 import {
   BookShipmentWorkspace,
+  type SavedMapAddress,
   type AddressScope,
   type BookFlowStep,
   type ShipmentMapPoint,
@@ -1326,6 +1328,40 @@ function AuthPage({ slug, office, onLogin }: {
   );
 }
 
+function toSavedMapAddresses(
+  addresses: Array<{
+    id: string;
+    label?: string | null;
+    address: string;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    lat?: string | null;
+    lng?: string | null;
+    name?: string | null;
+    phone?: string | null;
+    isDefault?: boolean | null;
+    addressType: string;
+  }>,
+  type: "sender" | "receiver",
+): SavedMapAddress[] {
+  return addresses
+    .filter((item) => item.addressType === type)
+    .map((item) => ({
+      id: item.id,
+      label: item.label || (type === "sender" ? "Pickup" : "Delivery"),
+      address: item.address,
+      city: item.city || undefined,
+      state: item.state || undefined,
+      pincode: item.pincode || undefined,
+      lat: item.lat ? parseFloat(item.lat) : undefined,
+      lng: item.lng ? parseFloat(item.lng) : undefined,
+      name: item.name || undefined,
+      phone: item.phone || undefined,
+      isDefault: Boolean(item.isDefault),
+    }));
+}
+
 function BookingTab({
   slug,
   partners,
@@ -1349,6 +1385,7 @@ function BookingTab({
 }) {
   const isGuest = !!(guestMode && !token);
   const { toast } = useToast();
+  const { data: savedAddresses = [] } = useSavedAddresses(token);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{
     requestNumber: string;
@@ -2302,6 +2339,20 @@ function BookingTab({
           continueDisabled={
             (bookStep === "pickup" && !pickupPoint) || (bookStep === "destination" && !destinationPoint)
           }
+          savedPickup={toSavedMapAddresses(savedAddresses, "sender")}
+          savedDestination={toSavedMapAddresses(savedAddresses, "receiver")}
+          onSelectSaved={(item, pin) =>
+            applySavedAddress(pin === "pickup" ? "sender" : "receiver", {
+              name: item.name || "",
+              phone: item.phone || "",
+              address: item.address,
+              city: item.city,
+              state: item.state,
+              pincode: item.pincode,
+              lat: item.lat != null ? String(item.lat) : null,
+              lng: item.lng != null ? String(item.lng) : null,
+            })
+          }
         >
           {bookStep === "pickup" && pickupPoint && (
             <div className="space-y-3">
@@ -2309,11 +2360,38 @@ function BookingTab({
                 <FormItem>
                   <FormLabel>Address 1 *</FormLabel>
                   <FormControl>
-                    <Input
-                      {...field}
-                      className="rounded-xl"
-                      placeholder="House / flat, street"
-                      data-testid="input-sender-address"
+                    <GooglePlacesAutocomplete
+                      value={field.value}
+                      showSearchButton={false}
+                      savedAddresses={toSavedMapAddresses(savedAddresses, "sender")}
+                      placeholder="House / flat, street — tap for saved addresses"
+                      onQueryChange={field.onChange}
+                      onSelect={(place) => {
+                        field.onChange(place.address || place.displayName);
+                        applyPickupPoint({
+                          lat: place.lat,
+                          lng: place.lng,
+                          label: place.displayName,
+                          address: place.address || place.displayName,
+                          city: place.city,
+                          state: place.state,
+                          pincode: place.pincode,
+                          country: place.country,
+                        });
+                      }}
+                      onSelectSaved={(item) =>
+                        applySavedAddress("sender", {
+                          name: item.name || "",
+                          phone: item.phone || "",
+                          address: item.address,
+                          city: item.city,
+                          state: item.state,
+                          pincode: item.pincode,
+                          lat: item.lat != null ? String(item.lat) : null,
+                          lng: item.lng != null ? String(item.lng) : null,
+                        })
+                      }
+                      testIdPrefix="sender-address"
                     />
                   </FormControl>
                   <FormMessage />
@@ -2366,11 +2444,38 @@ function BookingTab({
                 <FormItem>
                   <FormLabel>Address 1 *</FormLabel>
                   <FormControl>
-                    <Input
-                      {...field}
-                      className="rounded-xl"
-                      placeholder="House / flat, street"
-                      data-testid="input-receiver-address"
+                    <GooglePlacesAutocomplete
+                      value={field.value}
+                      showSearchButton={false}
+                      savedAddresses={toSavedMapAddresses(savedAddresses, "receiver")}
+                      placeholder="House / flat, street — tap for saved addresses"
+                      onQueryChange={field.onChange}
+                      onSelect={(place) => {
+                        field.onChange(place.address || place.displayName);
+                        applyDestinationPoint({
+                          lat: place.lat,
+                          lng: place.lng,
+                          label: place.displayName,
+                          address: place.address || place.displayName,
+                          city: place.city,
+                          state: place.state,
+                          pincode: place.pincode,
+                          country: place.country,
+                        });
+                      }}
+                      onSelectSaved={(item) =>
+                        applySavedAddress("receiver", {
+                          name: item.name || "",
+                          phone: item.phone || "",
+                          address: item.address,
+                          city: item.city,
+                          state: item.state,
+                          pincode: item.pincode,
+                          lat: item.lat != null ? String(item.lat) : null,
+                          lng: item.lng != null ? String(item.lng) : null,
+                        })
+                      }
+                      testIdPrefix="receiver-address"
                     />
                   </FormControl>
                   <FormMessage />
@@ -2474,9 +2579,6 @@ function BookingTab({
                   </div>
                 </div>
                 <div className="space-y-3 px-3.5 py-3.5">
-                  {!isGuest && token && (
-                    <AddressPicker token={token} addressType="sender" onSelect={(a) => applySavedAddress("sender", a)} />
-                  )}
                   <button
                     type="button"
                     onClick={() => setBookStep("pickup")}
@@ -2539,9 +2641,6 @@ function BookingTab({
                   </div>
                 </div>
                 <div className="space-y-3 px-3.5 py-3.5">
-                  {!isGuest && token && (
-                    <AddressPicker token={token} addressType="receiver" onSelect={(a) => applySavedAddress("receiver", a)} />
-                  )}
                   <button
                     type="button"
                     onClick={() => setBookStep("destination")}
@@ -3925,6 +4024,7 @@ export default function CustomerPortalPage() {
               ? businessProfile?.storeName?.trim() || businessProfile?.companyName?.trim() || ""
               : undefined
           }
+          businessLogoUrl={isBusiness ? businessProfile?.logoUrl : undefined}
           locationFallback={
             isBusiness
               ? [

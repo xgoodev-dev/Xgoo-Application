@@ -763,6 +763,7 @@ export const businessProfiles = pgTable("business_profiles", {
   pickupPhone: varchar("pickup_phone", { length: 20 }),
   pickupStyle: varchar("pickup_style", { length: 20 }).notNull().default("standing"),
   billingCycle: varchar("billing_cycle", { length: 20 }).notNull().default("weekly"),
+  logoUrl: varchar("logo_url", { length: 500 }),
   weekdays: jsonb("weekdays").notNull().default(sql`'{"sun":false,"mon":true,"tue":true,"wed":true,"thu":true,"fri":true,"sat":true}'::jsonb`),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1003,7 +1004,7 @@ export const pickupPartners = pgTable("pickup_partners", {
   govtIdNumber: varchar("govt_id_number", { length: 80 }),
   govtIdDocumentUrl: text("govt_id_document_url"),
   signupSource: varchar("signup_source", { length: 20 }).notNull().default("hub"),
-  status: varchar("status", { length: 20 }).notNull().default("active"),
+  status: varchar("status", { length: 20 }).notNull().default("active"), // pending, active, inactive
   availability: varchar("availability", { length: 20 }).notNull().default("offline"),
   lastAssignedAt: timestamp("last_assigned_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1098,6 +1099,67 @@ export const pickupPartnerPushTokensRelations = relations(pickupPartnerPushToken
     references: [pickupPartners.id],
   }),
 }));
+
+export const pickupFuelRates = pgTable("pickup_fuel_rates", {
+  officeId: varchar("office_id").primaryKey().references(() => offices.id, { onDelete: "cascade" }),
+  vehicleType: varchar("vehicle_type", { length: 20 }).notNull().default("bike"),
+  mileageKmPerLitre: decimal("mileage_km_per_litre", { precision: 8, scale: 2 }).notNull().default("40"),
+  fuelPricePerLitre: decimal("fuel_price_per_litre", { precision: 8, scale: 2 }).notNull().default("105"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const pickupPartnerShifts = pgTable("pickup_partner_shifts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  partnerId: varchar("partner_id").notNull().references(() => pickupPartners.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  durationMinutes: integer("duration_minutes").notNull().default(0),
+  distanceKm: decimal("distance_km", { precision: 12, scale: 3 }).notNull().default("0"),
+  fuelLitres: decimal("fuel_litres", { precision: 12, scale: 3 }).notNull().default("0"),
+  fuelCost: decimal("fuel_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  mileageKmPerLitre: decimal("mileage_km_per_litre", { precision: 8, scale: 2 }),
+  fuelPricePerLitre: decimal("fuel_price_per_litre", { precision: 8, scale: 2 }),
+  startLat: decimal("start_lat", { precision: 10, scale: 7 }),
+  startLng: decimal("start_lng", { precision: 10, scale: 7 }),
+  endLat: decimal("end_lat", { precision: 10, scale: 7 }),
+  endLng: decimal("end_lng", { precision: 10, scale: 7 }),
+  lastLat: decimal("last_lat", { precision: 10, scale: 7 }),
+  lastLng: decimal("last_lng", { precision: 10, scale: 7 }),
+  lastFixAt: timestamp("last_fix_at"),
+  pointCount: integer("point_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_pickup_partner_shifts_partner").on(table.partnerId, table.status),
+  index("idx_pickup_partner_shifts_office").on(table.officeId, table.startedAt),
+]);
+
+export const pickupFuelClaims = pgTable("pickup_fuel_claims", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  partnerId: varchar("partner_id").notNull().references(() => pickupPartners.id, { onDelete: "cascade" }),
+  shiftId: varchar("shift_id").notNull().references(() => pickupPartnerShifts.id, { onDelete: "cascade" }),
+  distanceKm: decimal("distance_km", { precision: 12, scale: 3 }).notNull(),
+  fuelLitres: decimal("fuel_litres", { precision: 12, scale: 3 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  mileageKmPerLitre: decimal("mileage_km_per_litre", { precision: 8, scale: 2 }).notNull(),
+  fuelPricePerLitre: decimal("fuel_price_per_litre", { precision: 8, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("requested"),
+  notes: text("notes"),
+  reviewNotes: text("review_notes"),
+  requestedAt: timestamp("requested_at").defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: varchar("reviewed_by_user_id"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_pickup_fuel_claims_shift").on(table.shiftId),
+  index("idx_pickup_fuel_claims_office").on(table.officeId, table.status),
+  index("idx_pickup_fuel_claims_partner").on(table.partnerId),
+]);
 
 export const pickupJobsRelations = relations(pickupJobs, ({ one }) => ({
   office: one(offices, {
@@ -1459,6 +1521,9 @@ export type InsertPickupPartnerSession = z.infer<typeof insertPickupPartnerSessi
 export type PickupPartnerPushToken = typeof pickupPartnerPushTokens.$inferSelect;
 export type PickupJob = typeof pickupJobs.$inferSelect;
 export type InsertPickupJob = z.infer<typeof insertPickupJobSchema>;
+export type PickupFuelRate = typeof pickupFuelRates.$inferSelect;
+export type PickupPartnerShift = typeof pickupPartnerShifts.$inferSelect;
+export type PickupFuelClaim = typeof pickupFuelClaims.$inferSelect;
 
 // Extended types for frontend use
 export type ShipmentWithRelations = Shipment & {

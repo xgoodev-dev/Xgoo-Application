@@ -25,6 +25,7 @@ export type ProProfileStatus = {
   pickupState?: string | null;
   pickupPincode?: string | null;
   pickupTimeSlot?: string | null;
+  logoUrl?: string | null;
   verificationStatus?: string | null;
   verificationNote?: string | null;
   applicationComplete?: boolean;
