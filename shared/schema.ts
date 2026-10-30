@@ -349,6 +349,9 @@ export const shipments = pgTable("shipments", {
   giftwrapCharges: decimal("giftwrap_charges", { precision: 12, scale: 2 }),
   transactionCharges: decimal("transaction_charges", { precision: 12, scale: 2 }),
   resellerName: varchar("reseller_name", { length: 255 }),
+  partnerProduct: varchar("partner_product", { length: 100 }),
+  partnerVendor: varchar("partner_vendor", { length: 100 }),
+  partnerService: varchar("partner_service", { length: 100 }),
 
   customsDocumentType: varchar("customs_document_type", { length: 20 }),
   incoTerms: varchar("inco_terms", { length: 20 }),

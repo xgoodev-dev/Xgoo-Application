@@ -20,6 +20,7 @@ export type PricingQuoteInput = {
   length?: number | null;
   width?: number | null;
   height?: number | null;
+  volumetricWeight?: number | null;
 };
 
 export type PricingQuoteResult = {
@@ -83,11 +84,15 @@ export function chargeableWeight(
   length?: number | null,
   width?: number | null,
   height?: number | null,
+  volumetricKg?: number | null,
 ): { chargeable: number; volumetric: number; actual: number } {
   const l = length || 0;
   const w = width || 0;
   const h = height || 0;
-  const volumetric = l > 0 && w > 0 && h > 0 ? (l * w * h) / 5000 : 0;
+  const fromDims = l > 0 && w > 0 && h > 0 ? (l * w * h) / 5000 : 0;
+  const entered = Number(volumetricKg);
+  const fromEntry = Number.isFinite(entered) && entered > 0 ? entered : 0;
+  const volumetric = Math.max(fromDims, fromEntry);
   const chargeable = Math.max(actualKg, volumetric);
   return { chargeable, volumetric, actual: actualKg };
 }
@@ -190,6 +195,7 @@ export function findBestTariffRow(
     input.length,
     input.width,
     input.height,
+    input.volumetricWeight,
   );
   const { billedWeight } = resolveBilledWeight(weightInfo.chargeable, input.weightRoundOff);
   const weight = billedWeight;
@@ -269,7 +275,13 @@ export function buildQuote(
   rows: TariffRateRow[],
   input: PricingQuoteInput,
 ): PricingQuoteResult {
-  const weightInfo = chargeableWeight(input.weight, input.length, input.width, input.height);
+  const weightInfo = chargeableWeight(
+    input.weight,
+    input.length,
+    input.width,
+    input.height,
+    input.volumetricWeight,
+  );
   const { billedWeight, rounded } = resolveBilledWeight(
     weightInfo.chargeable,
     input.weightRoundOff,

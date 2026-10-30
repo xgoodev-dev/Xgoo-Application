@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BOOKING_METHOD_LABELS, resolveBookingMethod } from "@shared/booking-engine";
+import { isDelhiveryPartner } from "@shared/delhivery";
+import { isWorldFirstPartner } from "@shared/world-first";
 import type { CourierPartner } from "@shared/schema";
 import {
   FormControl,
@@ -46,6 +48,7 @@ import {
 } from "@shared/hub-booking";
 import type { BranchWithServiceAreas } from "@shared/schema";
 import type { HubBookingFormData } from "./hub-booking-schema";
+import { ItemDescriptionLookup } from "./item-description-lookup";
 
 function ScopeFields({
   scope,
@@ -230,7 +233,7 @@ export function HubBookingOrderSection({
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-base">Order details</CardTitle>
+        <CardTitle className="text-base">Pickup and order</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-3">
         <FormField
@@ -447,23 +450,125 @@ export function HubBookingAddressExtras({
   );
 }
 
+export function HubBookingCourierApiSection({
+  form,
+  partner,
+  delhiveryPickupLocation,
+}: {
+  form: UseFormReturn<HubBookingFormData>;
+  partner?: CourierPartner;
+  delhiveryPickupLocation?: string | null;
+}) {
+  if (!partner) return null;
+  const worldFirst = isWorldFirstPartner(partner.code, partner.name);
+  const delhivery = isDelhiveryPartner(partner.code, partner.name);
+  if (!worldFirst && !delhivery) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-base">{partner.name} booking fields</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-3">
+        {worldFirst ? (
+          <>
+            <FormField
+              control={form.control}
+              name="partnerProduct"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Product</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Same as Xpresion Product" data-testid="input-wf-product" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="partnerVendor"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Vendor</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Same as Xpresion Vendor" data-testid="input-wf-vendor" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="partnerService"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Service</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Same as Xpresion Service" data-testid="input-wf-service" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <p className="sm:col-span-3 text-sm text-muted-foreground">
+              Use the Product, Vendor and Service names exactly as they appear on World First AWB
+              Entry. Leave blank to use values from .env.
+            </p>
+          </>
+        ) : null}
+        {delhivery ? (
+          <>
+            <FormField
+              control={form.control}
+              name="gstin"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Seller GSTIN</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="15-character GSTIN" data-testid="input-delhivery-gstin" />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <p className="sm:col-span-3 text-sm text-muted-foreground">
+              Pickup location must match the Delhivery One warehouse name
+              {delhiveryPickupLocation ? ` (${delhiveryPickupLocation})` : ""}. Prepaid vs COD uses
+              Order payment above. Add HSN on each product line (defaults to 999799).
+            </p>
+          </>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function HubBookingProductSection({
   form,
   scope,
+  partner,
 }: {
   form: UseFormReturn<HubBookingFormData>;
   scope: HubShipmentScope;
+  partner?: CourierPartner;
 }) {
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "products",
   });
-  const hsnRequired = scope === "international";
+  const worldFirst = isWorldFirstPartner(partner?.code, partner?.name);
+  const hsnRequired =
+    scope === "international" ||
+    worldFirst ||
+    isDelhiveryPartner(partner?.code, partner?.name);
+  const products = form.watch("products");
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
-        <CardTitle className="text-base">Product details</CardTitle>
+        <div>
+          <CardTitle className="text-base">{worldFirst ? "Performa details" : "Product details"}</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Type a description to see matching items. Selecting one fills the HSN code.
+          </p>
+        </div>
         <Button
           type="button"
           variant="outline"
@@ -472,7 +577,7 @@ export function HubBookingProductSection({
           data-testid="button-add-product"
         >
           <Plus className="mr-1 h-3.5 w-3.5" />
-          Add product
+          {worldFirst ? "Add" : "Add product"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -480,30 +585,43 @@ export function HubBookingProductSection({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>SKU</TableHead>
+                <TableHead>{worldFirst ? "Description" : "Name"}</TableHead>
+                {worldFirst ? null : <TableHead>SKU</TableHead>}
                 <TableHead>{hsnRequired ? "HSN *" : "HSN"}</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Unit price</TableHead>
-                <TableHead>Discount</TableHead>
-                <TableHead>Tax %</TableHead>
+                <TableHead>{worldFirst ? "Quantity" : "Qty"}</TableHead>
+                <TableHead>{worldFirst ? "Rate" : "Unit price"}</TableHead>
+                {worldFirst ? null : <TableHead>Discount</TableHead>}
+                {worldFirst ? null : <TableHead>Tax %</TableHead>}
                 <TableHead>Weight (kg)</TableHead>
+                {worldFirst ? <TableHead>Amount</TableHead> : null}
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {fields.map((field, index) => (
                 <TableRow key={field.id}>
-                  <TableCell className="min-w-[160px]">
-                    <Input
-                      {...form.register(`products.${index}.name`)}
-                      placeholder="Product name"
-                      data-testid={`input-product-name-${index}`}
+                  <TableCell className="min-w-[220px]">
+                    <ItemDescriptionLookup
+                      value={products?.[index]?.name || ""}
+                      placeholder={worldFirst ? "Package description" : "Product name"}
+                      testId={`input-product-name-${index}`}
+                      onChange={(name) =>
+                        form.setValue(`products.${index}.name`, name, { shouldDirty: true })
+                      }
+                      onSelect={(item) => {
+                        form.setValue(`products.${index}.name`, item.name, { shouldDirty: true });
+                        form.setValue(`products.${index}.hsn`, item.hsn, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
                     />
                   </TableCell>
-                  <TableCell className="min-w-[110px]">
-                    <Input {...form.register(`products.${index}.sku`)} placeholder="SKU" data-testid={`input-product-sku-${index}`} />
-                  </TableCell>
+                  {worldFirst ? null : (
+                    <TableCell className="min-w-[110px]">
+                      <Input {...form.register(`products.${index}.sku`)} placeholder="SKU" data-testid={`input-product-sku-${index}`} />
+                    </TableCell>
+                  )}
                   <TableCell className="min-w-[110px]">
                     <Input {...form.register(`products.${index}.hsn`)} placeholder="HSN" data-testid={`input-product-hsn-${index}`} />
                   </TableCell>
@@ -513,15 +631,24 @@ export function HubBookingProductSection({
                   <TableCell className="w-[110px]">
                     <Input {...form.register(`products.${index}.unitPrice`)} type="number" placeholder="0" data-testid={`input-product-price-${index}`} />
                   </TableCell>
-                  <TableCell className="w-[100px]">
-                    <Input {...form.register(`products.${index}.discount`)} type="number" placeholder="0" data-testid={`input-product-discount-${index}`} />
-                  </TableCell>
-                  <TableCell className="w-[80px]">
-                    <Input {...form.register(`products.${index}.taxPercent`)} type="number" placeholder="0" data-testid={`input-product-tax-${index}`} />
-                  </TableCell>
+                  {worldFirst ? null : (
+                    <TableCell className="w-[100px]">
+                      <Input {...form.register(`products.${index}.discount`)} type="number" placeholder="0" data-testid={`input-product-discount-${index}`} />
+                    </TableCell>
+                  )}
+                  {worldFirst ? null : (
+                    <TableCell className="w-[80px]">
+                      <Input {...form.register(`products.${index}.taxPercent`)} type="number" placeholder="0" data-testid={`input-product-tax-${index}`} />
+                    </TableCell>
+                  )}
                   <TableCell className="w-[100px]">
                     <Input {...form.register(`products.${index}.weight`)} type="number" placeholder="0" data-testid={`input-product-weight-${index}`} />
                   </TableCell>
+                  {worldFirst ? (
+                    <TableCell className="w-[100px] font-medium tabular-nums">
+                      {productLineValue(products?.[index] || emptyHubProduct()).toFixed(2)}
+                    </TableCell>
+                  ) : null}
                   <TableCell>
                     {fields.length > 1 && (
                       <Button
@@ -542,11 +669,14 @@ export function HubBookingProductSection({
         </div>
         <p className="text-sm text-muted-foreground">
           Product value Rs.{" "}
-          {form
-            .watch("products")
-            .reduce((sum, product) => sum + productLineValue(product), 0)
-            .toFixed(2)}
-          {hsnRequired ? " · HSN is required on international product lines." : ""}
+          {(products || []).reduce((sum, product) => sum + productLineValue(product), 0).toFixed(2)}
+          {hsnRequired
+            ? worldFirst
+              ? " · Select an item to fill HSN automatically."
+              : scope === "international"
+                ? " · HSN is required on international product lines."
+                : " · HSN is required for Delhivery (defaults to 999799 if left blank)."
+            : ""}
         </p>
       </CardContent>
     </Card>
@@ -723,13 +853,15 @@ export function HubBookingWeightSummary({
 
 export function HubBookingCustomsSection({
   form,
+  performa,
 }: {
   form: UseFormReturn<HubBookingFormData>;
+  performa?: boolean;
 }) {
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-base">Customs &amp; invoice</CardTitle>
+        <CardTitle className="text-base">{performa ? "Manifest GST / Performa" : "Customs & invoice"}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <FormField
@@ -737,7 +869,7 @@ export function HubBookingCustomsSection({
           name="customsDocumentType"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Customs document</FormLabel>
+              <FormLabel>{performa ? "CSB type" : "Customs document"}</FormLabel>
               <Select value={field.value || "csb5"} onValueChange={field.onChange}>
                 <FormControl>
                   <SelectTrigger data-testid="select-customs-document">
@@ -783,7 +915,7 @@ export function HubBookingCustomsSection({
           name="shipmentPurpose"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Purpose of shipment</FormLabel>
+              <FormLabel>{performa ? "Export reason" : "Purpose of shipment"}</FormLabel>
               <Select value={field.value || "Gift"} onValueChange={field.onChange}>
                 <FormControl>
                   <SelectTrigger data-testid="select-shipment-purpose">

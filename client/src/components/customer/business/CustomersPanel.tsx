@@ -119,7 +119,7 @@ export function CustomersPanel({
         description="People you ship to. Add a row, then use them on Orders or Pickup."
         actions={
           onOpenPickup ? (
-            <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenPickup}>
+            <Button variant="outline" className="h-11 rounded-xl sm:h-9 sm:rounded-none" onClick={onOpenPickup}>
               Open pickup
             </Button>
           ) : null

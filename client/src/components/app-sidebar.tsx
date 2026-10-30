@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Package,
   PackagePlus,
+  ClipboardList,
   Users,
   Truck,
   FileText,
@@ -20,6 +21,7 @@ import {
   Gift,
   Store,
   Bot,
+  ClipboardCheck,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
@@ -42,11 +44,15 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import type { Office, BookingRequest } from "@shared/schema";
+import { isCustomerBookingOrder } from "@/lib/booking-orders";
 
 const hubNavItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
+  { title: "Rate estimator", url: "/rate-calculator", icon: Calculator },
+  { title: "Bookings", url: "/bookings", icon: ClipboardList },
   { title: "Shipments", url: "/shipments", icon: Package },
+  { title: "Day End", url: "/world-first/day-end", icon: ClipboardCheck },
   { title: "Documents", url: "/documents", icon: Files },
   { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
@@ -72,7 +78,8 @@ function navIsActive(url: string, location: string) {
     return location === "/" || location === "/dashboard";
   }
   if (url === "/documents") return location.startsWith("/documents");
-  if (url === "/enquiries") return location === "/enquiries" || location === "/booking-requests";
+  if (url === "/bookings") return location === "/bookings" || location === "/booking-requests";
+  if (url === "/enquiries") return location === "/enquiries";
   return location === url;
 }
 
@@ -80,11 +87,13 @@ function NavItem({
   item,
   location,
   pendingRequestCount,
+  pendingEnquiryCount = 0,
   pendingProCount = 0,
 }: {
   item: NavDef;
   location: string;
   pendingRequestCount: number;
+  pendingEnquiryCount?: number;
   pendingProCount?: number;
 }) {
   return (
@@ -101,12 +110,20 @@ function NavItem({
         >
           <item.icon className="size-4 shrink-0" />
           <span>{item.title}</span>
-          {item.url === "/enquiries" && pendingRequestCount > 0 && (
+          {item.url === "/bookings" && pendingRequestCount > 0 && (
             <span
               className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
               data-testid="badge-pending-booking-requests"
             >
               {pendingRequestCount > 99 ? "99+" : pendingRequestCount}
+            </span>
+          )}
+          {item.url === "/enquiries" && pendingEnquiryCount > 0 && (
+            <span
+              className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF4907] px-1.5 text-[10px] font-bold text-white"
+              data-testid="badge-pending-enquiries"
+            >
+              {pendingEnquiryCount > 99 ? "99+" : pendingEnquiryCount}
             </span>
           )}
           {item.url === "/pro-accounts" && pendingProCount > 0 && (
@@ -125,6 +142,7 @@ function NavItem({
 
 const commandOpsItems = [
   { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
+  { title: "Bookings", url: "/bookings", icon: ClipboardList },
   { title: "Shipments", url: "/shipments", icon: Package },
   { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
@@ -157,7 +175,13 @@ export function AppSidebar() {
   });
 
   const pendingRequestCount =
-    bookingRequests?.filter((r) => r.status === "pending" || r.status === "reviewed").length ?? 0;
+    bookingRequests?.filter(
+      (r) => isCustomerBookingOrder(r) && (r.status === "pending" || r.status === "reviewed") && !r.convertedShipmentId,
+    ).length ?? 0;
+  const pendingEnquiryCount =
+    bookingRequests?.filter(
+      (r) => !isCustomerBookingOrder(r) && (r.status === "pending" || r.status === "reviewed"),
+    ).length ?? 0;
   const pendingProCount =
     proAccounts?.accounts.filter((account) => account.verificationStatus === "pending").length ?? 0;
 
@@ -243,6 +267,7 @@ export function AppSidebar() {
                       item={item}
                       location={location}
                       pendingRequestCount={pendingRequestCount}
+                      pendingEnquiryCount={pendingEnquiryCount}
                       pendingProCount={pendingProCount}
                     />
                   ))}
@@ -259,6 +284,7 @@ export function AppSidebar() {
                       item={item}
                       location={location}
                       pendingRequestCount={pendingRequestCount}
+                      pendingEnquiryCount={pendingEnquiryCount}
                       pendingProCount={pendingProCount}
                     />
                   ))}
@@ -277,6 +303,7 @@ export function AppSidebar() {
                     item={item}
                     location={location}
                     pendingRequestCount={pendingRequestCount}
+                    pendingEnquiryCount={pendingEnquiryCount}
                   />
                 ))}
                 {canManageHubStaff ? (

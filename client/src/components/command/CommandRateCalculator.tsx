@@ -36,6 +36,7 @@ import {
 } from "@shared/rate-calculator";
 import type { Office } from "@shared/schema";
 import type { CommandStoreSummary } from "@/components/command/CommandStoreOverview";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 
 type GeoHit = {
   displayName: string;
@@ -64,14 +65,15 @@ function money(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-function serviceLabel(serviceType: RateCalculatorQuoteCard["serviceType"]) {
-  switch (serviceType) {
+function serviceLabel(quote: RateCalculatorQuoteCard) {
+  if (quote.laneLabel) return quote.laneLabel;
+  switch (quote.serviceType) {
     case "surface":
       return "Surface shipping";
     case "air":
       return "Express / air";
     default: {
-      const _exhaustive: never = serviceType;
+      const _exhaustive: never = quote.serviceType;
       return _exhaustive;
     }
   }
@@ -153,15 +155,33 @@ function LocationSearchField({
     return () => window.clearTimeout(handle);
   }, [value.query]);
 
+  const digits = debounced.replace(/\D/g, "").slice(0, 6);
+  const isPinQuery = isIndianPincode(digits) && /^\d{6}$/.test(debounced.replace(/\s/g, ""));
+  const isPlaceQuery = /[a-zA-Z]/.test(debounced) && debounced.length >= 3;
+  const shouldSearch = isPinQuery || isPlaceQuery;
+
   const { data: hits = [], isFetching } = useQuery<GeoHit[]>({
     queryKey: ["/api/geocode/search", debounced],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/geocode/search?q=${encodeURIComponent(debounced)}`);
       return res.json();
     },
-    enabled: debounced.length >= 3,
+    enabled: shouldSearch,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    const hit = hits[0];
+    if (!isPinQuery || !hit?.pincode) return;
+    if (value.pincode === hit.pincode && value.city === (hit.city || value.city)) return;
+    onChange({
+      query: value.query,
+      pincode: hit.pincode,
+      city: hit.city || "",
+      state: hit.state || "",
+      country: "IN",
+    });
+  }, [hits, isPinQuery, onChange, value.city, value.pincode, value.query]);
 
   return (
     <div className="space-y-1.5">
@@ -174,26 +194,32 @@ function LocationSearchField({
           placeholder={placeholder}
           className="pl-9"
           autoComplete="off"
+          inputMode={/[a-zA-Z]/.test(value.query) ? "text" : "numeric"}
+          maxLength={/[a-zA-Z]/.test(value.query) ? undefined : 6}
           data-testid={`input-rate-${id}`}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             const query = event.target.value;
-            const digits = query.replace(/\D/g, "").slice(0, 6);
+            const nextDigits = query.replace(/\D/g, "").slice(0, 6);
             onChange({
-              ...value,
               query,
-              pincode: isIndianPincode(digits) ? digits : value.pincode && query.includes(value.pincode) ? value.pincode : "",
+              pincode: isIndianPincode(nextDigits) ? nextDigits : "",
+              city: isIndianPincode(nextDigits) && nextDigits === value.pincode ? value.city : "",
+              state: isIndianPincode(nextDigits) && nextDigits === value.pincode ? value.state : "",
+              country: "IN",
             });
             setOpen(true);
           }}
           onBlur={() => window.setTimeout(() => setOpen(false), 180)}
         />
-        {open && debounced.length >= 3 ? (
+        {open && shouldSearch ? (
           <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover shadow-md">
             {isFetching ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground">Looking up pincode…</p>
             ) : hits.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No matching city or pincode</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {isPinQuery ? `Pincode ${digits} accepted` : "No matching city or pincode"}
+              </p>
             ) : (
               hits.map((hit) => (
                 <button
@@ -203,7 +229,7 @@ function LocationSearchField({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => {
                     onChange({
-                      query: [hit.city, hit.state, hit.pincode].filter(Boolean).join(", ") || hit.displayName,
+                      query: hit.pincode || value.query,
                       pincode: hit.pincode,
                       city: hit.city,
                       state: hit.state,
@@ -223,7 +249,9 @@ function LocationSearchField({
         ) : null}
       </div>
       {value.pincode ? (
-        <p className="text-xs font-medium text-zinc-700">{placeLabel(value) || hint}</p>
+        <p className="text-xs font-medium text-zinc-700">
+          {placeLabel(value) || (isFetching ? "Looking up city…" : hint) || value.pincode}
+        </p>
       ) : hint ? (
         <p className="text-xs text-muted-foreground">{hint}</p>
       ) : null}
@@ -231,25 +259,217 @@ function LocationSearchField({
   );
 }
 
+function InternationalPostalField({
+  country,
+  value,
+  onChange,
+}: {
+  country: string;
+  value: PlaceValue;
+  onChange: (next: PlaceValue) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [debounced, setDebounced] = useState(value.query);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebounced(value.query.trim()), 280);
+    return () => window.clearTimeout(handle);
+  }, [value.query]);
+
+  const shouldSearch = debounced.length >= 3;
+  const isPostalQuery = /\d/.test(debounced);
+
+  const { data: hits = [], isFetching } = useQuery<GeoHit[]>({
+    queryKey: ["/api/geocode/search", country, debounced],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/geocode/search?q=${encodeURIComponent(debounced)}&country=${encodeURIComponent(country)}`,
+      );
+      return res.json();
+    },
+    enabled: shouldSearch && Boolean(country) && country !== "IN",
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    const hit = hits[0];
+    if (!isPostalQuery || !hit) return;
+    const samePlace =
+      value.pincode === (hit.pincode || value.pincode) &&
+      value.city === (hit.city || "") &&
+      value.state === (hit.state || "");
+    if (samePlace) return;
+    onChange({
+      query: value.query,
+      pincode: hit.pincode || value.query.trim(),
+      city: hit.city || "",
+      state: hit.state || "",
+      country,
+    });
+  }, [country, hits, isPostalQuery, onChange, value.city, value.pincode, value.query, value.state]);
+
+  const place = placeLabel(value);
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="dest-postal">Delivery postal / ZIP</Label>
+      <div className="relative">
+        <MapPin className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[#FF4907]" />
+        <Input
+          id="dest-postal"
+          value={value.query}
+          placeholder="City or postal / ZIP code"
+          className="pl-9"
+          autoComplete="off"
+          maxLength={16}
+          data-testid="input-rate-dest-postal"
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            const query = event.target.value;
+            onChange({
+              query,
+              pincode: query.trim(),
+              city: "",
+              state: "",
+              country,
+            });
+            setOpen(true);
+          }}
+          onBlur={() => window.setTimeout(() => setOpen(false), 180)}
+        />
+        {open && shouldSearch ? (
+          <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover shadow-md">
+            {isFetching ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">Looking up postal code…</p>
+            ) : hits.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                No matching city for this postal code
+              </p>
+            ) : (
+              hits.map((hit) => (
+                <button
+                  type="button"
+                  key={`${hit.pincode}-${hit.displayName}`}
+                  className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onChange({
+                      query: hit.pincode || value.query,
+                      pincode: hit.pincode || value.query.trim(),
+                      city: hit.city,
+                      state: hit.state,
+                      country,
+                    });
+                    setOpen(false);
+                  }}
+                >
+                  <span className="font-medium">{hit.city || hit.displayName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {[hit.state, hit.pincode, rateCalculatorCountryName(country)].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+      {place ? (
+        <p className="text-xs font-medium text-zinc-700">{place}</p>
+      ) : value.query && isFetching ? (
+        <p className="text-xs text-muted-foreground">Looking up city…</p>
+      ) : value.query && shouldSearch && !isFetching && hits.length === 0 ? (
+        <p className="text-xs text-destructive">Could not resolve this postal code</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          World First books to the country; city is filled from the postal code.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function bookingHref(input: {
+  quote: RateCalculatorQuoteCard;
+  pickup: PlaceValue;
+  delivery: PlaceValue;
+  destCountry: string;
+  lane: "domestic" | "international";
+  length: string;
+  width: string;
+  height: string;
+  volumetricKg: number;
+}) {
+  const params = new URLSearchParams({
+    courierPartnerId: input.quote.courierPartnerId,
+    partner: input.quote.courierPartnerId,
+    senderPincode: input.pickup.pincode,
+    senderCity: input.pickup.city,
+    senderState: input.pickup.state,
+    senderCountry: input.pickup.country || "India",
+    weight: String(input.quote.actualWeight),
+    serviceType: input.quote.serviceType,
+    shipmentType: input.lane,
+  });
+  if (input.pickup.query) params.set("pickupLocationName", input.pickup.query);
+  if (input.lane === "domestic") {
+    params.set("receiverPincode", input.delivery.pincode);
+    params.set("receiverCity", input.delivery.city);
+    params.set("receiverState", input.delivery.state);
+    params.set("receiverCountry", "India");
+  } else {
+    params.set("destinationCountry", rateCalculatorCountryName(input.destCountry));
+    params.set("receiverCountry", rateCalculatorCountryName(input.destCountry));
+    if (input.delivery.pincode) params.set("receiverPincode", input.delivery.pincode);
+    if (input.delivery.city) params.set("receiverCity", input.delivery.city);
+    if (input.delivery.state) params.set("receiverState", input.delivery.state);
+  }
+  if (input.length) params.set("length", input.length);
+  if (input.width) params.set("width", input.width);
+  if (input.height) params.set("height", input.height);
+  if (input.volumetricKg > 0) params.set("volumetricWeight", String(input.volumetricKg.toFixed(2)));
+  if (input.quote.partnerProduct) params.set("partnerProduct", input.quote.partnerProduct);
+  if (input.quote.partnerVendor) params.set("partnerVendor", input.quote.partnerVendor);
+  if (input.quote.partnerService) params.set("partnerService", input.quote.partnerService);
+  return `/bookings/new?${params.toString()}`;
+}
+
 export function CommandRateCalculator() {
+  const { isCommandWorkspace } = useStaffAccess();
   const [lane, setLane] = useState<"domestic" | "international">("domestic");
   const [pickup, setPickup] = useState<PlaceValue>(EMPTY_PLACE);
   const [delivery, setDelivery] = useState<PlaceValue>(EMPTY_PLACE);
   const [destCountry, setDestCountry] = useState("US");
-  const [weight, setWeight] = useState("500");
-  const [weightUnit, setWeightUnit] = useState<"gm" | "kg">("gm");
+  const [weight, setWeight] = useState("0.5");
+  const [weightUnit, setWeightUnit] = useState<"gm" | "kg">("kg");
+  const [volumetric, setVolumetric] = useState("");
   const [codAmount, setCodAmount] = useState("");
   const [length, setLength] = useState("");
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
   const [packageType, setPackageType] = useState<"package" | "document">("package");
   const [pickupStoreId, setPickupStoreId] = useState("office");
-  const [showDimensions, setShowDimensions] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(true);
 
   const { data: office } = useQuery<Office>({ queryKey: ["/api/office"] });
   const { data: storeData } = useQuery<{ stores: CommandStoreSummary[] }>({
     queryKey: ["/api/command/stores"],
+    enabled: isCommandWorkspace,
   });
+
+  useEffect(() => {
+    if (lane !== "international") return;
+    setDelivery((prev) => {
+      if (prev.country === destCountry) return prev;
+      return {
+        query: prev.query,
+        pincode: prev.pincode,
+        city: "",
+        state: "",
+        country: destCountry,
+      };
+    });
+  }, [destCountry, lane]);
 
   useEffect(() => {
     if (!office?.pincode || pickup.pincode) return;
@@ -293,7 +513,7 @@ export function CommandRateCalculator() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/command/rate-calculator", {
+      const res = await apiRequest("POST", "/api/booking/rate-calculator", {
         shipmentType: lane,
         packageType,
         senderPincode: pickup.pincode,
@@ -302,6 +522,7 @@ export function CommandRateCalculator() {
         destinationCountry: lane === "domestic" ? "IN" : destCountry,
         weight: Number(weight),
         weightUnit,
+        volumetricWeight: volumetric ? Number(volumetric) : undefined,
         length: length ? Number(length) : undefined,
         width: width ? Number(width) : undefined,
         height: height ? Number(height) : undefined,
@@ -325,6 +546,7 @@ export function CommandRateCalculator() {
     destCountry,
     weight,
     weightUnit,
+    volumetric,
     length,
     width,
     height,
@@ -334,10 +556,15 @@ export function CommandRateCalculator() {
 
   const result = mutation.data;
   const quotes = result?.quotes ?? [];
-  const volumetric =
+  const dimVolumetric =
     Number(length) > 0 && Number(width) > 0 && Number(height) > 0
       ? (Number(length) * Number(width) * Number(height)) / 5000
       : 0;
+  const enteredVolumetric = Number(volumetric) > 0 ? Number(volumetric) : 0;
+  const volumetricKg = Math.max(dimVolumetric, enteredVolumetric);
+  const actualKg =
+    Number(weight) > 0 ? (weightUnit === "gm" ? Number(weight) / 1000 : Number(weight)) : 0;
+  const chargeableKg = Math.max(actualKg, volumetricKg);
 
   const pickupHint = useMemo(() => {
     if (pickupStoreId === "office" && office?.name) return `${office.name} (autofilled from pickup)`;
@@ -349,17 +576,19 @@ export function CommandRateCalculator() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Rate calculator & serviceability</h1>
+          <h1 className="text-2xl font-bold">Rate estimator & serviceability</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Compare price and delivery days across domestic and international courier partners from a pickup pincode.
+            Enter From and To, actual and volumetric weight, then pick a connected courier to book the movement.
           </p>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5" asChild>
-          <Link href="/pricing">
-            <CircleHelp className="h-3.5 w-3.5" />
-            Tariff sheets
-          </Link>
-        </Button>
+        {isCommandWorkspace ? (
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link href="/pricing">
+              <CircleHelp className="h-3.5 w-3.5" />
+              Tariff sheets
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
@@ -370,7 +599,7 @@ export function CommandRateCalculator() {
               <CardDescription>Calculate shipping charges between any two locations</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {(storeData?.stores.length || 0) > 0 ? (
+              {isCommandWorkspace && (storeData?.stores.length || 0) > 0 ? (
                 <div className="space-y-1.5">
                   <Label>Pickup warehouse</Label>
                   <Select value={pickupStoreId} onValueChange={applyStorePickup}>
@@ -393,8 +622,8 @@ export function CommandRateCalculator() {
               <div className="grid gap-4 md:grid-cols-2">
                 <LocationSearchField
                   id="pickup"
-                  label="Pickup location"
-                  placeholder="Search city or pincode"
+                  label="From pincode"
+                  placeholder="Search city or 6-digit pincode"
                   value={pickup}
                   onChange={setPickup}
                   hint={pickupHint}
@@ -402,8 +631,8 @@ export function CommandRateCalculator() {
                 {lane === "domestic" ? (
                   <LocationSearchField
                     id="delivery"
-                    label="Delivery location"
-                    placeholder="Search city, or pincode"
+                    label="To pincode"
+                    placeholder="Search city or 6-digit pincode"
                     value={delivery}
                     onChange={setDelivery}
                   />
@@ -425,17 +654,10 @@ export function CommandRateCalculator() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Input
-                      value={delivery.query}
-                      placeholder="Optional city or postal code"
-                      onChange={(event) =>
-                        setDelivery({
-                          ...delivery,
-                          query: event.target.value,
-                          pincode: event.target.value.trim(),
-                          country: destCountry,
-                        })
-                      }
+                    <InternationalPostalField
+                      country={destCountry}
+                      value={delivery}
+                      onChange={setDelivery}
                     />
                   </div>
                 )}
@@ -450,7 +672,7 @@ export function CommandRateCalculator() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="rate-weight">Total shipment weight</Label>
+                  <Label htmlFor="rate-weight">Actual weight</Label>
                   <div className="flex gap-2">
                     <Input
                       id="rate-weight"
@@ -473,6 +695,19 @@ export function CommandRateCalculator() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="rate-volumetric">Volumetric weight (kg)</Label>
+                  <Input
+                    id="rate-volumetric"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={volumetric}
+                    onChange={(event) => setVolumetric(event.target.value)}
+                    placeholder="Or add L × W × H below"
+                    data-testid="input-rate-volumetric"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="rate-cod">COD amount in ₹ (optional)</Label>
                   <Input
                     id="rate-cod"
@@ -515,12 +750,17 @@ export function CommandRateCalculator() {
                   </div>
                   <PackageBox length={length} width={width} height={height} />
                   <p className="text-xs text-muted-foreground">
-                    Volumetric weight is L × W × H / 5000
-                    {volumetric > 0 ? ` · ${volumetric.toFixed(2)} kg` : ""}. Chargeable weight is the higher of actual
-                    and volumetric.
+                    Volumetric = L × W × H / 5000
+                    {dimVolumetric > 0 ? ` · ${dimVolumetric.toFixed(2)} kg` : ""}. Delhivery is quoted on the higher of
+                    actual, volumetric, and billed kg, including these dimensions.
                   </p>
                 </div>
               ) : null}
+
+              <p className="text-xs text-muted-foreground">
+                Actual {actualKg.toFixed(2)} kg · Volumetric {volumetricKg.toFixed(2)} kg · Chargeable{" "}
+                {chargeableKg.toFixed(2)} kg
+              </p>
 
               <Button
                 type="button"
@@ -546,8 +786,8 @@ export function CommandRateCalculator() {
                 <CardTitle className="text-base">Courier comparison</CardTitle>
                 <CardDescription>
                   {lane === "domestic"
-                    ? "Domestic partners from pickup to destination pincode"
-                    : `International partners from India to ${rateCalculatorCountryName(destCountry)}`}
+                    ? "Live Delhivery pincode and rate API · World First is international only"
+                    : `Live World First customer rate compare to ${rateCalculatorCountryName(destCountry)} · Delhivery is India only`}
                 </CardDescription>
               </div>
               {result ? (
@@ -556,7 +796,10 @@ export function CommandRateCalculator() {
             </div>
             <Tabs
               value={lane}
-              onValueChange={(value) => setLane(value as "domestic" | "international")}
+              onValueChange={(value) => {
+                setLane(value as "domestic" | "international");
+                setDelivery(EMPTY_PLACE);
+              }}
               className="pt-2"
             >
               <TabsList className="grid w-full grid-cols-2">
@@ -574,7 +817,7 @@ export function CommandRateCalculator() {
               <p className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">
                 {lane === "domestic"
                   ? "Enter pickup and destination pincodes plus weight to see partner rates and transit days."
-                  : "Enter a pickup pincode, destination country, and weight to compare international couriers."}
+                  : "Enter a pickup pincode, destination country, postal / ZIP code, and weight to compare international couriers."}
               </p>
             ) : mutation.isPending && !result ? (
               <div className="flex items-center gap-2 rounded-lg bg-white p-4 text-sm text-muted-foreground">
@@ -587,14 +830,24 @@ export function CommandRateCalculator() {
               </p>
             ) : quotes.length === 0 ? (
               <p className="rounded-lg border bg-white p-4 text-sm text-muted-foreground">
-                No partner rates for this lane. Add an active tariff or confirm the destination is serviceable.
+                No live Delhivery or World First result for this lane.
               </p>
             ) : (
               quotes.map((quote) => {
-                const bookHref = `/bookings/new?partner=${encodeURIComponent(quote.courierPartnerId)}&from=${encodeURIComponent(pickup.pincode)}&to=${encodeURIComponent(delivery.pincode || destCountry)}&weight=${encodeURIComponent(String(quote.actualWeight))}&service=${quote.serviceType}&type=${lane}`;
+                const bookHref = bookingHref({
+                  quote,
+                  pickup,
+                  delivery,
+                  destCountry,
+                  lane,
+                  length,
+                  width,
+                  height,
+                  volumetricKg,
+                });
                 return (
                   <div
-                    key={`${quote.courierPartnerId}-${quote.serviceType}`}
+                    key={quote.quoteKey || `${quote.courierPartnerId}-${quote.serviceType}`}
                     className={cn(
                       "rounded-xl border bg-white p-4 shadow-sm",
                       quote.popular && quote.serviceable && "ring-1 ring-[#FF4907]/40",
@@ -611,7 +864,7 @@ export function CommandRateCalculator() {
                         )}
                         <div>
                           <p className="text-sm font-semibold leading-tight">
-                            {serviceLabel(quote.serviceType)}
+                            {serviceLabel(quote)}
                           </p>
                           <p className="text-xs text-muted-foreground">{quote.partnerName}</p>
                         </div>
@@ -632,7 +885,13 @@ export function CommandRateCalculator() {
                       </div>
                       <div>
                         <p className="text-[11px] text-muted-foreground">Starts from</p>
-                        <p className="font-semibold">{quote.serviceable ? money(quote.sellPrice) : "N/A"}</p>
+                        <p className={cn("font-semibold", !quote.serviceable && "text-destructive")}>
+                          {quote.serviceable && quote.sellPrice > 0
+                            ? money(quote.sellPrice)
+                            : quote.serviceable
+                              ? "At booking"
+                              : "No Service"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-[11px] text-muted-foreground">Chargeable weight</p>
@@ -645,19 +904,19 @@ export function CommandRateCalculator() {
                     ) : null}
 
                     <div className="mt-3 flex items-center justify-between">
-                      <p className="text-[11px] text-muted-foreground">
-                        {quote.serviceable ? "Serviceable on this lane" : "Not serviceable"}
+                      <p className={cn("text-[11px]", quote.serviceable ? "text-muted-foreground" : "font-medium text-destructive")}>
+                        {quote.serviceable ? "Serviceable on this lane" : "No Service"}
                       </p>
                       {quote.serviceable ? (
                         <Link href={bookHref}>
                           <Button size="sm" className="h-8 gap-1 bg-zinc-900 text-white hover:bg-zinc-800">
-                            Create booking
+                            Book with {quote.partnerName}
                             <ArrowRight className="h-3.5 w-3.5" />
                           </Button>
                         </Link>
                       ) : (
-                        <Button size="sm" variant="outline" disabled className="h-8">
-                          Unavailable
+                        <Button size="sm" variant="outline" disabled className="h-8 text-destructive">
+                          No Service
                         </Button>
                       )}
                     </div>

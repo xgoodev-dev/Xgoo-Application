@@ -20,7 +20,7 @@ import { enabledPickupSlots, mergePickupSettings, type PickupSettings } from "@s
 import { XGOO_BRAND_FOUNDATION } from "@/components/marketing/brand-foundation";
 import { PickupLocationMap } from "@/components/customer/PickupLocationMap";
 import { businessApi } from "./business-api";
-import { ProPageHeader, ProTableFrame, proCellClass } from "./pro-table";
+import { ProField, ProPageHeader, ProSurface, ProTableFrame, proCellClass, proChipClass, proMobileInputClass } from "./pro-table";
 
 type BusinessProfile = {
   companyName: string;
@@ -329,17 +329,17 @@ export function SchedulePanel({
 
   const chip = (on: boolean) =>
     on
-      ? "rounded-none border border-[#FF4907] bg-[#FF4907] px-3 py-1.5 text-sm text-white"
-      : "rounded-none border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600";
+      ? `${proChipClass} border-[#FF4907] bg-[#FF4907] text-white`
+      : `${proChipClass} border-zinc-200 text-zinc-600`;
 
   return (
-    <div className="flex h-full min-h-0 flex-col py-4" data-testid="business-schedule">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto py-3 sm:py-4 md:overflow-hidden" data-testid="business-schedule">
       <ProPageHeader
         title="Schedule"
         description="Standing pickup or collect only when you have orders."
         actions={
           <Button
-            className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+            className="col-span-2 h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:col-span-1 sm:h-9 sm:rounded-none"
             disabled={save.isPending}
             onClick={() => save.mutate()}
             data-testid="button-save-schedule"
@@ -349,6 +349,121 @@ export function SchedulePanel({
           </Button>
         }
       />
+      <div className="space-y-3 pb-4 md:hidden">
+        <ProSurface className="space-y-3">
+          <ProField label="Store">
+            <input
+              className={proMobileInputClass}
+              value={form.storeName || ""}
+              onChange={(e) => setForm({ ...form, storeName: e.target.value })}
+            />
+          </ProField>
+          <ProField label="Business">
+            <input
+              className={proMobileInputClass}
+              value={form.companyName || ""}
+              onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+            />
+          </ProField>
+          <ProField label="GSTIN">
+            <input
+              className={proMobileInputClass}
+              value={form.gstNumber || ""}
+              maxLength={15}
+              onChange={(e) => setForm({ ...form, gstNumber: e.target.value.toUpperCase() })}
+            />
+          </ProField>
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Style</p>
+            <div className="flex flex-wrap gap-2">
+              {BUSINESS_PICKUP_STYLES.map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  onClick={() => setForm({ ...form, pickupStyle: style.id })}
+                  className={chip((form.pickupStyle || "standing") === style.id)}
+                >
+                  {style.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Slot</p>
+            <div className="flex flex-wrap gap-2">
+              {slots.map((slot) => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, pickupTimeSlot: slot.value })}
+                  className={chip(form.pickupTimeSlot === slot.value)}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Days</p>
+            <div className="flex flex-wrap gap-2">
+              {BUSINESS_WEEKDAY_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setForm({ ...form, weekdays: { ...weekdays, [key]: !weekdays[key] } })}
+                  className={chip(weekdays[key])}
+                >
+                  {BUSINESS_WEEKDAY_LABELS[key]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ProField label="Address">
+            <Textarea
+              className="min-h-20 rounded-xl"
+              value={form.pickupAddress || ""}
+              onChange={(e) => setForm({ ...form, pickupAddress: e.target.value })}
+              rows={3}
+            />
+          </ProField>
+          <div className="grid grid-cols-2 gap-2.5">
+            <ProField label="City">
+              <input className={proMobileInputClass} placeholder="City" value={form.pickupCity || ""} onChange={(e) => setForm({ ...form, pickupCity: e.target.value })} />
+            </ProField>
+            <ProField label="Pincode">
+              <input className={proMobileInputClass} placeholder="Pincode" value={form.pickupPincode || ""} onChange={(e) => setForm({ ...form, pickupPincode: e.target.value })} />
+            </ProField>
+          </div>
+          <ProField label="State">
+            <input className={proMobileInputClass} placeholder="State" value={form.pickupState || ""} onChange={(e) => setForm({ ...form, pickupState: e.target.value })} />
+          </ProField>
+          <ProField label="Phone">
+            <input
+              className={proMobileInputClass}
+              value={form.pickupPhone || ""}
+              onChange={(e) => setForm({ ...form, pickupPhone: e.target.value })}
+            />
+          </ProField>
+        </ProSurface>
+        <ProSurface>
+          <PickupLocationMap
+            initialLat={form.pickupLat ? Number(form.pickupLat) : undefined}
+            initialLng={form.pickupLng ? Number(form.pickupLng) : undefined}
+            onLocationSelect={(lat, lng, name) =>
+              setForm({
+                ...form,
+                pickupLat: String(lat),
+                pickupLng: String(lng),
+                pickupAddress: form.pickupAddress?.trim() ? form.pickupAddress : name,
+              })
+            }
+          />
+          {slotsQuery.data?.cutoffNote ? (
+            <p className="mt-2 text-xs text-zinc-500">{slotsQuery.data.cutoffNote}</p>
+          ) : null}
+        </ProSurface>
+      </div>
+      <div className="hidden min-h-0 flex-1 md:block">
       <ProTableFrame minWidth="720px">
         <tbody>
           <tr className="border-b border-zinc-100">
@@ -490,6 +605,7 @@ export function SchedulePanel({
           </tr>
         </tbody>
       </ProTableFrame>
+      </div>
     </div>
   );
 }

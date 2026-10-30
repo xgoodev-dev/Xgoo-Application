@@ -257,15 +257,15 @@ export default function ShipmentsPage() {
               <Inbox className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-zinc-900">Looking for website bookings?</p>
+              <p className="text-sm font-semibold text-zinc-900">Looking for customer orders?</p>
               <p className="text-xs text-zinc-600">
-                Customer portal requests appear under Enquiries first. Approve and convert them here to create a shipment.
+                Go, Pro, and In Store orders sit under Bookings until you book them with a courier. Then they appear here as shipments.
               </p>
             </div>
           </div>
           <Button asChild variant="outline" className="shrink-0 border-[#FF4907]/30" data-testid="button-go-booking-requests">
-            <Link href="/enquiries">
-              Open Enquiries
+            <Link href="/bookings">
+              Open Bookings
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>

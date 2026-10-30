@@ -13,6 +13,7 @@ import type { BookingWorkflowStep } from "@shared/world-first";
 import { issueAutofillToken } from "./autofill-token";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { getDelhiveryConfigFromEnv, cancelDelhiveryShipment } from "../integrations/delhivery";
+import { cancelWorldFirstAwb, getWorldFirstConfigFromEnv } from "../integrations/world-first";
 import { notifyAwbCreated, notifyShipmentStatusUpdated } from "../pickup-service";
 
 export class BookingEngineError extends Error {
@@ -71,7 +72,9 @@ export async function getBookingSnapshot(
   const events = job ? await storage.getBookingEvents(job.id) : [];
   const connector = partner ? getConnectorForPartner(partner) : null;
   const workflow =
-    partner && isWorldFirstPartner(partner.code, partner.name)
+    partner &&
+    isWorldFirstPartner(partner.code, partner.name) &&
+    resolveBookingMethod(partner) !== "api"
       ? worldFirstWorkflowStatus(
           events.map((event) => event.step),
           job?.status,
@@ -351,26 +354,41 @@ export async function cancelPartnerBooking(input: {
   }
 
   const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
-  if (!isDelhiveryPartner(partner.code, partner.name) || resolveBookingMethod(partner) !== "api") {
+  const method = resolveBookingMethod(partner);
+  const isDelhiveryApi = isDelhiveryPartner(partner.code, partner.name) && method === "api";
+  const isWorldFirstApi = isWorldFirstPartner(partner.code, partner.name) && method === "api";
+  if (!isDelhiveryApi && !isWorldFirstApi) {
     throw new BookingEngineError(
-      "Courier cancel from XGoo is only available for Delhivery API bookings.",
+      "Courier cancel from XGoo is only available for Delhivery and World First API bookings.",
       400,
       "unsupported",
     );
   }
   if (!waybill) {
-    throw new BookingEngineError("No Delhivery AWB to cancel. Book the shipment first.", 400, "no_awb");
-  }
-  const config = getDelhiveryConfigFromEnv();
-  if (!config) {
-    throw new BookingEngineError(
-      "Delhivery API is not configured. Add DELHIVERY_API_TOKEN, then restart the server.",
-      400,
-      "not_configured",
-    );
+    throw new BookingEngineError("No partner AWB to cancel. Book the shipment first.", 400, "no_awb");
   }
 
-  await cancelDelhiveryShipment(config, waybill);
+  if (isDelhiveryApi) {
+    const config = getDelhiveryConfigFromEnv();
+    if (!config) {
+      throw new BookingEngineError(
+        "Delhivery API is not configured. Add DELHIVERY_API_TOKEN, then restart the server.",
+        400,
+        "not_configured",
+      );
+    }
+    await cancelDelhiveryShipment(config, waybill);
+  } else {
+    const config = getWorldFirstConfigFromEnv();
+    if (!config) {
+      throw new BookingEngineError(
+        "World First API is not configured. Add WORLD_FIRST_API_USERNAME and WORLD_FIRST_API_PASSWORD, then restart the server.",
+        400,
+        "not_configured",
+      );
+    }
+    await cancelWorldFirstAwb(config, waybill);
+  }
 
   const cancelled = await storage.updateShipmentStatus(shipment.id, "cancelled");
   if (cancelled) {
@@ -393,11 +411,11 @@ export async function cancelPartnerBooking(input: {
       shipmentId: shipment.id,
       level: "info",
       step: "cancelled",
-      message: `Cancelled Delhivery AWB ${waybill}`,
+      message: `Cancelled ${partner.name} AWB ${waybill}`,
     });
   }
   await storage.updateShipmentPartnerSync(shipment.id, {
-    partnerSyncError: `Cancelled on Delhivery (${waybill})`,
+    partnerSyncError: `Cancelled on ${partner.name} (${waybill})`,
   });
   return getBookingSnapshot(input.officeId, shipment.id);
 }

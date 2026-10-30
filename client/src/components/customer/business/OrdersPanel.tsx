@@ -27,8 +27,10 @@ import { printProParcelSlip, type ProParcelSlipParty } from "./ProParcelSlip";
 import {
   ProChip,
   ProField,
+  ProPageHeader,
   ProSurface,
   ProToolbar,
+  proDialogContentClass,
   proMobileInputClass,
   proSearchClass,
   proSelectClass,
@@ -172,7 +174,7 @@ const cellClass =
   "h-9 w-full min-w-0 border-0 bg-transparent px-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400";
 
 const formInputClass =
-  "h-10 w-full rounded-none border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#FF4907]";
+  "h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-base text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#FF4907] sm:h-10 sm:rounded-none sm:text-sm";
 
 function channelLabel(channel: string) {
   return BUSINESS_ORDER_CHANNELS.find((item) => item.id === channel)?.label || channel;
@@ -246,6 +248,7 @@ export function OrdersPanel({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [formPickerOpen, setFormPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
   const [channelFilter, setChannelFilter] = useState<BusinessOrderChannelId | "all">("all");
@@ -481,68 +484,69 @@ export function OrdersPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col py-4" data-testid="business-orders">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">Orders</h2>
-          <p className="text-sm text-zinc-500">
-            Share a link so customers send their address, or create an order here if they prefer to
-            tell you the details. Write the XGoo ID on the package so Hub and Command can identify it.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:rounded-none"
-            onClick={() => {
-              setFormDraft(EMPTY_DRAFT);
-              setFormPickerOpen(false);
-              setFormOpen(true);
-            }}
-            data-testid="button-create-order"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Order
-          </Button>
-          {customerOrderLink ? (
-            <>
-              <Button
-                variant="outline"
-                className="rounded-xl sm:rounded-none"
-                onClick={() => void shareCustomerLink("whatsapp")}
-                data-testid="button-share-order-link-whatsapp"
-              >
-                <Link2 className="mr-2 h-4 w-4" />
-                Share WhatsApp link
-              </Button>
-              <Button
-                variant="outline"
-                className="rounded-xl sm:rounded-none"
-                onClick={() => void shareCustomerLink("instagram")}
-                data-testid="button-copy-order-link"
-              >
-                Copy link
-              </Button>
-            </>
-          ) : null}
-          <Button
-            variant="outline"
-            className="rounded-xl sm:rounded-none"
-            disabled={pickupTargets.length === 0 || queueAll.isPending}
-            onClick={() => queueAll.mutate(pickupTargets.map((order) => order.id))}
-            data-testid="button-add-selected-pickup"
-          >
-            {selectedOpen.length > 0
-              ? `Add selected to pickup (${selectedOpen.length})`
-              : `Add open to pickup (${openOrders.length})`}
-          </Button>
-          <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenPickup}>
-            Open pickup
-          </Button>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col py-3 sm:py-4" data-testid="business-orders">
+      <ProPageHeader
+        title="Orders"
+        description="Share a link so customers send their address, or create an order here if they prefer to tell you the details. Write the XGoo ID on the package so Hub and Command can identify it."
+        actions={
+          <>
+            <Button
+              className="col-span-2 h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:col-span-1 sm:h-9 sm:rounded-none"
+              onClick={() => {
+                setFormDraft(EMPTY_DRAFT);
+                setFormPickerOpen(false);
+                setFormOpen(true);
+              }}
+              data-testid="button-create-order"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Order
+            </Button>
+            {customerOrderLink ? (
+              <>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-xl sm:h-9 sm:rounded-none"
+                  onClick={() => void shareCustomerLink("whatsapp")}
+                  data-testid="button-share-order-link-whatsapp"
+                >
+                  <Link2 className="mr-2 h-4 w-4" />
+                  WhatsApp
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-xl sm:h-9 sm:rounded-none"
+                  onClick={() => void shareCustomerLink("instagram")}
+                  data-testid="button-copy-order-link"
+                >
+                  Copy link
+                </Button>
+              </>
+            ) : null}
+            <Button
+              variant="outline"
+              className="h-11 rounded-xl sm:h-9 sm:rounded-none"
+              disabled={pickupTargets.length === 0 || queueAll.isPending}
+              onClick={() => queueAll.mutate(pickupTargets.map((order) => order.id))}
+              data-testid="button-add-selected-pickup"
+            >
+              {selectedOpen.length > 0
+                ? `Pickup (${selectedOpen.length})`
+                : `Add to pickup (${openOrders.length})`}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 rounded-xl sm:h-9 sm:rounded-none"
+              onClick={onOpenPickup}
+            >
+              Open pickup
+            </Button>
+          </>
+        }
+      />
 
       <ProToolbar>
-        <div className="relative min-w-[12rem] flex-1">
+        <div className="relative col-span-2 min-w-0 md:min-w-[12rem] md:flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
             className={`${proSearchClass} pl-8`}
@@ -611,9 +615,19 @@ export function OrdersPanel({
         </select>
       </ProToolbar>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 md:hidden">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 md:hidden">
         <ProSurface className="space-y-3 bg-[#FFF7F3]">
-          <p className="text-sm font-semibold text-zinc-900">Quick add</p>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => setQuickAddOpen((open) => !open)}
+            aria-expanded={quickAddOpen}
+          >
+            <p className="text-sm font-semibold text-zinc-900">Quick add</p>
+            <span className="text-xs font-semibold text-[#FF4907]">{quickAddOpen ? "Hide" : "Type here"}</span>
+          </button>
+          {quickAddOpen ? (
+          <>
           <div className="grid grid-cols-2 gap-2.5">
             <ProField label="Via">
               <select
@@ -759,6 +773,8 @@ export function OrdersPanel({
               </Button>
             ) : null}
           </div>
+          </>
+          ) : null}
         </ProSurface>
         {visibleOrders.map((order) => (
           <ProSurface key={order.id} className="space-y-2" data-testid={`store-order-mobile-${order.id}`}>
@@ -767,7 +783,7 @@ export function OrdersPanel({
                 <label className="flex items-center gap-2 text-xs font-medium text-zinc-500">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-[#FF4907]"
+                    className="h-5 w-5 accent-[#FF4907]"
                     checked={selectedIds.includes(order.id)}
                     onChange={(event) => toggleSelected(order.id, event.target.checked)}
                     aria-label={`Select ${order.receiverName}`}
@@ -1286,11 +1302,11 @@ export function OrdersPanel({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-none sm:max-w-2xl">
+        <DialogContent className={proDialogContentClass}>
           <DialogHeader>
             <DialogTitle>Create order</DialogTitle>
             <DialogDescription>
-              Enter the customer and parcel details. You can also type a new row in the table and click Add.
+              Enter the customer and parcel details. On a larger screen you can also type a new row and click Add.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -1465,11 +1481,11 @@ export function OrdersPanel({
                 onChange={(e) => setFormDraft({ ...formDraft, pieces: e.target.value })}
               />
             </ProField>
-            <DialogFooter className="sm:col-span-2">
+            <DialogFooter className="gap-2 sm:col-span-2">
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-none"
+                className="h-11 rounded-xl sm:h-9 sm:rounded-none"
                 onClick={() => {
                   setFormOpen(false);
                   setFormDraft(EMPTY_DRAFT);
@@ -1480,7 +1496,7 @@ export function OrdersPanel({
               </Button>
               <Button
                 type="submit"
-                className="rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+                className="h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:h-9 sm:rounded-none"
                 disabled={createOrder.isPending}
                 data-testid="button-submit-create-order"
               >

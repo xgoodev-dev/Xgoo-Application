@@ -60,6 +60,34 @@ export function normalizePincode(pincode: string): string {
   return (pincode || "").replace(/\D/g, "").slice(0, 6);
 }
 
+const ISO_COUNTRY_ALIASES: Record<string, string> = {
+  INDIA: "IN",
+  USA: "US",
+  "UNITED STATES": "US",
+  "UNITED STATES OF AMERICA": "US",
+  UK: "GB",
+  "UNITED KINGDOM": "GB",
+  "GREAT BRITAIN": "GB",
+  UAE: "AE",
+  "UNITED ARAB EMIRATES": "AE",
+  "SAUDI ARABIA": "SA",
+  "HONG KONG": "HK",
+  "NEW ZEALAND": "NZ",
+};
+
+export function isoCountryCode(value: string | null | undefined): string {
+  const raw = (value || "").trim().toUpperCase();
+  if (!raw) return "";
+  if (raw === "UK") return "GB";
+  if (/^[A-Z]{2}$/.test(raw)) return raw;
+  return ISO_COUNTRY_ALIASES[raw] || "";
+}
+
+function looksLikePostalCode(value: string): boolean {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length >= 3 && compact.length <= 12 && /\d/.test(compact);
+}
+
 // Simple in-memory LRU cache with TTL (1 hour default) to prevent redundant Google API calls
 interface CacheEntry<T> {
   value: T;
@@ -151,12 +179,260 @@ function parseGoogleGeocodeItem(item: GoogleGeocodeItem): GeocodeResult {
 // Public Geocoding & Address Search API
 // ---------------------------------------------------------------------------
 
+export async function lookupIndianPincode(pincode: string): Promise<GeocodeResult | null> {
+  const pin = normalizePincode(pincode);
+  if (pin.length !== 6) return null;
+
+  const cacheKey = `pinlookup:${pin}`;
+  const cached = getCached<GeocodeResult>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const { checkDelhiveryPincode, getDelhiveryConfigFromEnv } = await import("./integrations/delhivery");
+    const config = getDelhiveryConfigFromEnv();
+    if (config) {
+      const info = await checkDelhiveryPincode(config, pin);
+      if (info.city || info.district) {
+        const city = info.city || info.district || "";
+        const result: GeocodeResult = {
+          lat: 0,
+          lng: 0,
+          displayName: [city, info.state, pin].filter(Boolean).join(", "),
+          address: [info.hub, city].filter(Boolean).join(", "),
+          city,
+          state: info.state || "",
+          pincode: pin,
+          country: "India",
+        };
+        setCached(cacheKey, result);
+        return result;
+      }
+    }
+  } catch (err) {
+    console.warn("Delhivery pincode lookup failed:", err);
+  }
+
+  const apiKey = getGoogleMapsApiKey();
+  if (apiKey) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?components=postal_code:${pin}|country:IN&key=${apiKey}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          status: string;
+          results?: GoogleGeocodeItem[];
+        };
+        if (data.status === "OK" && data.results?.length) {
+          const mapped = parseGoogleGeocodeItem(data.results[0]);
+          if (!mapped.pincode) mapped.pincode = pin;
+          setCached(cacheKey, mapped);
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn("Google pincode lookup failed:", err);
+    }
+  }
+
+  try {
+    const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+    const data = (await res.json()) as Array<{
+      Status?: string;
+      PostOffice?: Array<{
+        Name?: string;
+        District?: string;
+        Block?: string;
+        State?: string;
+        Pincode?: string;
+      }>;
+    }>;
+    const offices = data?.[0]?.Status === "Success" ? data[0].PostOffice || [] : [];
+    const office = offices[0];
+    if (office) {
+      const city = office.Name || office.Block || office.District || "";
+      const result: GeocodeResult = {
+        lat: 0,
+        lng: 0,
+        displayName: [office.Name, office.District, office.State, pin].filter(Boolean).join(", "),
+        address: office.Name || "",
+        city,
+        state: office.State || "",
+        pincode: pin,
+        country: "India",
+      };
+      setCached(cacheKey, result);
+      return result;
+    }
+  } catch (err) {
+    console.warn("India Post pincode lookup failed:", err);
+  }
+
+  return null;
+}
+
+function googlePostalCode(item: GoogleGeocodeItem): string {
+  return item.address_components?.find((component) => component.types.includes("postal_code"))?.long_name?.trim() || "";
+}
+
+function withInternationalPostal(mapped: GeocodeResult, item: GoogleGeocodeItem, fallbackPostal: string, country: string): GeocodeResult {
+  const postal = googlePostalCode(item) || fallbackPostal;
+  return {
+    ...mapped,
+    pincode: postal,
+    country: isoCountryCode(mapped.country) || country,
+    displayName:
+      [mapped.city, mapped.state, postal].filter(Boolean).join(", ") || mapped.displayName,
+  };
+}
+
+async function lookupPostalViaGoogle(country: string, postal: string): Promise<GeocodeResult | null> {
+  const apiKey = getGoogleMapsApiKey();
+  if (!apiKey) return null;
+  const queries = [
+    `https://maps.googleapis.com/maps/api/geocode/json?components=${encodeURIComponent(
+      `postal_code:${postal}|country:${country}`,
+    )}&key=${apiKey}`,
+    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+      `${postal}, ${country}`,
+    )}&components=country:${country}&key=${apiKey}`,
+  ];
+  for (const url of queries) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { status: string; results?: GoogleGeocodeItem[] };
+      if (data.status !== "OK" || !data.results?.length) continue;
+      return withInternationalPostal(parseGoogleGeocodeItem(data.results[0]), data.results[0], postal, country);
+    } catch (err) {
+      console.warn("Google international postal lookup failed:", err);
+    }
+  }
+  return null;
+}
+
+async function lookupPostalViaZippopotam(country: string, postal: string): Promise<GeocodeResult | null> {
+  const compact = postal.replace(/\s+/g, "");
+  const candidates = country === "GB"
+    ? [compact, compact.slice(0, -3), compact.split(/[\s]/)[0]].filter((value, index, all) => value && all.indexOf(value) === index)
+    : [compact];
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(`https://api.zippopotam.us/${country.toLowerCase()}/${encodeURIComponent(candidate)}`, {
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        "post code"?: string;
+        country?: string;
+        places?: Array<{
+          "place name"?: string;
+          state?: string;
+          "state abbreviation"?: string;
+          latitude?: string;
+          longitude?: string;
+        }>;
+      };
+      const place = data.places?.[0];
+      if (!place?.["place name"]) continue;
+      const city = place["place name"];
+      const state = place.state || place["state abbreviation"] || "";
+      const pin = data["post code"] || postal;
+      return {
+        lat: Number.parseFloat(place.latitude || "") || 0,
+        lng: Number.parseFloat(place.longitude || "") || 0,
+        displayName: [city, state, pin].filter(Boolean).join(", "),
+        address: [city, state].filter(Boolean).join(", "),
+        city,
+        state,
+        pincode: pin,
+        country,
+      };
+    } catch (err) {
+      console.warn("Zippopotam postal lookup failed:", err);
+    }
+  }
+  return null;
+}
+
+export async function lookupInternationalPostal(
+  country: string | null | undefined,
+  postal: string | null | undefined,
+): Promise<GeocodeResult | null> {
+  const cc = isoCountryCode(country);
+  const pin = (postal || "").trim().replace(/\s+/g, " ");
+  if (!cc || cc === "IN" || !looksLikePostalCode(pin)) return null;
+
+  const cacheKey = `intlpin:${cc}:${pin.toUpperCase()}`;
+  const cached = getCached<GeocodeResult>(cacheKey);
+  if (cached) return cached;
+
+  const result =
+    (await lookupPostalViaZippopotam(cc, pin)) ||
+    (await lookupPostalViaGoogle(cc, pin));
+  if (result) {
+    setCached(cacheKey, result);
+    return result;
+  }
+  return null;
+}
+
+export async function searchInternationalAddresses(
+  country: string | null | undefined,
+  query: string,
+  limit = 5,
+): Promise<GeocodeResult[]> {
+  const cc = isoCountryCode(country);
+  const q = query.trim();
+  if (!cc || cc === "IN" || q.length < 2) return [];
+
+  if (looksLikePostalCode(q)) {
+    const one = await lookupInternationalPostal(cc, q);
+    return one ? [one] : [];
+  }
+
+  const cacheKey = `intlsearch:${cc}:${q.toLowerCase()}:${limit}`;
+  const cached = getCached<GeocodeResult[]>(cacheKey);
+  if (cached) return cached;
+
+  const apiKey = getGoogleMapsApiKey();
+  if (apiKey) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+        q,
+      )}&components=country:${cc}&key=${apiKey}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      if (res.ok) {
+        const data = (await res.json()) as { status: string; results?: GoogleGeocodeItem[] };
+        if (data.status === "OK" && data.results?.length) {
+          const mapped = data.results.slice(0, limit).map((item) =>
+            withInternationalPostal(parseGoogleGeocodeItem(item), item, googlePostalCode(item), cc),
+          );
+          setCached(cacheKey, mapped);
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn("Google international address search failed:", err);
+    }
+  }
+
+  return [];
+}
+
 export async function searchIndianAddresses(
   query: string,
   limit = 5,
 ): Promise<GeocodeResult[]> {
   const q = query.trim();
   if (q.length < 2) return [];
+
+  const pin = normalizePincode(q);
+  if (pin.length === 6 && /^\d{6}$/.test(q.replace(/\s/g, ""))) {
+    const one = await lookupIndianPincode(pin);
+    return one ? [one] : [];
+  }
 
   const cacheKey = `search:${q.toLowerCase()}:${limit}`;
   const cached = getCached<GeocodeResult[]>(cacheKey);

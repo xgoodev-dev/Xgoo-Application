@@ -157,7 +157,7 @@ function activityFromBooking(booking: ProBookingRow): ActivityRow {
     storeName: booking.storeName || "XGoo Pro store",
     xgooOrderId: booking.xgooOrderId || null,
     reference: booking.requestNumber,
-    href: booking.convertedShipmentId ? `/shipments/${booking.convertedShipmentId}` : "/enquiries",
+    href: booking.convertedShipmentId ? `/shipments/${booking.convertedShipmentId}` : "/bookings",
     receiverName: booking.receiverName,
     receiverCity: booking.receiverCity || null,
     statusLabel: bookingStatusLabel[booking.status] || booking.status,

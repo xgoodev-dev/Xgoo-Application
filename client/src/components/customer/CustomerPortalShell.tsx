@@ -330,6 +330,13 @@ function SidebarBody({
   );
 }
 
+const PRO_MORE_ITEMS: NavItem[] = [
+  { id: "customers", label: "Customers", icon: Users },
+  { id: "bills", label: "Bills", icon: Receipt },
+  { id: "schedule", label: "Schedule", icon: Clock },
+  { id: "account", label: "Profile", icon: User },
+];
+
 export function CustomerPortalShell({
   activeTab,
   onTabChange,
@@ -352,12 +359,15 @@ export function CustomerPortalShell({
   children,
 }: CustomerPortalShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const storeLabel = businessName?.trim();
+  const showProTabbar = Boolean(isBusiness && !coverageLocked);
 
   return (
     <div
       className={cn(
-        "flex w-full bg-[#F4F4F5] [color-scheme:light]",
+        "flex w-full bg-[#F4F4F5] [color-scheme:light] [--pro-tabbar:0px]",
+        showProTabbar && "[--pro-tabbar:calc(4.25rem+env(safe-area-inset-bottom))] md:[--pro-tabbar:0px]",
         allowPageScroll ? "min-h-dvh overflow-visible" : "h-full max-h-full min-h-0 overflow-hidden",
       )}
       data-testid="customer-portal-shell"
@@ -425,12 +435,12 @@ export function CustomerPortalShell({
           allowPageScroll ? "min-h-dvh overflow-visible" : "min-h-0 overflow-hidden",
         )}
       >
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-200/80 bg-white px-3 sm:gap-3 sm:px-4">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-200/80 bg-white px-3 sm:h-12 sm:gap-3 sm:px-4">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 text-zinc-700 md:hidden"
+            className="h-10 w-10 shrink-0 text-zinc-700 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
             data-testid="button-open-sidebar"
@@ -477,61 +487,97 @@ export function CustomerPortalShell({
         <main
           className={cn(
             allowPageScroll ? "flex-1 overflow-visible" : "min-h-0 flex-1 overflow-hidden",
-            isBusiness && !coverageLocked && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0",
+            showProTabbar && "pb-[var(--pro-tabbar)] md:pb-0",
           )}
         >
           {children}
         </main>
 
-        {isBusiness && !coverageLocked ? (
-          <nav
-            className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur md:hidden"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-            data-testid="pro-mobile-tabbar"
-          >
-            <div className="grid h-[4.25rem] grid-cols-5">
-              {(
-                [
-                  { id: "home", label: "Home", icon: LayoutDashboard },
-                  { id: "orders", label: "Orders", icon: ClipboardList },
-                  { id: "pickup", label: "Pickup", icon: Package },
-                  { id: "bookings", label: "Shipments", icon: Truck },
-                ] as const
-              ).map((item) => {
-                const Icon = item.icon;
-                const active = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onTabChange(item.id)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
-                      active ? "text-[#FF4907]" : "text-zinc-500",
-                    )}
-                    data-testid={`tabbar-${item.id}`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {item.label}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => setMobileOpen(true)}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
-                  ["customers", "bills", "schedule", "account"].includes(activeTab)
-                    ? "text-[#FF4907]"
-                    : "text-zinc-500",
-                )}
-                data-testid="tabbar-more"
+        {showProTabbar ? (
+          <>
+            <nav
+              className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur md:hidden"
+              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+              data-testid="pro-mobile-tabbar"
+            >
+              <div className="grid h-[4.25rem] grid-cols-5">
+                {(
+                  [
+                    { id: "home", label: "Home", icon: LayoutDashboard },
+                    { id: "orders", label: "Orders", icon: ClipboardList },
+                    { id: "pickup", label: "Pickup", icon: Package },
+                    { id: "bookings", label: "Shipments", icon: Truck },
+                  ] as const
+                ).map((item) => {
+                  const Icon = item.icon;
+                  const active = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onTabChange(item.id)}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold touch-manipulation",
+                        active ? "text-[#FF4907]" : "text-zinc-500",
+                      )}
+                      data-testid={`tabbar-${item.id}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(true)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold touch-manipulation",
+                    ["customers", "bills", "schedule", "account"].includes(activeTab)
+                      ? "text-[#FF4907]"
+                      : "text-zinc-500",
+                  )}
+                  data-testid="tabbar-more"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                  More
+                </button>
+              </div>
+            </nav>
+            <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+              <SheetContent
+                side="bottom"
+                className="rounded-t-2xl border-zinc-200 pb-[max(1rem,env(safe-area-inset-bottom))] md:hidden"
               >
-                <MoreHorizontal className="h-5 w-5" />
-                More
-              </button>
-            </div>
-          </nav>
+                <SheetTitle className="text-base">More</SheetTitle>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {PRO_MORE_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const active = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          onTabChange(item.id);
+                          setMoreOpen(false);
+                        }}
+                        className={cn(
+                          "flex min-h-[4.5rem] flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-sm font-semibold touch-manipulation",
+                          active
+                            ? "border-[#FF4907] bg-[#FFF7F3] text-[#FF4907]"
+                            : "border-zinc-200 bg-white text-zinc-800",
+                        )}
+                        data-testid={`more-${item.id}`}
+                      >
+                        <Icon className="h-5 w-5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </>
         ) : null}
       </div>
     </div>

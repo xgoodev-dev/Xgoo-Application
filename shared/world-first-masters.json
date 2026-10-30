@@ -1,0 +1,7686 @@
+{
+  "fetchedAt": "2026-10-29T20:31:51.446Z",
+  "origin": [
+    {
+      "name": "AHMEDABAD",
+      "code": "AMD"
+    },
+    {
+      "name": "BENGALURU",
+      "code": "BLR"
+    },
+    {
+      "name": "CHENNAI",
+      "code": "C57"
+    },
+    {
+      "name": "COIMBATORE",
+      "code": "CJB"
+    },
+    {
+      "name": "Delhi",
+      "code": "DEL"
+    },
+    {
+      "name": "HYDERABAD",
+      "code": "HYD"
+    },
+    {
+      "name": "Hyderabad1",
+      "code": "HD1"
+    },
+    {
+      "name": "Hyderabad2",
+      "code": "HD2"
+    },
+    {
+      "name": "Kadapa",
+      "code": "KDP"
+    },
+    {
+      "name": "KUALA LUMPUR",
+      "code": "KLP"
+    },
+    {
+      "name": "MUMBAI",
+      "code": "BOM"
+    },
+    {
+      "name": "Nalgonda",
+      "code": "NLG"
+    },
+    {
+      "name": "SINGAPORE",
+      "code": "SG"
+    },
+    {
+      "name": "SURAT",
+      "code": "SRT"
+    },
+    {
+      "name": "TIRUPUR",
+      "code": "TRP"
+    },
+    {
+      "name": "Vijayawada",
+      "code": "VIJ"
+    },
+    {
+      "name": "Visakhapatnam",
+      "code": "VZG"
+    },
+    {
+      "name": "Warangal",
+      "code": "WGL"
+    }
+  ],
+  "destination": [
+    {
+      "name": "A S PETA",
+      "code": "A01"
+    },
+    {
+      "name": "Aalo",
+      "code": "A02"
+    },
+    {
+      "name": "ABHANPUR",
+      "code": "A03"
+    },
+    {
+      "name": "ABHAYAPURI",
+      "code": "A04"
+    },
+    {
+      "name": "ABOHAR",
+      "code": "A05"
+    },
+    {
+      "name": "Achampet",
+      "code": "A06"
+    },
+    {
+      "name": "Achampet-AP",
+      "code": "A08"
+    },
+    {
+      "name": "ACHAMPETA",
+      "code": "A07"
+    },
+    {
+      "name": "ACHANTA",
+      "code": "A09"
+    },
+    {
+      "name": "ACHROL",
+      "code": "A10"
+    },
+    {
+      "name": "ADAMPUR",
+      "code": "ADM"
+    },
+    {
+      "name": "ADASPUR",
+      "code": "A11"
+    },
+    {
+      "name": "ADDANKI",
+      "code": "A12"
+    },
+    {
+      "name": "ADDATEEGALA",
+      "code": "A13"
+    },
+    {
+      "name": "ADDUROAD",
+      "code": "A14"
+    },
+    {
+      "name": "Adilabad",
+      "code": "A15"
+    },
+    {
+      "name": "Adimali",
+      "code": "A16"
+    },
+    {
+      "name": "Adirampattinam",
+      "code": "A17"
+    },
+    {
+      "name": "ADONI",
+      "code": "A18"
+    },
+    {
+      "name": "Adoor",
+      "code": "A19"
+    },
+    {
+      "name": "Afghanistan",
+      "code": "AF"
+    },
+    {
+      "name": "Agar",
+      "code": "A20"
+    },
+    {
+      "name": "AGARMALWA",
+      "code": "A21"
+    },
+    {
+      "name": "AGARTALA",
+      "code": "AAG"
+    },
+    {
+      "name": "AGRA",
+      "code": "AGR"
+    },
+    {
+      "name": "AHMEDABAD",
+      "code": "AMD"
+    },
+    {
+      "name": "AHMEDNAGAR",
+      "code": "AHM"
+    },
+    {
+      "name": "AIZAWL",
+      "code": "A24"
+    },
+    {
+      "name": "AIZWAL",
+      "code": "AIZ"
+    },
+    {
+      "name": "AJANALE",
+      "code": "A25"
+    },
+    {
+      "name": "AJEETGARH",
+      "code": "A26"
+    },
+    {
+      "name": "AJMER",
+      "code": "AJR"
+    },
+    {
+      "name": "AJNALA",
+      "code": "A27"
+    },
+    {
+      "name": "AKBARPUR",
+      "code": "A28"
+    },
+    {
+      "name": "AKBARPUR KANPUR DEHAT",
+      "code": "A29"
+    },
+    {
+      "name": "Akbarpur-UP",
+      "code": "A30"
+    },
+    {
+      "name": "Akhadabalapur",
+      "code": "A31"
+    },
+    {
+      "name": "Akhnoor",
+      "code": "A32"
+    },
+    {
+      "name": "AKIVIDU",
+      "code": "A33"
+    },
+    {
+      "name": "AKKALKOT",
+      "code": "A34"
+    },
+    {
+      "name": "Aklera",
+      "code": "A35"
+    },
+    {
+      "name": "AKLUJ",
+      "code": "A36"
+    },
+    {
+      "name": "AKOLA",
+      "code": "AKO"
+    },
+    {
+      "name": "Akole",
+      "code": "A37"
+    },
+    {
+      "name": "AKOLE MH",
+      "code": "A38"
+    },
+    {
+      "name": "AKOT",
+      "code": "A39"
+    },
+    {
+      "name": "Alair",
+      "code": "A40"
+    },
+    {
+      "name": "ALAMPUR",
+      "code": "A41"
+    },
+    {
+      "name": "Aland",
+      "code": "A42"
+    },
+    {
+      "name": "Aland Islands",
+      "code": "AX"
+    },
+    {
+      "name": "Alappuzha",
+      "code": "A43"
+    },
+    {
+      "name": "ALATHUR",
+      "code": "A44"
+    },
+    {
+      "name": "Albania",
+      "code": "AL"
+    },
+    {
+      "name": "ALEPHATA",
+      "code": "A45"
+    },
+    {
+      "name": "Algeria",
+      "code": "DZ"
+    },
+    {
+      "name": "Alibag",
+      "code": "A46"
+    },
+    {
+      "name": "Alibaug",
+      "code": "A47"
+    },
+    {
+      "name": "Aliganj",
+      "code": "A48"
+    },
+    {
+      "name": "ALIGARH",
+      "code": "ALI"
+    },
+    {
+      "name": "ALIPURDOAR",
+      "code": "APD"
+    },
+    {
+      "name": "ALIPURDUAR",
+      "code": "A49"
+    },
+    {
+      "name": "ALIRAJPUR",
+      "code": "A50"
+    },
+    {
+      "name": "ALLAGADDA",
+      "code": "A51"
+    },
+    {
+      "name": "ALLAHABAD",
+      "code": "ALL"
+    },
+    {
+      "name": "ALLAPALI",
+      "code": "A52"
+    },
+    {
+      "name": "ALLAPEY",
+      "code": "A53"
+    },
+    {
+      "name": "ALLEPPEY",
+      "code": "APY"
+    },
+    {
+      "name": "Almora",
+      "code": "A54"
+    },
+    {
+      "name": "ALOT",
+      "code": "A55"
+    },
+    {
+      "name": "Alote",
+      "code": "A56"
+    },
+    {
+      "name": "Alur",
+      "code": "A57"
+    },
+    {
+      "name": "ALUVA",
+      "code": "ANG"
+    },
+    {
+      "name": "ALWAR",
+      "code": "LWA"
+    },
+    {
+      "name": "Ama Dubi",
+      "code": "A58"
+    },
+    {
+      "name": "AMALAPURAM",
+      "code": "A59"
+    },
+    {
+      "name": "AMALNER",
+      "code": "A60"
+    },
+    {
+      "name": "Amangal",
+      "code": "A61"
+    },
+    {
+      "name": "AMANGAON",
+      "code": "A62"
+    },
+    {
+      "name": "AMARAVATHI",
+      "code": "A63"
+    },
+    {
+      "name": "AMARAVATHIPUTHUR",
+      "code": "A64"
+    },
+    {
+      "name": "AMARCHINTHA",
+      "code": "A65"
+    },
+    {
+      "name": "AMARPATAN",
+      "code": "A66"
+    },
+    {
+      "name": "AMARPUR",
+      "code": "A67"
+    },
+    {
+      "name": "AMARPUR BH",
+      "code": "A68"
+    },
+    {
+      "name": "Amarwara",
+      "code": "A69"
+    },
+    {
+      "name": "AMB",
+      "code": "A70"
+    },
+    {
+      "name": "Amba",
+      "code": "A71"
+    },
+    {
+      "name": "AMBAD",
+      "code": "A72"
+    },
+    {
+      "name": "AMBAGAN",
+      "code": "A73"
+    },
+    {
+      "name": "AMBAGARH CHOWKI",
+      "code": "A74"
+    },
+    {
+      "name": "Ambah",
+      "code": "A75"
+    },
+    {
+      "name": "AMBAJI",
+      "code": "A76"
+    },
+    {
+      "name": "AMBALA",
+      "code": "ABA"
+    },
+    {
+      "name": "AMBARNATH",
+      "code": "A77"
+    },
+    {
+      "name": "AMBASA",
+      "code": "A78"
+    },
+    {
+      "name": "Ambasamudram",
+      "code": "A79"
+    },
+    {
+      "name": "Ambegaon",
+      "code": "A80"
+    },
+    {
+      "name": "AMBEJOGAI",
+      "code": "A81"
+    },
+    {
+      "name": "AMBIKAPUR",
+      "code": "A82"
+    },
+    {
+      "name": "Ambuj Nagar",
+      "code": "A83"
+    },
+    {
+      "name": "AMRELI",
+      "code": "XAM"
+    },
+    {
+      "name": "BAAH",
+      "code": "B01"
+    },
+    {
+      "name": "Babasagar",
+      "code": "B02"
+    },
+    {
+      "name": "Babatpur",
+      "code": "B03"
+    },
+    {
+      "name": "Baberu",
+      "code": "B04"
+    },
+    {
+      "name": "Babrala",
+      "code": "B05"
+    },
+    {
+      "name": "Bacchawaran",
+      "code": "B06"
+    },
+    {
+      "name": "BACHANNAPET",
+      "code": "B07"
+    },
+    {
+      "name": "BACHELI",
+      "code": "B08"
+    },
+    {
+      "name": "Badami",
+      "code": "B09"
+    },
+    {
+      "name": "BADARPUR",
+      "code": "B10"
+    },
+    {
+      "name": "BADAYUN",
+      "code": "B11"
+    },
+    {
+      "name": "Baddi",
+      "code": "B12"
+    },
+    {
+      "name": "BADHARA",
+      "code": "B13"
+    },
+    {
+      "name": "BADI SADRI",
+      "code": "B14"
+    },
+    {
+      "name": "BADLAPUR",
+      "code": "B15"
+    },
+    {
+      "name": "Badnagar",
+      "code": "B16"
+    },
+    {
+      "name": "BADNAWAR",
+      "code": "B17"
+    },
+    {
+      "name": "BADNERA",
+      "code": "B18"
+    },
+    {
+      "name": "BADNOR",
+      "code": "B19"
+    },
+    {
+      "name": "BADRAWAS",
+      "code": "B20"
+    },
+    {
+      "name": "Badvel",
+      "code": "B21"
+    },
+    {
+      "name": "Bagalkot",
+      "code": "B22"
+    },
+    {
+      "name": "BAGALUR",
+      "code": "B23"
+    },
+    {
+      "name": "BAGAR",
+      "code": "B24"
+    },
+    {
+      "name": "bagbahra",
+      "code": "B25"
+    },
+    {
+      "name": "BAGEPALLI",
+      "code": "B26"
+    },
+    {
+      "name": "Bageshwar",
+      "code": "B27"
+    },
+    {
+      "name": "BAGHA PURANA",
+      "code": "B28"
+    },
+    {
+      "name": "BAGHPAT",
+      "code": "B29"
+    },
+    {
+      "name": "Bagnan",
+      "code": "B30"
+    },
+    {
+      "name": "Bagodar",
+      "code": "B31"
+    },
+    {
+      "name": "BAGRU",
+      "code": "B32"
+    },
+    {
+      "name": "Bahadurgarh",
+      "code": "B33"
+    },
+    {
+      "name": "Bahal",
+      "code": "B34"
+    },
+    {
+      "name": "BAHALDA",
+      "code": "B35"
+    },
+    {
+      "name": "Bahamas",
+      "code": "BS"
+    },
+    {
+      "name": "BAHANAGA",
+      "code": "B36"
+    },
+    {
+      "name": "Baharampur",
+      "code": "B37"
+    },
+    {
+      "name": "BAHERI",
+      "code": "B38"
+    },
+    {
+      "name": "BAHRAICH",
+      "code": "BRH"
+    },
+    {
+      "name": "Bahrain",
+      "code": "BH"
+    },
+    {
+      "name": "BAHTPAR RANI",
+      "code": "B39"
+    },
+    {
+      "name": "BAIHATA",
+      "code": "B40"
+    },
+    {
+      "name": "Baijnath",
+      "code": "B41"
+    },
+    {
+      "name": "Baijnath-UK",
+      "code": "B42"
+    },
+    {
+      "name": "BAIKUNTHPUR",
+      "code": "B43"
+    },
+    {
+      "name": "BAILHONGAL",
+      "code": "B44"
+    },
+    {
+      "name": "BAILOOR",
+      "code": "B45"
+    },
+    {
+      "name": "BAIRGANIA",
+      "code": "B46"
+    },
+    {
+      "name": "BAIRIA",
+      "code": "B47"
+    },
+    {
+      "name": "Baisinga",
+      "code": "B48"
+    },
+    {
+      "name": "BAITA BAZAR",
+      "code": "B49"
+    },
+    {
+      "name": "Bajag",
+      "code": "B50"
+    },
+    {
+      "name": "Bajkul",
+      "code": "B51"
+    },
+    {
+      "name": "Bajore",
+      "code": "B52"
+    },
+    {
+      "name": "BAJPE",
+      "code": "B53"
+    },
+    {
+      "name": "Bakewar",
+      "code": "B54"
+    },
+    {
+      "name": "BAKHRI",
+      "code": "B55"
+    },
+    {
+      "name": "BAKSHIRHAT WB",
+      "code": "B56"
+    },
+    {
+      "name": "BALACHAUR",
+      "code": "B57"
+    },
+    {
+      "name": "BALAGHAT",
+      "code": "B58"
+    },
+    {
+      "name": "BALANAGAR TG",
+      "code": "B59"
+    },
+    {
+      "name": "BALANGIR",
+      "code": "B60"
+    },
+    {
+      "name": "BALAPUR",
+      "code": "B61"
+    },
+    {
+      "name": "BALARAMPUR",
+      "code": "B62"
+    },
+    {
+      "name": "Balarampur-WB",
+      "code": "B63"
+    },
+    {
+      "name": "Balaran",
+      "code": "B64"
+    },
+    {
+      "name": "BALASINOR",
+      "code": "B65"
+    },
+    {
+      "name": "BALASORE",
+      "code": "B66"
+    },
+    {
+      "name": "BALEHONNUR",
+      "code": "B67"
+    },
+    {
+      "name": "BALESAR",
+      "code": "B68"
+    },
+    {
+      "name": "BALIAPAL",
+      "code": "B69"
+    },
+    {
+      "name": "BALIAPUR",
+      "code": "B70"
+    },
+    {
+      "name": "BALIJIPETA",
+      "code": "B71"
+    },
+    {
+      "name": "Balimela",
+      "code": "B72"
+    },
+    {
+      "name": "BALINGA",
+      "code": "B73"
+    },
+    {
+      "name": "BALIPARA",
+      "code": "B74"
+    },
+    {
+      "name": "BALLABGARH",
+      "code": "B75"
+    },
+    {
+      "name": "BALLIA",
+      "code": "B76"
+    },
+    {
+      "name": "Balliguda",
+      "code": "B77"
+    },
+    {
+      "name": "Bally",
+      "code": "B78"
+    },
+    {
+      "name": "BALOD",
+      "code": "B79"
+    },
+    {
+      "name": "BALODABAZAR",
+      "code": "B80"
+    },
+    {
+      "name": "BALOTRA",
+      "code": "B81"
+    },
+    {
+      "name": "BALRAMPUR",
+      "code": "B82"
+    },
+    {
+      "name": "BALRAMPUR CH",
+      "code": "B83"
+    },
+    {
+      "name": "BALUGAON",
+      "code": "B84"
+    },
+    {
+      "name": "Balumath",
+      "code": "B85"
+    },
+    {
+      "name": "Balurghat",
+      "code": "B86"
+    },
+    {
+      "name": "BAMBAVADE",
+      "code": "B87"
+    },
+    {
+      "name": "Bamra",
+      "code": "B88"
+    },
+    {
+      "name": "BANAGANAPALLE",
+      "code": "B89"
+    },
+    {
+      "name": "Banaganapalli",
+      "code": "B90"
+    },
+    {
+      "name": "BANARHAT",
+      "code": "B91"
+    },
+    {
+      "name": "BANAVARA",
+      "code": "B92"
+    },
+    {
+      "name": "BANDA",
+      "code": "B93"
+    },
+    {
+      "name": "BANDA MH",
+      "code": "B94"
+    },
+    {
+      "name": "Banda-MP",
+      "code": "B95"
+    },
+    {
+      "name": "BANDERDEWA",
+      "code": "B96"
+    },
+    {
+      "name": "Bandikui",
+      "code": "B97"
+    },
+    {
+      "name": "BONAIRE",
+      "code": "XB"
+    },
+    {
+      "name": "British Indian Ocean Territory",
+      "code": "IO"
+    },
+    {
+      "name": "British Virgin Islands",
+      "code": "VG"
+    },
+    {
+      "name": "C K PALLI",
+      "code": "C01"
+    },
+    {
+      "name": "CALCUTTA",
+      "code": "CCU"
+    },
+    {
+      "name": "CALICUT",
+      "code": "CLT"
+    },
+    {
+      "name": "Cambodia",
+      "code": "KH"
+    },
+    {
+      "name": "Cameroon",
+      "code": "CM"
+    },
+    {
+      "name": "Canada",
+      "code": "CA"
+    },
+    {
+      "name": "Canary Islands",
+      "code": "IC"
+    },
+    {
+      "name": "CANNANORE",
+      "code": "CAA"
+    },
+    {
+      "name": "Canning",
+      "code": "C02"
+    },
+    {
+      "name": "Cape Verde",
+      "code": "CV"
+    },
+    {
+      "name": "Cayman Islands",
+      "code": "KY"
+    },
+    {
+      "name": "Central African Republic",
+      "code": "CF"
+    },
+    {
+      "name": "CHABRA",
+      "code": "C03"
+    },
+    {
+      "name": "CHACHAL",
+      "code": "C04"
+    },
+    {
+      "name": "Chachyot",
+      "code": "C05"
+    },
+    {
+      "name": "Chad",
+      "code": "TD"
+    },
+    {
+      "name": "CHADOORA",
+      "code": "C06"
+    },
+    {
+      "name": "CHAIBASA",
+      "code": "CAB"
+    },
+    {
+      "name": "Chainpur",
+      "code": "C07"
+    },
+    {
+      "name": "CHAKAN",
+      "code": "C08"
+    },
+    {
+      "name": "CHAKIA",
+      "code": "C09"
+    },
+    {
+      "name": "ChakiaUP",
+      "code": "C10"
+    },
+    {
+      "name": "CHAKIYA",
+      "code": "C11"
+    },
+    {
+      "name": "CHAKRADHARPUR",
+      "code": "C12"
+    },
+    {
+      "name": "CHAKSHU",
+      "code": "C13"
+    },
+    {
+      "name": "Chaksu",
+      "code": "C14"
+    },
+    {
+      "name": "Chakur",
+      "code": "C15"
+    },
+    {
+      "name": "Chalakudy",
+      "code": "C16"
+    },
+    {
+      "name": "CHALISGAON",
+      "code": "C17"
+    },
+    {
+      "name": "Challakere",
+      "code": "C18"
+    },
+    {
+      "name": "CHALLAPALLI",
+      "code": "C19"
+    },
+    {
+      "name": "CHAMARAJANAGAR",
+      "code": "C20"
+    },
+    {
+      "name": "CHAMBA",
+      "code": "C21"
+    },
+    {
+      "name": "Chamoli",
+      "code": "C22"
+    },
+    {
+      "name": "CHAMORSHI",
+      "code": "C23"
+    },
+    {
+      "name": "CHAMPA",
+      "code": "CHM"
+    },
+    {
+      "name": "Champua",
+      "code": "C24"
+    },
+    {
+      "name": "Chand",
+      "code": "C25"
+    },
+    {
+      "name": "CHANDANESWAR",
+      "code": "C26"
+    },
+    {
+      "name": "chandankiyari",
+      "code": "C27"
+    },
+    {
+      "name": "CHANDANNAGAR",
+      "code": "C28"
+    },
+    {
+      "name": "CHANDAULI",
+      "code": "C29"
+    },
+    {
+      "name": "CHANDAUSI",
+      "code": "C30"
+    },
+    {
+      "name": "CHANDBALI",
+      "code": "C31"
+    },
+    {
+      "name": "Chanderi",
+      "code": "C32"
+    },
+    {
+      "name": "Chandi",
+      "code": "C33"
+    },
+    {
+      "name": "Chandi-BH",
+      "code": "C34"
+    },
+    {
+      "name": "CHANDIGARH",
+      "code": "CAR"
+    },
+    {
+      "name": "Chandikhol",
+      "code": "C35"
+    },
+    {
+      "name": "CHANDIKHOLE",
+      "code": "C36"
+    },
+    {
+      "name": "Chandipur",
+      "code": "C37"
+    },
+    {
+      "name": "Chandla",
+      "code": "C38"
+    },
+    {
+      "name": "Chandpur",
+      "code": "C39"
+    },
+    {
+      "name": "CHANDPUR ORISSA",
+      "code": "C40"
+    },
+    {
+      "name": "CHANDRAKONA",
+      "code": "C41"
+    },
+    {
+      "name": "Chandrakona Road",
+      "code": "C42"
+    },
+    {
+      "name": "CHANDRAPUR",
+      "code": "CHD"
+    },
+    {
+      "name": "Chandur",
+      "code": "CF5"
+    },
+    {
+      "name": "CHANDUR RAILWAY",
+      "code": "CF6"
+    },
+    {
+      "name": "CHANDURBAZAR",
+      "code": "CF7"
+    },
+    {
+      "name": "CHANDURTHI",
+      "code": "CF8"
+    },
+    {
+      "name": "CHANDWA JH",
+      "code": "CF9"
+    },
+    {
+      "name": "CHANDWAD",
+      "code": "CG1"
+    },
+    {
+      "name": "Changanacherry",
+      "code": "CG2"
+    },
+    {
+      "name": "Changlang",
+      "code": "CG3"
+    },
+    {
+      "name": "CHANGTONGYA",
+      "code": "CG4"
+    },
+    {
+      "name": "CHANNAGIRI",
+      "code": "CG5"
+    },
+    {
+      "name": "Channapatna",
+      "code": "CG6"
+    },
+    {
+      "name": "Channarayapatna",
+      "code": "CG7"
+    },
+    {
+      "name": "CHANNEL ISLAND",
+      "code": "CIS"
+    },
+    {
+      "name": "CHAPADA",
+      "code": "CG8"
+    },
+    {
+      "name": "CHAPADU",
+      "code": "CG9"
+    },
+    {
+      "name": "CHAPAR",
+      "code": "CH1"
+    },
+    {
+      "name": "Charama",
+      "code": "CH2"
+    },
+    {
+      "name": "CHARGE COLLECT",
+      "code": "CHG"
+    },
+    {
+      "name": "Charkhi Dadri",
+      "code": "CH3"
+    },
+    {
+      "name": "CHARUMOOD",
+      "code": "C43"
+    },
+    {
+      "name": "CHATAPARRU",
+      "code": "C44"
+    },
+    {
+      "name": "CHATARPUR",
+      "code": "C45"
+    },
+    {
+      "name": "CHATHANNUR",
+      "code": "C46"
+    },
+    {
+      "name": "CHATRA",
+      "code": "C47"
+    },
+    {
+      "name": "Chaumahla",
+      "code": "C48"
+    },
+    {
+      "name": "CHAYGAON",
+      "code": "C49"
+    },
+    {
+      "name": "CHEBROLU",
+      "code": "C50"
+    },
+    {
+      "name": "CHEEPURUPALLI",
+      "code": "C51"
+    },
+    {
+      "name": "Chegunta",
+      "code": "C52"
+    },
+    {
+      "name": "CHENANI",
+      "code": "C53"
+    },
+    {
+      "name": "CHENBAGARAMANPUTHUR",
+      "code": "C54"
+    },
+    {
+      "name": "CHENGALPET",
+      "code": "C55"
+    },
+    {
+      "name": "CHENGANNUR",
+      "code": "C56"
+    },
+    {
+      "name": "CHENNAI",
+      "code": "C57"
+    },
+    {
+      "name": "CHENNUR",
+      "code": "C58"
+    },
+    {
+      "name": "Cherial",
+      "code": "C59"
+    },
+    {
+      "name": "CHERIYAL",
+      "code": "C60"
+    },
+    {
+      "name": "Cherkady",
+      "code": "C61"
+    },
+    {
+      "name": "CHERLA",
+      "code": "C62"
+    },
+    {
+      "name": "CHERPU",
+      "code": "C63"
+    },
+    {
+      "name": "Cherpulassery",
+      "code": "C64"
+    },
+    {
+      "name": "CHERTHALA",
+      "code": "C65"
+    },
+    {
+      "name": "CHERUKUPALLI",
+      "code": "C66"
+    },
+    {
+      "name": "Comoros",
+      "code": "KM"
+    },
+    {
+      "name": "Croatia",
+      "code": "HR"
+    },
+    {
+      "name": "DABASPET",
+      "code": "D01"
+    },
+    {
+      "name": "DABHADI MALEGAON",
+      "code": "D02"
+    },
+    {
+      "name": "DABHARA",
+      "code": "D03"
+    },
+    {
+      "name": "Dabhoi",
+      "code": "D04"
+    },
+    {
+      "name": "DABRA",
+      "code": "D05"
+    },
+    {
+      "name": "DADRA",
+      "code": "DAD"
+    },
+    {
+      "name": "Dadri",
+      "code": "D06"
+    },
+    {
+      "name": "DAHANU",
+      "code": "D07"
+    },
+    {
+      "name": "Dahej",
+      "code": "D08"
+    },
+    {
+      "name": "DAHIHANDA",
+      "code": "D09"
+    },
+    {
+      "name": "DAHINA",
+      "code": "D10"
+    },
+    {
+      "name": "DAHIWADI",
+      "code": "D11"
+    },
+    {
+      "name": "Dahod",
+      "code": "D12"
+    },
+    {
+      "name": "DAIJUN",
+      "code": "DAI"
+    },
+    {
+      "name": "DALHOUSIE",
+      "code": "D13"
+    },
+    {
+      "name": "DALKHOLA",
+      "code": "D14"
+    },
+    {
+      "name": "Dalsingh Sarai",
+      "code": "D15"
+    },
+    {
+      "name": "DALSINGHSARAI",
+      "code": "D16"
+    },
+    {
+      "name": "DALTONGANJ",
+      "code": "D17"
+    },
+    {
+      "name": "DAMAN",
+      "code": "DMM"
+    },
+    {
+      "name": "DAMOH",
+      "code": "D18"
+    },
+    {
+      "name": "DANDELI",
+      "code": "D19"
+    },
+    {
+      "name": "DANDEPALLY",
+      "code": "D20"
+    },
+    {
+      "name": "Dandisahi",
+      "code": "D21"
+    },
+    {
+      "name": "Dankuni",
+      "code": "D22"
+    },
+    {
+      "name": "DANTAN",
+      "code": "D23"
+    },
+    {
+      "name": "DANTARAMGARH",
+      "code": "D24"
+    },
+    {
+      "name": "Danthalapally",
+      "code": "D25"
+    },
+    {
+      "name": "Dapoli",
+      "code": "D26"
+    },
+    {
+      "name": "DARBHANGA",
+      "code": "DRB"
+    },
+    {
+      "name": "DARGAH",
+      "code": "D27"
+    },
+    {
+      "name": "Dariyabad",
+      "code": "D28"
+    },
+    {
+      "name": "DARIYAWAD",
+      "code": "D29"
+    },
+    {
+      "name": "DARJEELING",
+      "code": "DJO"
+    },
+    {
+      "name": "Darlaghat",
+      "code": "D30"
+    },
+    {
+      "name": "DAROH",
+      "code": "D31"
+    },
+    {
+      "name": "DARSI",
+      "code": "D32"
+    },
+    {
+      "name": "DARWAH",
+      "code": "D33"
+    },
+    {
+      "name": "DARYAPUR",
+      "code": "D34"
+    },
+    {
+      "name": "DASPALLA",
+      "code": "D35"
+    },
+    {
+      "name": "Dasuya",
+      "code": "D36"
+    },
+    {
+      "name": "Dataganj",
+      "code": "D37"
+    },
+    {
+      "name": "DATIYA",
+      "code": "D38"
+    },
+    {
+      "name": "DAUDNAGAR",
+      "code": "D39"
+    },
+    {
+      "name": "DAUJI BISAWAR",
+      "code": "D40"
+    },
+    {
+      "name": "DAULATABAD",
+      "code": "D41"
+    },
+    {
+      "name": "DAUND",
+      "code": "D42"
+    },
+    {
+      "name": "Daurala",
+      "code": "D43"
+    },
+    {
+      "name": "Dausa",
+      "code": "D44"
+    },
+    {
+      "name": "DAVANGARE",
+      "code": "DAV"
+    },
+    {
+      "name": "DAVANGERE",
+      "code": "D45"
+    },
+    {
+      "name": "DAYAPAR",
+      "code": "D46"
+    },
+    {
+      "name": "DEBAI",
+      "code": "D47"
+    },
+    {
+      "name": "DEBRA",
+      "code": "D48"
+    },
+    {
+      "name": "Dediapada",
+      "code": "D49"
+    },
+    {
+      "name": "DEEG",
+      "code": "D50"
+    },
+    {
+      "name": "Deenwa",
+      "code": "D51"
+    },
+    {
+      "name": "Deesa",
+      "code": "D52"
+    },
+    {
+      "name": "DEGANA",
+      "code": "D53"
+    },
+    {
+      "name": "DEGLOOR",
+      "code": "D54"
+    },
+    {
+      "name": "DEHGAM",
+      "code": "D55"
+    },
+    {
+      "name": "DEHLON",
+      "code": "D56"
+    },
+    {
+      "name": "DEHRA",
+      "code": "D57"
+    },
+    {
+      "name": "DEHRADUN",
+      "code": "DRD"
+    },
+    {
+      "name": "DEKACHANG",
+      "code": "D58"
+    },
+    {
+      "name": "DELHI",
+      "code": "DEL"
+    },
+    {
+      "name": "Delhi NCR",
+      "code": "D59"
+    },
+    {
+      "name": "DENDULURU",
+      "code": "D60"
+    },
+    {
+      "name": "Denkanikottai",
+      "code": "D61"
+    },
+    {
+      "name": "Denmark",
+      "code": "DK"
+    },
+    {
+      "name": "Deo",
+      "code": "D62"
+    },
+    {
+      "name": "Deoband",
+      "code": "D63"
+    },
+    {
+      "name": "Deogarh",
+      "code": "D64"
+    },
+    {
+      "name": "DeogarhRJ",
+      "code": "D65"
+    },
+    {
+      "name": "DEOGHAR",
+      "code": "D66"
+    },
+    {
+      "name": "DEOLALI CAMP",
+      "code": "D67"
+    },
+    {
+      "name": "DEOLI RAJ",
+      "code": "D68"
+    },
+    {
+      "name": "Deoli-RJ",
+      "code": "D69"
+    },
+    {
+      "name": "Deomali",
+      "code": "D70"
+    },
+    {
+      "name": "DEONI",
+      "code": "D71"
+    },
+    {
+      "name": "DEORI",
+      "code": "D72"
+    },
+    {
+      "name": "DEORIA",
+      "code": "D73"
+    },
+    {
+      "name": "Deosar",
+      "code": "D74"
+    },
+    {
+      "name": "Deotalab",
+      "code": "D75"
+    },
+    {
+      "name": "DEPALPUR",
+      "code": "D76"
+    },
+    {
+      "name": "DERA BABA NANAK",
+      "code": "D77"
+    },
+    {
+      "name": "DERA BASSI",
+      "code": "D78"
+    },
+    {
+      "name": "Dergaon",
+      "code": "D79"
+    },
+    {
+      "name": "DESAIGAON",
+      "code": "D80"
+    },
+    {
+      "name": "DESNOK",
+      "code": "D81"
+    },
+    {
+      "name": "DESURI",
+      "code": "D82"
+    },
+    {
+      "name": "DEULGAON MAHI",
+      "code": "D83"
+    },
+    {
+      "name": "DEULGAON RAJA",
+      "code": "D84"
+    },
+    {
+      "name": "DEVANAHALLI",
+      "code": "D85"
+    },
+    {
+      "name": "DEVARAPALLI",
+      "code": "D86"
+    },
+    {
+      "name": "DEVBHOG",
+      "code": "D87"
+    },
+    {
+      "name": "Devgad",
+      "code": "D88"
+    },
+    {
+      "name": "DEWAS",
+      "code": "DEW"
+    },
+    {
+      "name": "Dhaka",
+      "code": "D89"
+    },
+    {
+      "name": "Ecuador",
+      "code": "EC"
+    },
+    {
+      "name": "EDAKUNNAM",
+      "code": "E01"
+    },
+    {
+      "name": "EDAMUTTAM",
+      "code": "E02"
+    },
+    {
+      "name": "Edappadi",
+      "code": "E03"
+    },
+    {
+      "name": "EDAPPAL",
+      "code": "E04"
+    },
+    {
+      "name": "EDATHALA",
+      "code": "E05"
+    },
+    {
+      "name": "EDAVA",
+      "code": "E06"
+    },
+    {
+      "name": "EDE FRANCH",
+      "code": "EFR"
+    },
+    {
+      "name": "Edinburgh",
+      "code": "ED"
+    },
+    {
+      "name": "EGRA",
+      "code": "E07"
+    },
+    {
+      "name": "Egypt",
+      "code": "EG"
+    },
+    {
+      "name": "EKMA",
+      "code": "E08"
+    },
+    {
+      "name": "El Salvador",
+      "code": "SV"
+    },
+    {
+      "name": "ELATHUR",
+      "code": "E09"
+    },
+    {
+      "name": "Eluru",
+      "code": "E10"
+    },
+    {
+      "name": "ENKOOR",
+      "code": "E11"
+    },
+    {
+      "name": "Equatorial Guinea",
+      "code": "GQ"
+    },
+    {
+      "name": "Eral",
+      "code": "E12"
+    },
+    {
+      "name": "ERANDOL",
+      "code": "E13"
+    },
+    {
+      "name": "ERANIEL",
+      "code": "E14"
+    },
+    {
+      "name": "ERATTUPETTA",
+      "code": "E15"
+    },
+    {
+      "name": "Eritrea",
+      "code": "ER"
+    },
+    {
+      "name": "ERNAKAULM",
+      "code": "E16"
+    },
+    {
+      "name": "ERODE",
+      "code": "EDE"
+    },
+    {
+      "name": "Estonia",
+      "code": "EE"
+    },
+    {
+      "name": "ETAH",
+      "code": "E17"
+    },
+    {
+      "name": "ETAWAH",
+      "code": "E18"
+    },
+    {
+      "name": "Ethiopia",
+      "code": "ET"
+    },
+    {
+      "name": "ETMADPUR",
+      "code": "E19"
+    },
+    {
+      "name": "Faizabad",
+      "code": "F01"
+    },
+    {
+      "name": "FAKULI",
+      "code": "F02"
+    },
+    {
+      "name": "FALAKATA",
+      "code": "F03"
+    },
+    {
+      "name": "Falkland Islands (Malvinas)",
+      "code": "FK"
+    },
+    {
+      "name": "Falna",
+      "code": "F04"
+    },
+    {
+      "name": "FARDAPUR",
+      "code": "F05"
+    },
+    {
+      "name": "FARIDABAD",
+      "code": "FAR"
+    },
+    {
+      "name": "Faridkot",
+      "code": "F06"
+    },
+    {
+      "name": "Faridpur",
+      "code": "F07"
+    },
+    {
+      "name": "Faroe Islands",
+      "code": "FO"
+    },
+    {
+      "name": "FARRUKHABAD",
+      "code": "FOO"
+    },
+    {
+      "name": "Fatehabad",
+      "code": "F08"
+    },
+    {
+      "name": "Fatehabad-UP",
+      "code": "F09"
+    },
+    {
+      "name": "Fatehgarh Churiyan",
+      "code": "F10"
+    },
+    {
+      "name": "Fatehnagar",
+      "code": "F11"
+    },
+    {
+      "name": "FATEHPUR",
+      "code": "F12"
+    },
+    {
+      "name": "Fatehpur-UP",
+      "code": "F13"
+    },
+    {
+      "name": "FATEPUR",
+      "code": "FHP"
+    },
+    {
+      "name": "FATTEPUR MH",
+      "code": "F14"
+    },
+    {
+      "name": "Fatuha",
+      "code": "F15"
+    },
+    {
+      "name": "Fazilka",
+      "code": "F16"
+    },
+    {
+      "name": "Ferozepur",
+      "code": "F17"
+    },
+    {
+      "name": "Fiji",
+      "code": "FJ"
+    },
+    {
+      "name": "Finland",
+      "code": "FI"
+    },
+    {
+      "name": "FIROZABAD",
+      "code": "FZB"
+    },
+    {
+      "name": "FIROZAPUR JIRKA",
+      "code": "F18"
+    },
+    {
+      "name": "Firozpur",
+      "code": "F19"
+    },
+    {
+      "name": "FORBESGANJ",
+      "code": "F20"
+    },
+    {
+      "name": "France",
+      "code": "FR"
+    },
+    {
+      "name": "French Guiana",
+      "code": "GF"
+    },
+    {
+      "name": "French Polynesia",
+      "code": "PF"
+    },
+    {
+      "name": "French Southern Territories",
+      "code": "TF"
+    },
+    {
+      "name": "FRIDKOT",
+      "code": "FRD"
+    },
+    {
+      "name": "FULBARI HAT",
+      "code": "F21"
+    },
+    {
+      "name": "FULBARI WB",
+      "code": "F22"
+    },
+    {
+      "name": "FULERTAL",
+      "code": "F23"
+    },
+    {
+      "name": "FULESWAR",
+      "code": "F24"
+    },
+    {
+      "name": "G. Udayagiri",
+      "code": "G01"
+    },
+    {
+      "name": "Gabon",
+      "code": "GA"
+    },
+    {
+      "name": "GADAG",
+      "code": "G02"
+    },
+    {
+      "name": "GADARWARA",
+      "code": "G03"
+    },
+    {
+      "name": "GADCHANDUR",
+      "code": "G04"
+    },
+    {
+      "name": "GADCHIROLI",
+      "code": "G05"
+    },
+    {
+      "name": "Gadhingalaj",
+      "code": "G06"
+    },
+    {
+      "name": "Gadhinglaj",
+      "code": "G07"
+    },
+    {
+      "name": "GADWAL",
+      "code": "G08"
+    },
+    {
+      "name": "GAGAL",
+      "code": "G09"
+    },
+    {
+      "name": "Gahmar",
+      "code": "G10"
+    },
+    {
+      "name": "GAIRATGANJ",
+      "code": "G11"
+    },
+    {
+      "name": "GAJAPATHINAGARAM",
+      "code": "G12"
+    },
+    {
+      "name": "GAJAPATI",
+      "code": "G13"
+    },
+    {
+      "name": "Gajendragad",
+      "code": "G14"
+    },
+    {
+      "name": "GAJROLA",
+      "code": "G15"
+    },
+    {
+      "name": "GAJULA NARSAPUR",
+      "code": "G16"
+    },
+    {
+      "name": "GAJUWAKA",
+      "code": "G17"
+    },
+    {
+      "name": "Gajwel",
+      "code": "G18"
+    },
+    {
+      "name": "GALIVEEDU",
+      "code": "G19"
+    },
+    {
+      "name": "GALORE",
+      "code": "G20"
+    },
+    {
+      "name": "Gambia",
+      "code": "GM"
+    },
+    {
+      "name": "GAMPALAGUDEM",
+      "code": "G21"
+    },
+    {
+      "name": "Ganapavaram",
+      "code": "G22"
+    },
+    {
+      "name": "Gandasi",
+      "code": "G23"
+    },
+    {
+      "name": "GANDHIDHAM",
+      "code": "GDD"
+    },
+    {
+      "name": "GANDHINAGAR",
+      "code": "GAN"
+    },
+    {
+      "name": "Ganga Nagar",
+      "code": "G24"
+    },
+    {
+      "name": "GANGADHARA",
+      "code": "G25"
+    },
+    {
+      "name": "Gangajalghati",
+      "code": "G26"
+    },
+    {
+      "name": "GANGAKHED",
+      "code": "G27"
+    },
+    {
+      "name": "Gangapur",
+      "code": "G28"
+    },
+    {
+      "name": "GANGARAMPUR",
+      "code": "G29"
+    },
+    {
+      "name": "GANGASAGAR",
+      "code": "G30"
+    },
+    {
+      "name": "GANGAVATHI",
+      "code": "G31"
+    },
+    {
+      "name": "Gangoh",
+      "code": "G32"
+    },
+    {
+      "name": "GANGTOK",
+      "code": "GGK"
+    },
+    {
+      "name": "GANJ BASODA",
+      "code": "G33"
+    },
+    {
+      "name": "GANNAUR",
+      "code": "G34"
+    },
+    {
+      "name": "GANNAVARAM",
+      "code": "G35"
+    },
+    {
+      "name": "Garh",
+      "code": "G36"
+    },
+    {
+      "name": "GARH MUKTESHWAR",
+      "code": "G37"
+    },
+    {
+      "name": "GARHA",
+      "code": "G38"
+    },
+    {
+      "name": "Garhakota",
+      "code": "G39"
+    },
+    {
+      "name": "GARHANI",
+      "code": "G40"
+    },
+    {
+      "name": "GARHSHANKAR",
+      "code": "G41"
+    },
+    {
+      "name": "GARHWA",
+      "code": "G42"
+    },
+    {
+      "name": "GARIYABANDH",
+      "code": "G43"
+    },
+    {
+      "name": "GARWAR",
+      "code": "G44"
+    },
+    {
+      "name": "GATHDA",
+      "code": "G45"
+    },
+    {
+      "name": "GAUHATI",
+      "code": "GAU"
+    },
+    {
+      "name": "Gauri Bazar",
+      "code": "G46"
+    },
+    {
+      "name": "Gauribidanur",
+      "code": "G47"
+    },
+    {
+      "name": "GAURIGANJ",
+      "code": "G48"
+    },
+    {
+      "name": "Gauripur",
+      "code": "G49"
+    },
+    {
+      "name": "GAYA",
+      "code": "GYA"
+    },
+    {
+      "name": "GAZIPUR ORISSA",
+      "code": "G50"
+    },
+    {
+      "name": "GAZOLE",
+      "code": "G51"
+    },
+    {
+      "name": "Georgia",
+      "code": "GE"
+    },
+    {
+      "name": "GERABARI",
+      "code": "G52"
+    },
+    {
+      "name": "Germany",
+      "code": "DE"
+    },
+    {
+      "name": "GEVRAI",
+      "code": "G53"
+    },
+    {
+      "name": "GHAHMAR",
+      "code": "G54"
+    },
+    {
+      "name": "Ghana",
+      "code": "GH"
+    },
+    {
+      "name": "GHANPUR",
+      "code": "G55"
+    },
+    {
+      "name": "Ghanshyampur",
+      "code": "G56"
+    },
+    {
+      "name": "GHARSANA",
+      "code": "G57"
+    },
+    {
+      "name": "GHATAGAON",
+      "code": "G58"
+    },
+    {
+      "name": "GHATAL",
+      "code": "G59"
+    },
+    {
+      "name": "Ghatampur",
+      "code": "G60"
+    },
+    {
+      "name": "Ghatgaon",
+      "code": "G61"
+    },
+    {
+      "name": "Ghati Billan",
+      "code": "G62"
+    },
+    {
+      "name": "Ghatol",
+      "code": "G63"
+    },
+    {
+      "name": "Ghator",
+      "code": "G64"
+    },
+    {
+      "name": "GHATOTAND",
+      "code": "G65"
+    },
+    {
+      "name": "GHATSHILA",
+      "code": "G66"
+    },
+    {
+      "name": "GHAZIABAD",
+      "code": "GZB"
+    },
+    {
+      "name": "GHAZIPUR",
+      "code": "G67"
+    },
+    {
+      "name": "GHOGAON",
+      "code": "G68"
+    },
+    {
+      "name": "Ghogha",
+      "code": "G69"
+    },
+    {
+      "name": "GHORADONGARI",
+      "code": "G70"
+    },
+    {
+      "name": "Ghormara",
+      "code": "G71"
+    },
+    {
+      "name": "GHOSI",
+      "code": "G72"
+    },
+    {
+      "name": "Ghumarwin",
+      "code": "G73"
+    },
+    {
+      "name": "Ghuntagadia",
+      "code": "G74"
+    },
+    {
+      "name": "Gibraltar",
+      "code": "GI"
+    },
+    {
+      "name": "Gingee",
+      "code": "G75"
+    },
+    {
+      "name": "GIRIDIH",
+      "code": "G76"
+    },
+    {
+      "name": "Glasgow",
+      "code": "GLW"
+    },
+    {
+      "name": "GOA",
+      "code": "GOA"
+    },
+    {
+      "name": "GOA New",
+      "code": "DBL"
+    },
+    {
+      "name": "GOALPARA",
+      "code": "G77"
+    },
+    {
+      "name": "GOALPOKHER",
+      "code": "G78"
+    },
+    {
+      "name": "GOBICHETTIPALAYAM",
+      "code": "GOD"
+    },
+    {
+      "name": "Godavari Khani",
+      "code": "G79"
+    },
+    {
+      "name": "GODDA",
+      "code": "G80"
+    },
+    {
+      "name": "GODHNI",
+      "code": "G81"
+    },
+    {
+      "name": "GODHRA",
+      "code": "GDH"
+    },
+    {
+      "name": "H D KOTE",
+      "code": "H01"
+    },
+    {
+      "name": "H.D Kote",
+      "code": "H02"
+    },
+    {
+      "name": "HABRA",
+      "code": "H03"
+    },
+    {
+      "name": "HADGAON",
+      "code": "H04"
+    },
+    {
+      "name": "Haflong",
+      "code": "H05"
+    },
+    {
+      "name": "HAGARIBOMMANAHALLI",
+      "code": "H06"
+    },
+    {
+      "name": "Haidargarh",
+      "code": "H07"
+    },
+    {
+      "name": "HAIDERGARH UP",
+      "code": "H08"
+    },
+    {
+      "name": "HAILAKANDI",
+      "code": "H09"
+    },
+    {
+      "name": "Haiti",
+      "code": "HT"
+    },
+    {
+      "name": "HAJIPUR",
+      "code": "HJP"
+    },
+    {
+      "name": "HAJIPUR TOWN",
+      "code": "H10"
+    },
+    {
+      "name": "HAJO",
+      "code": "H11"
+    },
+    {
+      "name": "HALAHALI",
+      "code": "H12"
+    },
+    {
+      "name": "HALDAUR",
+      "code": "H13"
+    },
+    {
+      "name": "HALDIA",
+      "code": "HDI"
+    },
+    {
+      "name": "Haldwani",
+      "code": "H14"
+    },
+    {
+      "name": "Halebeedu",
+      "code": "H15"
+    },
+    {
+      "name": "HALIYA",
+      "code": "H16"
+    },
+    {
+      "name": "HALIYAL",
+      "code": "H17"
+    },
+    {
+      "name": "Halol",
+      "code": "H18"
+    },
+    {
+      "name": "HALVAD",
+      "code": "H19"
+    },
+    {
+      "name": "Hamirpur",
+      "code": "H20"
+    },
+    {
+      "name": "Hamirpur-UP",
+      "code": "H21"
+    },
+    {
+      "name": "HANDIA",
+      "code": "H22"
+    },
+    {
+      "name": "HANDWARA",
+      "code": "H23"
+    },
+    {
+      "name": "Hangal",
+      "code": "H24"
+    },
+    {
+      "name": "HANSDIHA",
+      "code": "H25"
+    },
+    {
+      "name": "Hansi",
+      "code": "H26"
+    },
+    {
+      "name": "HANSKHALI",
+      "code": "H27"
+    },
+    {
+      "name": "Hansot",
+      "code": "H28"
+    },
+    {
+      "name": "Hanumangarh",
+      "code": "H29"
+    },
+    {
+      "name": "HANUR",
+      "code": "H30"
+    },
+    {
+      "name": "HAPUR",
+      "code": "HPU"
+    },
+    {
+      "name": "HARAPANAHALLI",
+      "code": "H31"
+    },
+    {
+      "name": "HARBERTPUR",
+      "code": "H32"
+    },
+    {
+      "name": "HARDA",
+      "code": "H33"
+    },
+    {
+      "name": "HARDOI",
+      "code": "H34"
+    },
+    {
+      "name": "HARIDWAR",
+      "code": "H35"
+    },
+    {
+      "name": "Hariharganj",
+      "code": "H36"
+    },
+    {
+      "name": "HARIJ",
+      "code": "H37"
+    },
+    {
+      "name": "Haringhata",
+      "code": "H38"
+    },
+    {
+      "name": "Haripad",
+      "code": "H39"
+    },
+    {
+      "name": "HARIPAL",
+      "code": "H40"
+    },
+    {
+      "name": "HARIPUR",
+      "code": "H41"
+    },
+    {
+      "name": "Harohalli",
+      "code": "H42"
+    },
+    {
+      "name": "HAROLI",
+      "code": "H43"
+    },
+    {
+      "name": "Harpalpur",
+      "code": "H44"
+    },
+    {
+      "name": "Harpanahalli",
+      "code": "H45"
+    },
+    {
+      "name": "HARRAIYA",
+      "code": "H46"
+    },
+    {
+      "name": "Harur",
+      "code": "H47"
+    },
+    {
+      "name": "HARYANA",
+      "code": "HAR"
+    },
+    {
+      "name": "Hasanpura",
+      "code": "H48"
+    },
+    {
+      "name": "HASIMARA",
+      "code": "H49"
+    },
+    {
+      "name": "HASNABAD",
+      "code": "H50"
+    },
+    {
+      "name": "HASSAN",
+      "code": "H51"
+    },
+    {
+      "name": "HATADIHI",
+      "code": "H52"
+    },
+    {
+      "name": "HATHRAS",
+      "code": "HRS"
+    },
+    {
+      "name": "HATSINGIMARI",
+      "code": "H53"
+    },
+    {
+      "name": "HATTA",
+      "code": "H54"
+    },
+    {
+      "name": "HATTIJ",
+      "code": "H55"
+    },
+    {
+      "name": "Haveri",
+      "code": "H56"
+    },
+    {
+      "name": "HAZARIBAGH",
+      "code": "H57"
+    },
+    {
+      "name": "HAZIRA",
+      "code": "HAZ"
+    },
+    {
+      "name": "Hazrat Jandaha",
+      "code": "H58"
+    },
+    {
+      "name": "Heard and Mcdonald Islands",
+      "code": "HM"
+    },
+    {
+      "name": "Helencha",
+      "code": "H59"
+    },
+    {
+      "name": "Hemtabad",
+      "code": "H60"
+    },
+    {
+      "name": "HILLI",
+      "code": "H61"
+    },
+    {
+      "name": "HILSA",
+      "code": "H62"
+    },
+    {
+      "name": "HIMACHAL PRADESH",
+      "code": "HMP"
+    },
+    {
+      "name": "HIMAYATNAGAR",
+      "code": "H63"
+    },
+    {
+      "name": "HIMMAT NAGAR",
+      "code": "HIM"
+    },
+    {
+      "name": "Himmatnagar",
+      "code": "H64"
+    },
+    {
+      "name": "Hindaun",
+      "code": "H65"
+    },
+    {
+      "name": "HINDOL",
+      "code": "H66"
+    },
+    {
+      "name": "HINDUPUR",
+      "code": "H67"
+    },
+    {
+      "name": "Hingalganj",
+      "code": "H68"
+    },
+    {
+      "name": "HINGANGHAT",
+      "code": "H69"
+    },
+    {
+      "name": "HINGOLI",
+      "code": "H70"
+    },
+    {
+      "name": "Hinjilicut",
+      "code": "H71"
+    },
+    {
+      "name": "Hira Nagar",
+      "code": "H72"
+    },
+    {
+      "name": "Hiriyur",
+      "code": "H73"
+    },
+    {
+      "name": "HISSAR",
+      "code": "HIS"
+    },
+    {
+      "name": "HISUA",
+      "code": "H74"
+    },
+    {
+      "name": "Hodal",
+      "code": "H75"
+    },
+    {
+      "name": "HOJAI",
+      "code": "H76"
+    },
+    {
+      "name": "HOLALA",
+      "code": "H77"
+    },
+    {
+      "name": "Holalkere",
+      "code": "H78"
+    },
+    {
+      "name": "Holalu",
+      "code": "H79"
+    },
+    {
+      "name": "Holenarasipur",
+      "code": "H80"
+    },
+    {
+      "name": "Holesirigere",
+      "code": "H81"
+    },
+    {
+      "name": "Holy See (Vatican City State)",
+      "code": "VA"
+    },
+    {
+      "name": "Honduras",
+      "code": "HN"
+    },
+    {
+      "name": "Hong Kong",
+      "code": "HK"
+    },
+    {
+      "name": "Honnali",
+      "code": "H82"
+    },
+    {
+      "name": "HONNALLI",
+      "code": "H83"
+    },
+    {
+      "name": "Honnavar",
+      "code": "H84"
+    },
+    {
+      "name": "HONNAVARA",
+      "code": "H85"
+    },
+    {
+      "name": "Ibrahimpatnam",
+      "code": "I01"
+    },
+    {
+      "name": "Iceland",
+      "code": "IS"
+    },
+    {
+      "name": "Ichalkaranji",
+      "code": "I02"
+    },
+    {
+      "name": "ICHAPURAM",
+      "code": "I03"
+    },
+    {
+      "name": "ICHODA",
+      "code": "I04"
+    },
+    {
+      "name": "IDAR",
+      "code": "I05"
+    },
+    {
+      "name": "Iddukki",
+      "code": "I06"
+    },
+    {
+      "name": "IEEJA",
+      "code": "I07"
+    },
+    {
+      "name": "Ikauna",
+      "code": "I08"
+    },
+    {
+      "name": "ILHAS",
+      "code": "ILH"
+    },
+    {
+      "name": "Ilipur",
+      "code": "I09"
+    },
+    {
+      "name": "Ilkal",
+      "code": "I10"
+    },
+    {
+      "name": "ILLAMBAZAR",
+      "code": "I11"
+    },
+    {
+      "name": "Imamganj",
+      "code": "I12"
+    },
+    {
+      "name": "Imphal",
+      "code": "I13"
+    },
+    {
+      "name": "IMPHAL",
+      "code": "IMP"
+    },
+    {
+      "name": "INDALWAI",
+      "code": "I14"
+    },
+    {
+      "name": "INDAPUR",
+      "code": "I15"
+    },
+    {
+      "name": "INDAS",
+      "code": "I16"
+    },
+    {
+      "name": "Indi",
+      "code": "I17"
+    },
+    {
+      "name": "India",
+      "code": "IND"
+    },
+    {
+      "name": "Indonesia",
+      "code": "ID"
+    },
+    {
+      "name": "INDORA",
+      "code": "I18"
+    },
+    {
+      "name": "INDORE",
+      "code": "IDR"
+    },
+    {
+      "name": "INKOLLU",
+      "code": "I19"
+    },
+    {
+      "name": "INTERNATIONAL",
+      "code": "INT"
+    },
+    {
+      "name": "Iran",
+      "code": "IR"
+    },
+    {
+      "name": "Iraq",
+      "code": "IQ"
+    },
+    {
+      "name": "Ireland",
+      "code": "IE"
+    },
+    {
+      "name": "IRINJALAKUDA",
+      "code": "I20"
+    },
+    {
+      "name": "ISHWARAMANGALA",
+      "code": "I21"
+    },
+    {
+      "name": "Islampur",
+      "code": "I22"
+    },
+    {
+      "name": "ISLAMPUR BH",
+      "code": "I23"
+    },
+    {
+      "name": "Isle of Man",
+      "code": "IM"
+    },
+    {
+      "name": "Isle of Wight",
+      "code": "IOW"
+    },
+    {
+      "name": "Israel",
+      "code": "IL"
+    },
+    {
+      "name": "ISRI BAZAR",
+      "code": "I24"
+    },
+    {
+      "name": "ITAHAR",
+      "code": "I25"
+    },
+    {
+      "name": "Italy",
+      "code": "IT"
+    },
+    {
+      "name": "ITANAGAR",
+      "code": "I26"
+    },
+    {
+      "name": "ITARSI",
+      "code": "I27"
+    },
+    {
+      "name": "ITAUNJA",
+      "code": "I28"
+    },
+    {
+      "name": "Itava",
+      "code": "I29"
+    },
+    {
+      "name": "Itawa",
+      "code": "I30"
+    },
+    {
+      "name": "Itkhori",
+      "code": "I31"
+    },
+    {
+      "name": "Ittigi",
+      "code": "I34"
+    },
+    {
+      "name": "JABALPUR",
+      "code": "JBL"
+    },
+    {
+      "name": "JADCHERLA",
+      "code": "J01"
+    },
+    {
+      "name": "JADUGORA",
+      "code": "J02"
+    },
+    {
+      "name": "JAFRABAD",
+      "code": "J03"
+    },
+    {
+      "name": "JAGALUR",
+      "code": "J04"
+    },
+    {
+      "name": "Jagannathpur",
+      "code": "J05"
+    },
+    {
+      "name": "Jagatpur",
+      "code": "J06"
+    },
+    {
+      "name": "JAGATSINGHPUR",
+      "code": "J07"
+    },
+    {
+      "name": "Jagdalpur",
+      "code": "J08"
+    },
+    {
+      "name": "JAGDISHPUR",
+      "code": "J09"
+    },
+    {
+      "name": "JAGGAIAHPETA",
+      "code": "J10"
+    },
+    {
+      "name": "Jagraon",
+      "code": "J11"
+    },
+    {
+      "name": "Jagtial",
+      "code": "J12"
+    },
+    {
+      "name": "JAGUN",
+      "code": "J13"
+    },
+    {
+      "name": "JAHANGIRGANJ",
+      "code": "J14"
+    },
+    {
+      "name": "JAHANGIRMALEGAON",
+      "code": "J15"
+    },
+    {
+      "name": "JAHU",
+      "code": "J16"
+    },
+    {
+      "name": "Jaigaon",
+      "code": "J17"
+    },
+    {
+      "name": "Jainad",
+      "code": "J18"
+    },
+    {
+      "name": "JAINAGAR JH",
+      "code": "J19"
+    },
+    {
+      "name": "Jaipatna",
+      "code": "J20"
+    },
+    {
+      "name": "JAIPUR",
+      "code": "JAI"
+    },
+    {
+      "name": "Jairampur",
+      "code": "J21"
+    },
+    {
+      "name": "Jaisalmer",
+      "code": "J22"
+    },
+    {
+      "name": "JAISINGHNAGAR",
+      "code": "J23"
+    },
+    {
+      "name": "JAITARAN",
+      "code": "J24"
+    },
+    {
+      "name": "JAITHRA",
+      "code": "J25"
+    },
+    {
+      "name": "JAITSAR",
+      "code": "J26"
+    },
+    {
+      "name": "JAITU",
+      "code": "J27"
+    },
+    {
+      "name": "Jajpur",
+      "code": "J28"
+    },
+    {
+      "name": "JAJPUR ROAD",
+      "code": "J29"
+    },
+    {
+      "name": "JAJPUR TOWN",
+      "code": "J30"
+    },
+    {
+      "name": "JalalabadUP",
+      "code": "J31"
+    },
+    {
+      "name": "Jalalpur",
+      "code": "J32"
+    },
+    {
+      "name": "Jalalpur-UP",
+      "code": "J33"
+    },
+    {
+      "name": "JALANDHAR",
+      "code": "JRD"
+    },
+    {
+      "name": "Jalaun",
+      "code": "J34"
+    },
+    {
+      "name": "JALESAR UP",
+      "code": "J35"
+    },
+    {
+      "name": "JALESWAR",
+      "code": "J36"
+    },
+    {
+      "name": "JALGAON",
+      "code": "JAL"
+    },
+    {
+      "name": "JALGAON JAMOD",
+      "code": "J37"
+    },
+    {
+      "name": "Jalna",
+      "code": "J38"
+    },
+    {
+      "name": "Jalore",
+      "code": "J39"
+    },
+    {
+      "name": "JALPAIGURI",
+      "code": "JPG"
+    },
+    {
+      "name": "Jamaica",
+      "code": "JM"
+    },
+    {
+      "name": "Jambusar",
+      "code": "J40"
+    },
+    {
+      "name": "JAMJODHPUR",
+      "code": "J41"
+    },
+    {
+      "name": "Jamkhandi",
+      "code": "J42"
+    },
+    {
+      "name": "JAMKHED",
+      "code": "J43"
+    },
+    {
+      "name": "JAMMALAMADUGU",
+      "code": "J44"
+    },
+    {
+      "name": "JAMMIKUNTA",
+      "code": "J45"
+    },
+    {
+      "name": "JAMMU",
+      "code": "JMU"
+    },
+    {
+      "name": "JAMMU & KASHMIR",
+      "code": "JK"
+    },
+    {
+      "name": "JAMNAGAR",
+      "code": "QGR"
+    },
+    {
+      "name": "JAMNER",
+      "code": "J46"
+    },
+    {
+      "name": "JAMNIPALI",
+      "code": "J47"
+    },
+    {
+      "name": "JAMSHEDPUR",
+      "code": "JMD"
+    },
+    {
+      "name": "JAMTARA",
+      "code": "J48"
+    },
+    {
+      "name": "JAMUA",
+      "code": "J49"
+    },
+    {
+      "name": "JAMUGURI",
+      "code": "J50"
+    },
+    {
+      "name": "JAMUI",
+      "code": "J51"
+    },
+    {
+      "name": "Jamuria",
+      "code": "J52"
+    },
+    {
+      "name": "JANEFAL",
+      "code": "J53"
+    },
+    {
+      "name": "JANGAON",
+      "code": "J54"
+    },
+    {
+      "name": "JANGAREDDY GUDEM",
+      "code": "J55"
+    },
+    {
+      "name": "Jangareddygudem",
+      "code": "J56"
+    },
+    {
+      "name": "JANGIPUR",
+      "code": "J57"
+    },
+    {
+      "name": "JANIGANJ",
+      "code": "J58"
+    },
+    {
+      "name": "JAORA",
+      "code": "J59"
+    },
+    {
+      "name": "Japan",
+      "code": "JP"
+    },
+    {
+      "name": "Japla",
+      "code": "J60"
+    },
+    {
+      "name": "Jaraka",
+      "code": "J61"
+    },
+    {
+      "name": "Jari",
+      "code": "J62"
+    },
+    {
+      "name": "JARIDIH BAZAR",
+      "code": "J63"
+    },
+    {
+      "name": "JAROD",
+      "code": "JAD"
+    },
+    {
+      "name": "Jasai",
+      "code": "J64"
+    },
+    {
+      "name": "JASDAN",
+      "code": "J65"
+    },
+    {
+      "name": "Jashipur",
+      "code": "J66"
+    },
+    {
+      "name": "Jashpur Nagar",
+      "code": "J67"
+    },
+    {
+      "name": "JASINGPUR",
+      "code": "J68"
+    },
+    {
+      "name": "JASSUR",
+      "code": "J69"
+    },
+    {
+      "name": "Jatara",
+      "code": "J70"
+    },
+    {
+      "name": "JATH",
+      "code": "J71"
+    },
+    {
+      "name": "JATNI",
+      "code": "J72"
+    },
+    {
+      "name": "JAUNPUR",
+      "code": "J73"
+    },
+    {
+      "name": "JAVAGAL",
+      "code": "J74"
+    },
+    {
+      "name": "JAWAD",
+      "code": "J75"
+    },
+    {
+      "name": "JAWAHARNAGAR",
+      "code": "J76"
+    },
+    {
+      "name": "JAWALA",
+      "code": "J77"
+    },
+    {
+      "name": "JAWALA JI",
+      "code": "J78"
+    },
+    {
+      "name": "JAWALI",
+      "code": "J79"
+    },
+    {
+      "name": "JAYAL",
+      "code": "J80"
+    },
+    {
+      "name": "Jayankondam",
+      "code": "J81"
+    },
+    {
+      "name": "JAYNAGAR BH",
+      "code": "J82"
+    },
+    {
+      "name": "JAYSINGPUR",
+      "code": "J83"
+    },
+    {
+      "name": "Jehanabad",
+      "code": "J84"
+    },
+    {
+      "name": "JEJURI",
+      "code": "J85"
+    },
+    {
+      "name": "JEKHANIYA",
+      "code": "J86"
+    },
+    {
+      "name": "JEORI HP",
+      "code": "J87"
+    },
+    {
+      "name": "Jersey",
+      "code": "JE"
+    },
+    {
+      "name": "K R NAGAR",
+      "code": "K01"
+    },
+    {
+      "name": "KABUGANJ",
+      "code": "K02"
+    },
+    {
+      "name": "Kachhera",
+      "code": "K03"
+    },
+    {
+      "name": "KADA",
+      "code": "K04"
+    },
+    {
+      "name": "KADABA",
+      "code": "K05"
+    },
+    {
+      "name": "KADAYAMPATTI",
+      "code": "K06"
+    },
+    {
+      "name": "KADGANJ",
+      "code": "K07"
+    },
+    {
+      "name": "Kadi",
+      "code": "K08"
+    },
+    {
+      "name": "KADI GJ",
+      "code": "K09"
+    },
+    {
+      "name": "KADIPUR",
+      "code": "K10"
+    },
+    {
+      "name": "KADIRI",
+      "code": "K11"
+    },
+    {
+      "name": "KADTHAL",
+      "code": "K12"
+    },
+    {
+      "name": "KADUKKARAI",
+      "code": "K13"
+    },
+    {
+      "name": "KAGAL",
+      "code": "K14"
+    },
+    {
+      "name": "KAGAZNAGAR",
+      "code": "K15"
+    },
+    {
+      "name": "Kahalgaon",
+      "code": "K16"
+    },
+    {
+      "name": "Kaij",
+      "code": "K17"
+    },
+    {
+      "name": "KAIKALUR",
+      "code": "K18"
+    },
+    {
+      "name": "Kaikaluru",
+      "code": "K19"
+    },
+    {
+      "name": "KAIMGANJ",
+      "code": "K20"
+    },
+    {
+      "name": "Kairana",
+      "code": "K21"
+    },
+    {
+      "name": "Kaithal",
+      "code": "K22"
+    },
+    {
+      "name": "KAKATPUR",
+      "code": "K23"
+    },
+    {
+      "name": "KAKCHING",
+      "code": "K24"
+    },
+    {
+      "name": "KAKDWIP",
+      "code": "K25"
+    },
+    {
+      "name": "KAKINADA",
+      "code": "KAK"
+    },
+    {
+      "name": "Kakiriguma",
+      "code": "K26"
+    },
+    {
+      "name": "KAKKODI",
+      "code": "K27"
+    },
+    {
+      "name": "KALA",
+      "code": "K28"
+    },
+    {
+      "name": "KALABURAGI",
+      "code": "K29"
+    },
+    {
+      "name": "KALADANGA",
+      "code": "K30"
+    },
+    {
+      "name": "KALAKADA",
+      "code": "K31"
+    },
+    {
+      "name": "KALAMNURI",
+      "code": "K32"
+    },
+    {
+      "name": "Kalanjoor",
+      "code": "K33"
+    },
+    {
+      "name": "Kalanwali",
+      "code": "K34"
+    },
+    {
+      "name": "KALASA",
+      "code": "K35"
+    },
+    {
+      "name": "Kalavad",
+      "code": "K36"
+    },
+    {
+      "name": "KALCHINI",
+      "code": "K37"
+    },
+    {
+      "name": "Kale",
+      "code": "K38"
+    },
+    {
+      "name": "KALGHATGI",
+      "code": "K39"
+    },
+    {
+      "name": "KALHER",
+      "code": "K40"
+    },
+    {
+      "name": "KALIABOR",
+      "code": "K41"
+    },
+    {
+      "name": "KALIAGANJ",
+      "code": "K42"
+    },
+    {
+      "name": "KALIAKKAVILAI",
+      "code": "K43"
+    },
+    {
+      "name": "KALIDINDI",
+      "code": "K44"
+    },
+    {
+      "name": "Kalimela",
+      "code": "K45"
+    },
+    {
+      "name": "KALIMPONG",
+      "code": "KLP"
+    },
+    {
+      "name": "KALKA",
+      "code": "K46"
+    },
+    {
+      "name": "KALLACHI",
+      "code": "K47"
+    },
+    {
+      "name": "KALLADKA",
+      "code": "K48"
+    },
+    {
+      "name": "Kallakurichi",
+      "code": "K49"
+    },
+    {
+      "name": "KALLAKURUCHI",
+      "code": "K50"
+    },
+    {
+      "name": "KALLAMB",
+      "code": "K51"
+    },
+    {
+      "name": "KALLARA",
+      "code": "K52"
+    },
+    {
+      "name": "KALLAYAM",
+      "code": "K53"
+    },
+    {
+      "name": "KALLERI",
+      "code": "K54"
+    },
+    {
+      "name": "Kallikkad",
+      "code": "K55"
+    },
+    {
+      "name": "KALOL",
+      "code": "KLL"
+    },
+    {
+      "name": "KalolHP",
+      "code": "K56"
+    },
+    {
+      "name": "Kalpakkam",
+      "code": "K57"
+    },
+    {
+      "name": "KALPETTA",
+      "code": "K58"
+    },
+    {
+      "name": "KALPI",
+      "code": "K59"
+    },
+    {
+      "name": "KALVAN",
+      "code": "K60"
+    },
+    {
+      "name": "Kalwakurthy",
+      "code": "K61"
+    },
+    {
+      "name": "Kalwar",
+      "code": "K62"
+    },
+    {
+      "name": "KALYAN",
+      "code": "K63"
+    },
+    {
+      "name": "Kalyanadurgam",
+      "code": "K64"
+    },
+    {
+      "name": "Kalyandurg",
+      "code": "K65"
+    },
+    {
+      "name": "KALYANI",
+      "code": "K66"
+    },
+    {
+      "name": "KalyanpurBR",
+      "code": "K67"
+    },
+    {
+      "name": "Kamakhyanagar",
+      "code": "K68"
+    },
+    {
+      "name": "KAMAKHYANAGAR ORRISSA",
+      "code": "K69"
+    },
+    {
+      "name": "KAMALAPUR",
+      "code": "K70"
+    },
+    {
+      "name": "KAMALAPURAM",
+      "code": "K71"
+    },
+    {
+      "name": "Kamareddy",
+      "code": "K72"
+    },
+    {
+      "name": "KAMARGAON",
+      "code": "K73"
+    },
+    {
+      "name": "KAMBADUR",
+      "code": "K74"
+    },
+    {
+      "name": "KAMERI",
+      "code": "K75"
+    },
+    {
+      "name": "KAMPLI",
+      "code": "K76"
+    },
+    {
+      "name": "KAMPUR",
+      "code": "K77"
+    },
+    {
+      "name": "KAMSHET",
+      "code": "K78"
+    },
+    {
+      "name": "Kanakapura",
+      "code": "K79"
+    },
+    {
+      "name": "KANAKGIRI",
+      "code": "K80"
+    },
+    {
+      "name": "KANCHANPUR",
+      "code": "K81"
+    },
+    {
+      "name": "KANCHIKACHERLA",
+      "code": "K82"
+    },
+    {
+      "name": "KANCHIPURAM",
+      "code": "K83"
+    },
+    {
+      "name": "KANDHAR",
+      "code": "K84"
+    },
+    {
+      "name": "KANDI",
+      "code": "K85"
+    },
+    {
+      "name": "KANDUKUR",
+      "code": "K86"
+    },
+    {
+      "name": "KANGEYAM",
+      "code": "K87"
+    },
+    {
+      "name": "KANGPOPKI",
+      "code": "K88"
+    },
+    {
+      "name": "KANGRA",
+      "code": "K89"
+    },
+    {
+      "name": "KANHAN MH",
+      "code": "K90"
+    },
+    {
+      "name": "KANIGIRI",
+      "code": "K91"
+    },
+    {
+      "name": "KANIPAKAM",
+      "code": "K92"
+    },
+    {
+      "name": "KANIYAPURAM",
+      "code": "K93"
+    },
+    {
+      "name": "KANJIKODE",
+      "code": "KKD"
+    },
+    {
+      "name": "Labha",
+      "code": "L01"
+    },
+    {
+      "name": "LADNUN",
+      "code": "L02"
+    },
+    {
+      "name": "Lahar",
+      "code": "L03"
+    },
+    {
+      "name": "LAHORIGHAT",
+      "code": "L04"
+    },
+    {
+      "name": "Lahunipara",
+      "code": "L05"
+    },
+    {
+      "name": "Lailunga",
+      "code": "L06"
+    },
+    {
+      "name": "LAKHANPUR CH",
+      "code": "L07"
+    },
+    {
+      "name": "LAKHERI",
+      "code": "L08"
+    },
+    {
+      "name": "Lakhimpur",
+      "code": "L09"
+    },
+    {
+      "name": "LAKHIMPUR KHIRI",
+      "code": "L10"
+    },
+    {
+      "name": "Lakhipur",
+      "code": "L11"
+    },
+    {
+      "name": "LAKHISARAI",
+      "code": "L12"
+    },
+    {
+      "name": "LAKHNADON",
+      "code": "L13"
+    },
+    {
+      "name": "LAKKAVARM",
+      "code": "L14"
+    },
+    {
+      "name": "LAKSAR",
+      "code": "L15"
+    },
+    {
+      "name": "LAKSHMESHWARA",
+      "code": "L16"
+    },
+    {
+      "name": "LAKSHMINAGAR",
+      "code": "L17"
+    },
+    {
+      "name": "LAL CHOWK",
+      "code": "L18"
+    },
+    {
+      "name": "Lal Gopalganj",
+      "code": "L19"
+    },
+    {
+      "name": "LALGANJ",
+      "code": "L20"
+    },
+    {
+      "name": "LALGANJ AJHARA",
+      "code": "L21"
+    },
+    {
+      "name": "LALGOLA",
+      "code": "L22"
+    },
+    {
+      "name": "LALGOPALGANJ",
+      "code": "L23"
+    },
+    {
+      "name": "LALGUDI",
+      "code": "L24"
+    },
+    {
+      "name": "Lalitpur",
+      "code": "L25"
+    },
+    {
+      "name": "LALKUAN",
+      "code": "L26"
+    },
+    {
+      "name": "Lalpet",
+      "code": "L27"
+    },
+    {
+      "name": "LALSOT",
+      "code": "L28"
+    },
+    {
+      "name": "Lambhua",
+      "code": "L29"
+    },
+    {
+      "name": "LAMSHANG",
+      "code": "L30"
+    },
+    {
+      "name": "LAMTA",
+      "code": "L31"
+    },
+    {
+      "name": "LANGJING",
+      "code": "L32"
+    },
+    {
+      "name": "Lanja",
+      "code": "L33"
+    },
+    {
+      "name": "LANJI",
+      "code": "L34"
+    },
+    {
+      "name": "LANKA",
+      "code": "L35"
+    },
+    {
+      "name": "LANSDOWNE",
+      "code": "L36"
+    },
+    {
+      "name": "Lao PDR",
+      "code": "LA"
+    },
+    {
+      "name": "LAR GANDERBAL",
+      "code": "L37"
+    },
+    {
+      "name": "LAR TOWN",
+      "code": "L38"
+    },
+    {
+      "name": "LASALGAON",
+      "code": "L39"
+    },
+    {
+      "name": "LASUR",
+      "code": "L40"
+    },
+    {
+      "name": "LATEHAR",
+      "code": "L41"
+    },
+    {
+      "name": "LATHI",
+      "code": "L42"
+    },
+    {
+      "name": "LATUR",
+      "code": "LTR"
+    },
+    {
+      "name": "Latvia",
+      "code": "LV"
+    },
+    {
+      "name": "Lauria Nandangarh",
+      "code": "L43"
+    },
+    {
+      "name": "LAVKUSHNAGAR",
+      "code": "L44"
+    },
+    {
+      "name": "Laxmangarh",
+      "code": "L45"
+    },
+    {
+      "name": "LAXMIGANJ",
+      "code": "L46"
+    },
+    {
+      "name": "Lebanon",
+      "code": "LB"
+    },
+    {
+      "name": "Leh",
+      "code": "L47"
+    },
+    {
+      "name": "LEHRAGAGA",
+      "code": "L48"
+    },
+    {
+      "name": "Lesotho",
+      "code": "LS"
+    },
+    {
+      "name": "Liberia",
+      "code": "LR"
+    },
+    {
+      "name": "Libya",
+      "code": "LY"
+    },
+    {
+      "name": "Liechtenstein",
+      "code": "LI"
+    },
+    {
+      "name": "LILONG",
+      "code": "L49"
+    },
+    {
+      "name": "Limbdi",
+      "code": "L50"
+    },
+    {
+      "name": "LIMBODI",
+      "code": "L51"
+    },
+    {
+      "name": "LIMDI",
+      "code": "L52"
+    },
+    {
+      "name": "Limkheda",
+      "code": "L53"
+    },
+    {
+      "name": "Lingasugur",
+      "code": "L54"
+    },
+    {
+      "name": "Lithuania",
+      "code": "LT"
+    },
+    {
+      "name": "Loha",
+      "code": "L55"
+    },
+    {
+      "name": "Lohaghat",
+      "code": "L56"
+    },
+    {
+      "name": "LOHAPUR",
+      "code": "L57"
+    },
+    {
+      "name": "Lohardaga",
+      "code": "L58"
+    },
+    {
+      "name": "LOHARU",
+      "code": "L59"
+    },
+    {
+      "name": "Lohawat",
+      "code": "L60"
+    },
+    {
+      "name": "Loisingha",
+      "code": "L61"
+    },
+    {
+      "name": "LOKAPUR",
+      "code": "L62"
+    },
+    {
+      "name": "LONAND",
+      "code": "L63"
+    },
+    {
+      "name": "LOSAL",
+      "code": "L64"
+    },
+    {
+      "name": "LUCKNOW",
+      "code": "LCK"
+    },
+    {
+      "name": "LUDHIANA",
+      "code": "LDH"
+    },
+    {
+      "name": "LUMDING",
+      "code": "L65"
+    },
+    {
+      "name": "LUNAVADA",
+      "code": "L66"
+    },
+    {
+      "name": "Lunawada",
+      "code": "L67"
+    },
+    {
+      "name": "LUNKARANSAR",
+      "code": "L68"
+    },
+    {
+      "name": "LUSAKA",
+      "code": "LUS"
+    },
+    {
+      "name": "Lutunia",
+      "code": "L69"
+    },
+    {
+      "name": "Luxemberg",
+      "code": "LU"
+    },
+    {
+      "name": "M. Rampur",
+      "code": "M01"
+    },
+    {
+      "name": "MAA-FRANCH EXPRESS",
+      "code": "MFR"
+    },
+    {
+      "name": "MAATHUR",
+      "code": "M02"
+    },
+    {
+      "name": "Macao, SAR China",
+      "code": "MO"
+    },
+    {
+      "name": "Macedonia, Republic of",
+      "code": "MK"
+    },
+    {
+      "name": "MACHERLA",
+      "code": "M03"
+    },
+    {
+      "name": "MACHHAGAON",
+      "code": "M04"
+    },
+    {
+      "name": "Machhali Shahar",
+      "code": "M05"
+    },
+    {
+      "name": "Machilipatnam",
+      "code": "M06"
+    },
+    {
+      "name": "MACHIWARA",
+      "code": "M07"
+    },
+    {
+      "name": "Madagascar",
+      "code": "MG"
+    },
+    {
+      "name": "Madakasira",
+      "code": "M08"
+    },
+    {
+      "name": "Madanapalle",
+      "code": "M09"
+    },
+    {
+      "name": "MADANAPALLI",
+      "code": "M10"
+    },
+    {
+      "name": "MADANGAD",
+      "code": "M11"
+    },
+    {
+      "name": "Madanpur",
+      "code": "M12"
+    },
+    {
+      "name": "MADANTHYAR",
+      "code": "M13"
+    },
+    {
+      "name": "MADARIHAT",
+      "code": "M14"
+    },
+    {
+      "name": "MADDUR",
+      "code": "M15"
+    },
+    {
+      "name": "MADDURTG",
+      "code": "M16"
+    },
+    {
+      "name": "Madgulapally",
+      "code": "M17"
+    },
+    {
+      "name": "MADGYAL",
+      "code": "M18"
+    },
+    {
+      "name": "MADHAVGANJ",
+      "code": "M19"
+    },
+    {
+      "name": "Madhepura",
+      "code": "M20"
+    },
+    {
+      "name": "MADHIRA",
+      "code": "M21"
+    },
+    {
+      "name": "Madhoganj",
+      "code": "M22"
+    },
+    {
+      "name": "MADHUBAN UP",
+      "code": "M23"
+    },
+    {
+      "name": "MADHUBANI",
+      "code": "M24"
+    },
+    {
+      "name": "Madhugiri",
+      "code": "M25"
+    },
+    {
+      "name": "Madhupur",
+      "code": "M26"
+    },
+    {
+      "name": "MADIKERI",
+      "code": "M27"
+    },
+    {
+      "name": "MADLAUDA HR",
+      "code": "M28"
+    },
+    {
+      "name": "MADRAS",
+      "code": "MAA"
+    },
+    {
+      "name": "MADRASHYDBLRFE",
+      "code": "MHB"
+    },
+    {
+      "name": "MADRASHYDSALFE",
+      "code": "MHS"
+    },
+    {
+      "name": "Madukkarai",
+      "code": "M29"
+    },
+    {
+      "name": "MADURAI",
+      "code": "IXM"
+    },
+    {
+      "name": "MADURANTAKAM",
+      "code": "M30"
+    },
+    {
+      "name": "Madwas",
+      "code": "M31"
+    },
+    {
+      "name": "MADYA PRADESH",
+      "code": "MPD"
+    },
+    {
+      "name": "MAGADI",
+      "code": "M32"
+    },
+    {
+      "name": "MAGAM",
+      "code": "M33"
+    },
+    {
+      "name": "MAHABUBABAD",
+      "code": "M34"
+    },
+    {
+      "name": "Mahabubnagar",
+      "code": "M35"
+    },
+    {
+      "name": "MAHAD",
+      "code": "M36"
+    },
+    {
+      "name": "Mahadevpur",
+      "code": "M37"
+    },
+    {
+      "name": "MAHAGAON",
+      "code": "M38"
+    },
+    {
+      "name": "Mahalingpur",
+      "code": "M39"
+    },
+    {
+      "name": "MAHALPUR",
+      "code": "M40"
+    },
+    {
+      "name": "MAHARAJAGANJ",
+      "code": "M41"
+    },
+    {
+      "name": "Maharajapuram",
+      "code": "M42"
+    },
+    {
+      "name": "MAHARAJGANJ",
+      "code": "M43"
+    },
+    {
+      "name": "MAHARAJGANJ BH",
+      "code": "M44"
+    },
+    {
+      "name": "Maharajganj-BH",
+      "code": "M45"
+    },
+    {
+      "name": "MAHARASHTRA",
+      "code": "MAH"
+    },
+    {
+      "name": "MAHARASTRA.",
+      "code": "MHI"
+    },
+    {
+      "name": "Mahasamund",
+      "code": "M46"
+    },
+    {
+      "name": "MAHE",
+      "code": "MHE"
+    },
+    {
+      "name": "Mahemdavad",
+      "code": "M47"
+    },
+    {
+      "name": "Mahendergarh",
+      "code": "M48"
+    },
+    {
+      "name": "MAHENDRAGANJ",
+      "code": "M49"
+    },
+    {
+      "name": "Maheshkhunt",
+      "code": "M50"
+    },
+    {
+      "name": "Maheshpur",
+      "code": "M51"
+    },
+    {
+      "name": "Maheshwar",
+      "code": "M52"
+    },
+    {
+      "name": "MAHIDPUR",
+      "code": "M53"
+    },
+    {
+      "name": "MAHISGAON",
+      "code": "M54"
+    },
+    {
+      "name": "MAHISHAL",
+      "code": "M55"
+    },
+    {
+      "name": "MAHNAR",
+      "code": "M56"
+    },
+    {
+      "name": "Mahnar Bazar",
+      "code": "M57"
+    },
+    {
+      "name": "Mahoba",
+      "code": "M58"
+    },
+    {
+      "name": "Maholi",
+      "code": "M59"
+    },
+    {
+      "name": "Mahrauni",
+      "code": "M60"
+    },
+    {
+      "name": "MAHRONI",
+      "code": "M61"
+    },
+    {
+      "name": "MAHUA",
+      "code": "M62"
+    },
+    {
+      "name": "Mahur",
+      "code": "M63"
+    },
+    {
+      "name": "MAHUVA",
+      "code": "M64"
+    },
+    {
+      "name": "MAHWA",
+      "code": "M65"
+    },
+    {
+      "name": "MAIHAR",
+      "code": "M66"
+    },
+    {
+      "name": "Mainaguri",
+      "code": "M67"
+    },
+    {
+      "name": "MAINPURI",
+      "code": "M68"
+    },
+    {
+      "name": "MAIRANGBAH",
+      "code": "M69"
+    },
+    {
+      "name": "Mairwa",
+      "code": "M70"
+    },
+    {
+      "name": "MAJALGAON",
+      "code": "M71"
+    },
+    {
+      "name": "MAJINAN",
+      "code": "M72"
+    },
+    {
+      "name": "MAJULI",
+      "code": "M73"
+    },
+    {
+      "name": "Makhdumpur",
+      "code": "M74"
+    },
+    {
+      "name": "MAKRONIYA",
+      "code": "M75"
+    },
+    {
+      "name": "MAKSUDANGARH",
+      "code": "M76"
+    },
+    {
+      "name": "MAKTHAL",
+      "code": "M77"
+    },
+    {
+      "name": "MALA KL",
+      "code": "M78"
+    },
+    {
+      "name": "MALANJKHAND",
+      "code": "M79"
+    },
+    {
+      "name": "MALANPUR",
+      "code": "MLP"
+    },
+    {
+      "name": "Malappuram",
+      "code": "M80"
+    },
+    {
+      "name": "MALASHIRAS",
+      "code": "M81"
+    },
+    {
+      "name": "Malavalli",
+      "code": "M82"
+    },
+    {
+      "name": "Malawi",
+      "code": "MW"
+    },
+    {
+      "name": "Malaysia",
+      "code": "MY"
+    },
+    {
+      "name": "Malbazar",
+      "code": "M83"
+    },
+    {
+      "name": "MALDA",
+      "code": "MLD"
+    },
+    {
+      "name": "Maldives",
+      "code": "MV"
+    },
+    {
+      "name": "Mayotte",
+      "code": "YT"
+    },
+    {
+      "name": "METTUR",
+      "code": "IEU"
+    },
+    {
+      "name": "Micronesia, Federated States of",
+      "code": "FM"
+    },
+    {
+      "name": "Nabadwip",
+      "code": "N00"
+    },
+    {
+      "name": "Nabarangapur",
+      "code": "N01"
+    },
+    {
+      "name": "NABAWADIP",
+      "code": "N02"
+    },
+    {
+      "name": "Nabha",
+      "code": "N03"
+    },
+    {
+      "name": "NADAPURAM",
+      "code": "N04"
+    },
+    {
+      "name": "Nadaun",
+      "code": "N05"
+    },
+    {
+      "name": "NADIA",
+      "code": "N06"
+    },
+    {
+      "name": "NADIAD",
+      "code": "NDD"
+    },
+    {
+      "name": "Nadoti",
+      "code": "N07"
+    },
+    {
+      "name": "NADUVIL",
+      "code": "N08"
+    },
+    {
+      "name": "NAGADEVAMPALAYAM",
+      "code": "N09"
+    },
+    {
+      "name": "Nagamangala",
+      "code": "N10"
+    },
+    {
+      "name": "NAGAON",
+      "code": "N11"
+    },
+    {
+      "name": "Nagapattinam",
+      "code": "N12"
+    },
+    {
+      "name": "NAGAPPATTINAM",
+      "code": "NPT"
+    },
+    {
+      "name": "Nagar",
+      "code": "N13"
+    },
+    {
+      "name": "Nagar Untari",
+      "code": "N14"
+    },
+    {
+      "name": "NAGARI",
+      "code": "N15"
+    },
+    {
+      "name": "NAGARKURNOOL",
+      "code": "N16"
+    },
+    {
+      "name": "NAGARPARA",
+      "code": "N17"
+    },
+    {
+      "name": "NAGASANDRA",
+      "code": "N18"
+    },
+    {
+      "name": "NAGAUR",
+      "code": "N19"
+    },
+    {
+      "name": "NAGDA",
+      "code": "N20"
+    },
+    {
+      "name": "NAGERCOIL",
+      "code": "NAG"
+    },
+    {
+      "name": "NAGINA",
+      "code": "N21"
+    },
+    {
+      "name": "NAGO THANE",
+      "code": "NGT"
+    },
+    {
+      "name": "NAGOD",
+      "code": "N22"
+    },
+    {
+      "name": "NAGOTHANA",
+      "code": "N23"
+    },
+    {
+      "name": "Nagothane",
+      "code": "N24"
+    },
+    {
+      "name": "NAGPUR",
+      "code": "NGP"
+    },
+    {
+      "name": "Nagrota",
+      "code": "N25"
+    },
+    {
+      "name": "NAGROTA BAGWAN",
+      "code": "N26"
+    },
+    {
+      "name": "NAGROTA SURIYAN",
+      "code": "N27"
+    },
+    {
+      "name": "Nagwain",
+      "code": "N28"
+    },
+    {
+      "name": "NAHAN",
+      "code": "NHN"
+    },
+    {
+      "name": "NAHARKATIA",
+      "code": "N29"
+    },
+    {
+      "name": "NAHARLAGUN",
+      "code": "N30"
+    },
+    {
+      "name": "NAIDUPETA",
+      "code": "N31"
+    },
+    {
+      "name": "NAIGAON",
+      "code": "N32"
+    },
+    {
+      "name": "NAIMISHARANYA",
+      "code": "N33"
+    },
+    {
+      "name": "NAINA DEVI",
+      "code": "N34"
+    },
+    {
+      "name": "NAINI",
+      "code": "N35"
+    },
+    {
+      "name": "Nainital",
+      "code": "N36"
+    },
+    {
+      "name": "NAINPUR",
+      "code": "N37"
+    },
+    {
+      "name": "Nainwa",
+      "code": "N38"
+    },
+    {
+      "name": "NAJIBABAD",
+      "code": "N39"
+    },
+    {
+      "name": "Nakerakal",
+      "code": "N40"
+    },
+    {
+      "name": "Nakhatrana",
+      "code": "N41"
+    },
+    {
+      "name": "NAKHTRANA",
+      "code": "N42"
+    },
+    {
+      "name": "NAKODAR",
+      "code": "NKD"
+    },
+    {
+      "name": "NALBARI",
+      "code": "N43"
+    },
+    {
+      "name": "Naldurg",
+      "code": "N44"
+    },
+    {
+      "name": "Nalgonda",
+      "code": "N45"
+    },
+    {
+      "name": "NALIYA",
+      "code": "N46"
+    },
+    {
+      "name": "Nalkheda",
+      "code": "N47"
+    },
+    {
+      "name": "NALLAJERLA",
+      "code": "N48"
+    },
+    {
+      "name": "NALLAMADA",
+      "code": "N49"
+    },
+    {
+      "name": "Namakkal",
+      "code": "N50"
+    },
+    {
+      "name": "NAMBIYUR",
+      "code": "N51"
+    },
+    {
+      "name": "NAMBOL",
+      "code": "N52"
+    },
+    {
+      "name": "Namibia",
+      "code": "NA"
+    },
+    {
+      "name": "NAMRUP",
+      "code": "N53"
+    },
+    {
+      "name": "NANDANI",
+      "code": "N54"
+    },
+    {
+      "name": "Nanded",
+      "code": "N55"
+    },
+    {
+      "name": "NANDGAON KHANDESHWAR",
+      "code": "N56"
+    },
+    {
+      "name": "NANDIGAMA",
+      "code": "N57"
+    },
+    {
+      "name": "NANDIGRAM WB",
+      "code": "N58"
+    },
+    {
+      "name": "NANDIKOTKUR",
+      "code": "N59"
+    },
+    {
+      "name": "NANDURA",
+      "code": "N60"
+    },
+    {
+      "name": "NANDURBAR",
+      "code": "N61"
+    },
+    {
+      "name": "Nandyal",
+      "code": "N62"
+    },
+    {
+      "name": "NANGAL CHAUDHARY",
+      "code": "N63"
+    },
+    {
+      "name": "NANGAVALLI",
+      "code": "N64"
+    },
+    {
+      "name": "NANJANAGUDU",
+      "code": "N65"
+    },
+    {
+      "name": "Nanoor",
+      "code": "N66"
+    },
+    {
+      "name": "Nanpara",
+      "code": "N67"
+    },
+    {
+      "name": "NANPUR",
+      "code": "N68"
+    },
+    {
+      "name": "Naraingarh",
+      "code": "N69"
+    },
+    {
+      "name": "Narasannapeta",
+      "code": "N70"
+    },
+    {
+      "name": "NARASARAOPET",
+      "code": "N71"
+    },
+    {
+      "name": "NARAVI",
+      "code": "N72"
+    },
+    {
+      "name": "Narayankhed",
+      "code": "N73"
+    },
+    {
+      "name": "NARAYANPET",
+      "code": "N74"
+    },
+    {
+      "name": "NARAYANPUR CG",
+      "code": "N75"
+    },
+    {
+      "name": "NARDANA",
+      "code": "N76"
+    },
+    {
+      "name": "NARGUND",
+      "code": "N77"
+    },
+    {
+      "name": "Narmetta",
+      "code": "N78"
+    },
+    {
+      "name": "NARNAUL",
+      "code": "N79"
+    },
+    {
+      "name": "NARPALA",
+      "code": "N80"
+    },
+    {
+      "name": "Narsampet",
+      "code": "N81"
+    },
+    {
+      "name": "NARSINGPUR",
+      "code": "N82"
+    },
+    {
+      "name": "NARSINGPURAN TN",
+      "code": "N83"
+    },
+    {
+      "name": "NARSIPATNAM",
+      "code": "N84"
+    },
+    {
+      "name": "NARSIPURAM",
+      "code": "N85"
+    },
+    {
+      "name": "NARWANA",
+      "code": "N86"
+    },
+    {
+      "name": "NASHIK",
+      "code": "N87"
+    },
+    {
+      "name": "NASIK",
+      "code": "NSK"
+    },
+    {
+      "name": "NASIRABAD",
+      "code": "N88"
+    },
+    {
+      "name": "NASRAPUR MH",
+      "code": "N89"
+    },
+    {
+      "name": "NASRULLAGUNJ",
+      "code": "N90"
+    },
+    {
+      "name": "NEVIS",
+      "code": "XN"
+    },
+    {
+      "name": "OBRA",
+      "code": "O01"
+    },
+    {
+      "name": "ODA",
+      "code": "ODA"
+    },
+    {
+      "name": "ODHAN",
+      "code": "O02"
+    },
+    {
+      "name": "OLLUR",
+      "code": "O03"
+    },
+    {
+      "name": "Oman",
+      "code": "OM"
+    },
+    {
+      "name": "OMERGA",
+      "code": "O04"
+    },
+    {
+      "name": "Onda",
+      "code": "O05"
+    },
+    {
+      "name": "ONGOLE",
+      "code": "ONG"
+    },
+    {
+      "name": "OOTY",
+      "code": "OTY"
+    },
+    {
+      "name": "ORAI",
+      "code": "ORA"
+    },
+    {
+      "name": "ORANG",
+      "code": "O06"
+    },
+    {
+      "name": "Oras",
+      "code": "O07"
+    },
+    {
+      "name": "ORATHANADU",
+      "code": "O08"
+    },
+    {
+      "name": "ORISSA",
+      "code": "ORI"
+    },
+    {
+      "name": "ORVAKAL",
+      "code": "O09"
+    },
+    {
+      "name": "OSIAN",
+      "code": "O10"
+    },
+    {
+      "name": "Osmanabad",
+      "code": "O11"
+    },
+    {
+      "name": "OTTAPALAM",
+      "code": "O12"
+    },
+    {
+      "name": "OTTAPIDARAM",
+      "code": "O13"
+    },
+    {
+      "name": "OTTHAKADAI",
+      "code": "O14"
+    },
+    {
+      "name": "OTUR",
+      "code": "O15"
+    },
+    {
+      "name": "OZHAR",
+      "code": "O16"
+    },
+    {
+      "name": "OZILI",
+      "code": "O17"
+    },
+    {
+      "name": "PACHOD",
+      "code": "P00"
+    },
+    {
+      "name": "PACHORE",
+      "code": "P01"
+    },
+    {
+      "name": "Pachperwa",
+      "code": "P02"
+    },
+    {
+      "name": "PADAMPUR",
+      "code": "P03"
+    },
+    {
+      "name": "PADANNA",
+      "code": "P04"
+    },
+    {
+      "name": "Paderu",
+      "code": "P05"
+    },
+    {
+      "name": "Padma",
+      "code": "P06"
+    },
+    {
+      "name": "Padmanabham",
+      "code": "P07"
+    },
+    {
+      "name": "PADOLI",
+      "code": "P08"
+    },
+    {
+      "name": "PADRA",
+      "code": "PDR"
+    },
+    {
+      "name": "Padrauna",
+      "code": "P09"
+    },
+    {
+      "name": "PADUBIDRI",
+      "code": "P10"
+    },
+    {
+      "name": "PAITHAN",
+      "code": "P11"
+    },
+    {
+      "name": "PAKALA",
+      "code": "P12"
+    },
+    {
+      "name": "Pakistan",
+      "code": "PK"
+    },
+    {
+      "name": "Pakribarwan",
+      "code": "P13"
+    },
+    {
+      "name": "PAKUAHAT",
+      "code": "P14"
+    },
+    {
+      "name": "Pakur",
+      "code": "P15"
+    },
+    {
+      "name": "PALA",
+      "code": "P16"
+    },
+    {
+      "name": "Palacode",
+      "code": "P17"
+    },
+    {
+      "name": "Palakkad",
+      "code": "P18"
+    },
+    {
+      "name": "PALAKOL",
+      "code": "P19"
+    },
+    {
+      "name": "PALAKONDA",
+      "code": "P20"
+    },
+    {
+      "name": "PALAKURTHY",
+      "code": "P21"
+    },
+    {
+      "name": "PALAM MH",
+      "code": "P22"
+    },
+    {
+      "name": "Palamaner",
+      "code": "P23"
+    },
+    {
+      "name": "PALAMPUR",
+      "code": "PLP"
+    },
+    {
+      "name": "PALANDUR",
+      "code": "P24"
+    },
+    {
+      "name": "Palani",
+      "code": "P25"
+    },
+    {
+      "name": "PALANPUR",
+      "code": "P26"
+    },
+    {
+      "name": "Palasa",
+      "code": "P27"
+    },
+    {
+      "name": "Palau",
+      "code": "PW"
+    },
+    {
+      "name": "PALDHI",
+      "code": "P28"
+    },
+    {
+      "name": "Palestinian Territory",
+      "code": "PS"
+    },
+    {
+      "name": "Palghar",
+      "code": "P29"
+    },
+    {
+      "name": "PALGHAT",
+      "code": "PLG"
+    },
+    {
+      "name": "PALI",
+      "code": "P30"
+    },
+    {
+      "name": "Pali Birsinghpur",
+      "code": "P31"
+    },
+    {
+      "name": "PALIA UP",
+      "code": "P32"
+    },
+    {
+      "name": "PALITANA",
+      "code": "P33"
+    },
+    {
+      "name": "PALLADAM",
+      "code": "P34"
+    },
+    {
+      "name": "Pallahara",
+      "code": "P35"
+    },
+    {
+      "name": "PALLIVASAL",
+      "code": "P36"
+    },
+    {
+      "name": "PALUS",
+      "code": "P37"
+    },
+    {
+      "name": "Palwal",
+      "code": "P38"
+    },
+    {
+      "name": "PAMARRU",
+      "code": "P39"
+    },
+    {
+      "name": "PAMIDI",
+      "code": "P40"
+    },
+    {
+      "name": "PAMPORE",
+      "code": "P41"
+    },
+    {
+      "name": "PAMUR",
+      "code": "P42"
+    },
+    {
+      "name": "PAN UMARIYA",
+      "code": "P43"
+    },
+    {
+      "name": "PANAGAR",
+      "code": "P44"
+    },
+    {
+      "name": "Panagarh",
+      "code": "P45"
+    },
+    {
+      "name": "Panama",
+      "code": "PA"
+    },
+    {
+      "name": "PANCHKULA",
+      "code": "P46"
+    },
+    {
+      "name": "Panchwad",
+      "code": "P47"
+    },
+    {
+      "name": "PANDALAM",
+      "code": "P48"
+    },
+    {
+      "name": "PANDALUR",
+      "code": "P49"
+    },
+    {
+      "name": "PANDAVESWAR  WB",
+      "code": "P50"
+    },
+    {
+      "name": "PANDEERANKAVU",
+      "code": "P51"
+    },
+    {
+      "name": "PANDHARPUR",
+      "code": "P52"
+    },
+    {
+      "name": "PANDHURNA",
+      "code": "P53"
+    },
+    {
+      "name": "PANDUA",
+      "code": "P54"
+    },
+    {
+      "name": "PANGRI",
+      "code": "P55"
+    },
+    {
+      "name": "Panipat",
+      "code": "P56"
+    },
+    {
+      "name": "PANIPAT",
+      "code": "PNP"
+    },
+    {
+      "name": "Panja",
+      "code": "P57"
+    },
+    {
+      "name": "PANJIM",
+      "code": "P58"
+    },
+    {
+      "name": "Panki",
+      "code": "P59"
+    },
+    {
+      "name": "Panna",
+      "code": "P60"
+    },
+    {
+      "name": "PANSEMAL",
+      "code": "P61"
+    },
+    {
+      "name": "PANSKURA",
+      "code": "P62"
+    },
+    {
+      "name": "PANTHALKUDI",
+      "code": "P63"
+    },
+    {
+      "name": "PANTNAGAR",
+      "code": "P64"
+    },
+    {
+      "name": "PANVEL",
+      "code": "P65"
+    },
+    {
+      "name": "Paonta Sahib",
+      "code": "P66"
+    },
+    {
+      "name": "PAOTA",
+      "code": "P67"
+    },
+    {
+      "name": "PAPANASAM",
+      "code": "P68"
+    },
+    {
+      "name": "Pappadahandi",
+      "code": "P69"
+    },
+    {
+      "name": "Papua New Guinea",
+      "code": "PG"
+    },
+    {
+      "name": "PARA",
+      "code": "P70"
+    },
+    {
+      "name": "PARADEEP",
+      "code": "P71"
+    },
+    {
+      "name": "Paradip",
+      "code": "P72"
+    },
+    {
+      "name": "Paraguay",
+      "code": "PY"
+    },
+    {
+      "name": "Parakkadavu",
+      "code": "P73"
+    },
+    {
+      "name": "PARAKKAI",
+      "code": "P74"
+    },
+    {
+      "name": "Paralakhemundi",
+      "code": "P75"
+    },
+    {
+      "name": "Paramakudi",
+      "code": "P76"
+    },
+    {
+      "name": "PARAMATHIVELUR",
+      "code": "P77"
+    },
+    {
+      "name": "PARANDA",
+      "code": "P78"
+    },
+    {
+      "name": "Paranpur",
+      "code": "P79"
+    },
+    {
+      "name": "PARAPPA",
+      "code": "P80"
+    },
+    {
+      "name": "Parasia",
+      "code": "P81"
+    },
+    {
+      "name": "PARASIYA",
+      "code": "P82"
+    },
+    {
+      "name": "PARASSALA",
+      "code": "P83"
+    },
+    {
+      "name": "PARASWADA",
+      "code": "P84"
+    },
+    {
+      "name": "Paratwada",
+      "code": "P85"
+    },
+    {
+      "name": "PARATWADDA",
+      "code": "P86"
+    },
+    {
+      "name": "PARAVUR",
+      "code": "P87"
+    },
+    {
+      "name": "PARBATSAR",
+      "code": "P88"
+    },
+    {
+      "name": "Qatar",
+      "code": "QA"
+    },
+    {
+      "name": "QUILON",
+      "code": "QUI"
+    },
+    {
+      "name": "RACHARLA GOLLAPALLY",
+      "code": "R00"
+    },
+    {
+      "name": "RADDE",
+      "code": "R01"
+    },
+    {
+      "name": "RADHANPUR",
+      "code": "R02"
+    },
+    {
+      "name": "RAEBARELI",
+      "code": "R03"
+    },
+    {
+      "name": "RAGHUNATHPUR",
+      "code": "R04"
+    },
+    {
+      "name": "Raghunathpur-BR",
+      "code": "R05"
+    },
+    {
+      "name": "RAHA",
+      "code": "R06"
+    },
+    {
+      "name": "RAHATA",
+      "code": "R07"
+    },
+    {
+      "name": "RAHATGARH",
+      "code": "R08"
+    },
+    {
+      "name": "Rahimatpur",
+      "code": "R09"
+    },
+    {
+      "name": "RAHURI",
+      "code": "R10"
+    },
+    {
+      "name": "RAI BAREILLY",
+      "code": "RBI"
+    },
+    {
+      "name": "RAIBAG",
+      "code": "R11"
+    },
+    {
+      "name": "Raichur",
+      "code": "R12"
+    },
+    {
+      "name": "Raichur City",
+      "code": "R13"
+    },
+    {
+      "name": "Raidighi",
+      "code": "R14"
+    },
+    {
+      "name": "RAIGAD",
+      "code": "RAI"
+    },
+    {
+      "name": "Raigarh",
+      "code": "R15"
+    },
+    {
+      "name": "Raighar",
+      "code": "R16"
+    },
+    {
+      "name": "Raigunj",
+      "code": "R17"
+    },
+    {
+      "name": "Raikia",
+      "code": "R18"
+    },
+    {
+      "name": "Raikot",
+      "code": "R19"
+    },
+    {
+      "name": "Raila",
+      "code": "R20"
+    },
+    {
+      "name": "RAILWAY KODUR",
+      "code": "R21"
+    },
+    {
+      "name": "RAIPUR",
+      "code": "RPR"
+    },
+    {
+      "name": "Raipur Karchulion",
+      "code": "R22"
+    },
+    {
+      "name": "RAIPUR MARWAR",
+      "code": "R23"
+    },
+    {
+      "name": "Raipur-RJ",
+      "code": "R25"
+    },
+    {
+      "name": "RaipurRJ",
+      "code": "R24"
+    },
+    {
+      "name": "Rairakhol",
+      "code": "R26"
+    },
+    {
+      "name": "Rairangpur",
+      "code": "R27"
+    },
+    {
+      "name": "RAISEN",
+      "code": "R28"
+    },
+    {
+      "name": "Raisinghnagar",
+      "code": "R29"
+    },
+    {
+      "name": "Raj Berhampur",
+      "code": "R30"
+    },
+    {
+      "name": "RAJA TALAB",
+      "code": "R31"
+    },
+    {
+      "name": "Rajahmundry",
+      "code": "R32"
+    },
+    {
+      "name": "RAJALDESAR",
+      "code": "R33"
+    },
+    {
+      "name": "Rajampet",
+      "code": "R34"
+    },
+    {
+      "name": "Rajampeta",
+      "code": "R35"
+    },
+    {
+      "name": "Rajamudy",
+      "code": "R36"
+    },
+    {
+      "name": "RAJANAGARAM",
+      "code": "R37"
+    },
+    {
+      "name": "RAJAPALAYAM",
+      "code": "RJP"
+    },
+    {
+      "name": "RAJAPUR",
+      "code": "R38"
+    },
+    {
+      "name": "RAJAPURAM",
+      "code": "R39"
+    },
+    {
+      "name": "RAJARHAT",
+      "code": "R40"
+    },
+    {
+      "name": "RAJASTHAN",
+      "code": "RAJ"
+    },
+    {
+      "name": "RAJATALAB HP",
+      "code": "R41"
+    },
+    {
+      "name": "Rajayyapeta",
+      "code": "R42"
+    },
+    {
+      "name": "Rajdhanwar",
+      "code": "R43"
+    },
+    {
+      "name": "RAJENDRAGRAM",
+      "code": "R44"
+    },
+    {
+      "name": "Rajesultanpur",
+      "code": "R45"
+    },
+    {
+      "name": "RAJGANGPUR",
+      "code": "R46"
+    },
+    {
+      "name": "Rajgarh",
+      "code": "R47"
+    },
+    {
+      "name": "RAJGARH RJ",
+      "code": "R48"
+    },
+    {
+      "name": "Rajgarh-HP",
+      "code": "R49"
+    },
+    {
+      "name": "Rajgarh-RJ",
+      "code": "R50"
+    },
+    {
+      "name": "Rajgir",
+      "code": "R51"
+    },
+    {
+      "name": "Rajgurunagar",
+      "code": "R52"
+    },
+    {
+      "name": "RAJKOT",
+      "code": "RJK"
+    },
+    {
+      "name": "Rajmahal",
+      "code": "R53"
+    },
+    {
+      "name": "RAJNAGAR OR",
+      "code": "R54"
+    },
+    {
+      "name": "RAJNAGAR WB",
+      "code": "R55"
+    },
+    {
+      "name": "RAJNANDGAON",
+      "code": "R56"
+    },
+    {
+      "name": "RAJOURI",
+      "code": "R57"
+    },
+    {
+      "name": "Rajpipla",
+      "code": "R58"
+    },
+    {
+      "name": "Rajpur",
+      "code": "R59"
+    },
+    {
+      "name": "Rajpur - CH",
+      "code": "R60"
+    },
+    {
+      "name": "RAJPURA",
+      "code": "R61"
+    },
+    {
+      "name": "Rajsamand",
+      "code": "R62"
+    },
+    {
+      "name": "RAJSUNAKHALA",
+      "code": "R63"
+    },
+    {
+      "name": "RAJURA",
+      "code": "R64"
+    },
+    {
+      "name": "RALEGAON",
+      "code": "R65"
+    },
+    {
+      "name": "Ramagundam",
+      "code": "R66"
+    },
+    {
+      "name": "Ramanagara",
+      "code": "R67"
+    },
+    {
+      "name": "Ramanathapura",
+      "code": "R68"
+    },
+    {
+      "name": "RAMANATHAPURAM",
+      "code": "R69"
+    },
+    {
+      "name": "Ramankary",
+      "code": "R70"
+    },
+    {
+      "name": "Ramanujganj",
+      "code": "R71"
+    },
+    {
+      "name": "RAMAYANPET",
+      "code": "R72"
+    },
+    {
+      "name": "Ramban",
+      "code": "R73"
+    },
+    {
+      "name": "RAMBI BAZAR",
+      "code": "R74"
+    },
+    {
+      "name": "RAMDURG",
+      "code": "R75"
+    },
+    {
+      "name": "RAMESHWARAM",
+      "code": "R76"
+    },
+    {
+      "name": "Rameswaram",
+      "code": "R77"
+    },
+    {
+      "name": "RAMGANJ MANDI",
+      "code": "R78"
+    },
+    {
+      "name": "RAMGARH",
+      "code": "R79"
+    },
+    {
+      "name": "RAMGARH RJ",
+      "code": "R80"
+    },
+    {
+      "name": "Ramgarh-RJ",
+      "code": "R81"
+    },
+    {
+      "name": "RAMNAGAR",
+      "code": "R82"
+    },
+    {
+      "name": "RAMNAGAR KAR",
+      "code": "R83"
+    },
+    {
+      "name": "RAMNAGAR UDHAMPUR",
+      "code": "R84"
+    },
+    {
+      "name": "Ramnagar-BR",
+      "code": "R85"
+    },
+    {
+      "name": "Ramnagar-JK",
+      "code": "R86"
+    },
+    {
+      "name": "Ramnagar-UP",
+      "code": "R87"
+    },
+    {
+      "name": "RAMPACHODAVARAM",
+      "code": "R88"
+    },
+    {
+      "name": "RAMPUR",
+      "code": "R89"
+    },
+    {
+      "name": "RAMPUR BAGHELAN MP",
+      "code": "R90"
+    },
+    {
+      "name": "RAMPUR HP",
+      "code": "R91"
+    },
+    {
+      "name": "RAMPUR MP",
+      "code": "R92"
+    },
+    {
+      "name": "RAMPURA",
+      "code": "R93"
+    },
+    {
+      "name": "S KOTA",
+      "code": "S00"
+    },
+    {
+      "name": "Sabalgarh",
+      "code": "S01"
+    },
+    {
+      "name": "SABROOM",
+      "code": "S02"
+    },
+    {
+      "name": "SADAK ARJUNI",
+      "code": "S03"
+    },
+    {
+      "name": "SADASHIV NAGAR",
+      "code": "S04"
+    },
+    {
+      "name": "Sadashivpet",
+      "code": "S05"
+    },
+    {
+      "name": "SADAT",
+      "code": "S06"
+    },
+    {
+      "name": "SADHAURA",
+      "code": "S07"
+    },
+    {
+      "name": "SADIYA",
+      "code": "S08"
+    },
+    {
+      "name": "Sagar",
+      "code": "S09"
+    },
+    {
+      "name": "Sagara",
+      "code": "S10"
+    },
+    {
+      "name": "SAGARCITY",
+      "code": "S11"
+    },
+    {
+      "name": "SAGARDIGHI",
+      "code": "S12"
+    },
+    {
+      "name": "SAGARPARA",
+      "code": "S13"
+    },
+    {
+      "name": "Sagwara",
+      "code": "S14"
+    },
+    {
+      "name": "SAHARANPUR",
+      "code": "SPR"
+    },
+    {
+      "name": "SAHARSA",
+      "code": "S15"
+    },
+    {
+      "name": "Sahaswan",
+      "code": "S16"
+    },
+    {
+      "name": "Sahatwar",
+      "code": "S17"
+    },
+    {
+      "name": "Sahebganj-BH",
+      "code": "S18"
+    },
+    {
+      "name": "Sahebpur Kamal",
+      "code": "S19"
+    },
+    {
+      "name": "SAHIBGANJ",
+      "code": "S20"
+    },
+    {
+      "name": "SAHPURA",
+      "code": "S21"
+    },
+    {
+      "name": "SAHSON",
+      "code": "S22"
+    },
+    {
+      "name": "SAHTAWAR",
+      "code": "S23"
+    },
+    {
+      "name": "SAIDAPUR TG",
+      "code": "S24"
+    },
+    {
+      "name": "SAIDAPURA SATARA",
+      "code": "S25"
+    },
+    {
+      "name": "SAIDPUR",
+      "code": "S26"
+    },
+    {
+      "name": "SAIKHEDA",
+      "code": "S27"
+    },
+    {
+      "name": "Saint Helena",
+      "code": "SH"
+    },
+    {
+      "name": "Saint Kitts and Nevis",
+      "code": "KN"
+    },
+    {
+      "name": "Saint Lucia",
+      "code": "LC"
+    },
+    {
+      "name": "Saint Pierre and Miquelon",
+      "code": "PM"
+    },
+    {
+      "name": "Saint Vincent and Grenadines",
+      "code": "VC"
+    },
+    {
+      "name": "Saint-Barthélemy",
+      "code": "BL"
+    },
+    {
+      "name": "Saint-Martin (French part)",
+      "code": "MF"
+    },
+    {
+      "name": "SAINTALA",
+      "code": "S28"
+    },
+    {
+      "name": "Saki Charang",
+      "code": "S29"
+    },
+    {
+      "name": "SAKLESHPUR",
+      "code": "S30"
+    },
+    {
+      "name": "SAKOLI",
+      "code": "S31"
+    },
+    {
+      "name": "SAKRI",
+      "code": "S32"
+    },
+    {
+      "name": "SAKTI",
+      "code": "S33"
+    },
+    {
+      "name": "Salahalli",
+      "code": "S34"
+    },
+    {
+      "name": "SALAR",
+      "code": "S35"
+    },
+    {
+      "name": "SALASAR",
+      "code": "S36"
+    },
+    {
+      "name": "SALEM",
+      "code": "SAL"
+    },
+    {
+      "name": "SALEMPUR",
+      "code": "S37"
+    },
+    {
+      "name": "SALEPUR OR",
+      "code": "S38"
+    },
+    {
+      "name": "Salipur",
+      "code": "S39"
+    },
+    {
+      "name": "SALON",
+      "code": "S40"
+    },
+    {
+      "name": "Salumbar",
+      "code": "S41"
+    },
+    {
+      "name": "SALUMBER",
+      "code": "S42"
+    },
+    {
+      "name": "SALUR",
+      "code": "S43"
+    },
+    {
+      "name": "SAMALKHA",
+      "code": "S44"
+    },
+    {
+      "name": "SAMALKOT",
+      "code": "S45"
+    },
+    {
+      "name": "Samarlakota",
+      "code": "S46"
+    },
+    {
+      "name": "Samastipur",
+      "code": "S47"
+    },
+    {
+      "name": "SAMBA",
+      "code": "S48"
+    },
+    {
+      "name": "SAMBALPUR",
+      "code": "SAM"
+    },
+    {
+      "name": "Sambhal",
+      "code": "S49"
+    },
+    {
+      "name": "SAMDARI",
+      "code": "S50"
+    },
+    {
+      "name": "SAMEJA",
+      "code": "S51"
+    },
+    {
+      "name": "Sami",
+      "code": "S52"
+    },
+    {
+      "name": "SAMIYARMADAM",
+      "code": "S53"
+    },
+    {
+      "name": "Samoa",
+      "code": "WS"
+    },
+    {
+      "name": "SAMPLA",
+      "code": "S54"
+    },
+    {
+      "name": "SAMRANIA",
+      "code": "S55"
+    },
+    {
+      "name": "San Marino",
+      "code": "SM"
+    },
+    {
+      "name": "SANAND",
+      "code": "S56"
+    },
+    {
+      "name": "Sanchore",
+      "code": "S57"
+    },
+    {
+      "name": "Sandesh",
+      "code": "S58"
+    },
+    {
+      "name": "Sandhol",
+      "code": "S59"
+    },
+    {
+      "name": "SANDILA",
+      "code": "S60"
+    },
+    {
+      "name": "Sandur",
+      "code": "S61"
+    },
+    {
+      "name": "SANGAMNER",
+      "code": "S62"
+    },
+    {
+      "name": "Sangareddy",
+      "code": "S63"
+    },
+    {
+      "name": "SANGARIA",
+      "code": "S64"
+    },
+    {
+      "name": "SANGLI",
+      "code": "SAG"
+    },
+    {
+      "name": "SANGMESHWAR",
+      "code": "S65"
+    },
+    {
+      "name": "Sangrampur",
+      "code": "S66"
+    },
+    {
+      "name": "Sangrur",
+      "code": "S67"
+    },
+    {
+      "name": "SANJAULI",
+      "code": "S68"
+    },
+    {
+      "name": "SANKAGIRI",
+      "code": "S69"
+    },
+    {
+      "name": "Sankarankovil",
+      "code": "S70"
+    },
+    {
+      "name": "Sankarapuram",
+      "code": "S71"
+    },
+    {
+      "name": "Sankerko",
+      "code": "S72"
+    },
+    {
+      "name": "SANKESHWAR",
+      "code": "S73"
+    },
+    {
+      "name": "SANKHAVARAM",
+      "code": "S74"
+    },
+    {
+      "name": "SANTHEBENNUR",
+      "code": "S75"
+    },
+    {
+      "name": "Santrampur",
+      "code": "S76"
+    },
+    {
+      "name": "SANWER",
+      "code": "S77"
+    },
+    {
+      "name": "Sao Tome and Principe",
+      "code": "ST"
+    },
+    {
+      "name": "SAOLI",
+      "code": "S78"
+    },
+    {
+      "name": "SAONER",
+      "code": "S79"
+    },
+    {
+      "name": "SAPATGRAM",
+      "code": "S80"
+    },
+    {
+      "name": "SAPEKHATI",
+      "code": "S81"
+    },
+    {
+      "name": "SAPHALE",
+      "code": "S82"
+    },
+    {
+      "name": "Sarada",
+      "code": "S83"
+    },
+    {
+      "name": "SARAI",
+      "code": "S84"
+    },
+    {
+      "name": "SILCHAR",
+      "code": "IXS"
+    },
+    {
+      "name": "SOMALILAND, REP OF (NORTH SOMA",
+      "code": "XS"
+    },
+    {
+      "name": "South Africa",
+      "code": "ZA"
+    },
+    {
+      "name": "Spain",
+      "code": "ES"
+    },
+    {
+      "name": "Sri Lanka",
+      "code": "LK"
+    },
+    {
+      "name": "Sri Lanka(Colombo)",
+      "code": "LKL"
+    },
+    {
+      "name": "ST. BARTHELEMY",
+      "code": "XY"
+    },
+    {
+      "name": "ST. EUSTATIUS",
+      "code": "XE"
+    },
+    {
+      "name": "ST. MAARTEN",
+      "code": "XM"
+    },
+    {
+      "name": "Tadepalligudem",
+      "code": "T00"
+    },
+    {
+      "name": "TADIKONDA",
+      "code": "T01"
+    },
+    {
+      "name": "TADIPATRI",
+      "code": "T02"
+    },
+    {
+      "name": "Tadoor",
+      "code": "T03"
+    },
+    {
+      "name": "Tadvai",
+      "code": "T04"
+    },
+    {
+      "name": "Tahliwal",
+      "code": "T05"
+    },
+    {
+      "name": "Taiwan, Republic of China",
+      "code": "TW"
+    },
+    {
+      "name": "Tajikistan",
+      "code": "TJ"
+    },
+    {
+      "name": "TAJPUR",
+      "code": "T06"
+    },
+    {
+      "name": "Tajpur Dehma",
+      "code": "T07"
+    },
+    {
+      "name": "TAKHATGARH",
+      "code": "T08"
+    },
+    {
+      "name": "TAKHATPUR",
+      "code": "T09"
+    },
+    {
+      "name": "Talaja",
+      "code": "T10"
+    },
+    {
+      "name": "TALALA",
+      "code": "T11"
+    },
+    {
+      "name": "Talasari",
+      "code": "T12"
+    },
+    {
+      "name": "Talbahat",
+      "code": "T13"
+    },
+    {
+      "name": "TALBEHAT",
+      "code": "T14"
+    },
+    {
+      "name": "TALCHER",
+      "code": "T15"
+    },
+    {
+      "name": "TALEGAON DHIGE",
+      "code": "T16"
+    },
+    {
+      "name": "TALEN",
+      "code": "T17"
+    },
+    {
+      "name": "TALERE",
+      "code": "T18"
+    },
+    {
+      "name": "Talikoti",
+      "code": "T19"
+    },
+    {
+      "name": "TALLADA",
+      "code": "T20"
+    },
+    {
+      "name": "Talwandi Sabo",
+      "code": "T21"
+    },
+    {
+      "name": "TALWARA",
+      "code": "T22"
+    },
+    {
+      "name": "Tamar",
+      "code": "T23"
+    },
+    {
+      "name": "TAMILNADU",
+      "code": "TMN"
+    },
+    {
+      "name": "Tamluk",
+      "code": "T24"
+    },
+    {
+      "name": "TAMULPUR",
+      "code": "T25"
+    },
+    {
+      "name": "Tanakpur",
+      "code": "T26"
+    },
+    {
+      "name": "TANDA",
+      "code": "T27"
+    },
+    {
+      "name": "Tandur",
+      "code": "T28"
+    },
+    {
+      "name": "TANGUTUR",
+      "code": "T29"
+    },
+    {
+      "name": "Tanuku",
+      "code": "T30"
+    },
+    {
+      "name": "Tanzania, United Republic of",
+      "code": "TZ"
+    },
+    {
+      "name": "TAPUKARA",
+      "code": "T31"
+    },
+    {
+      "name": "TARAGARH",
+      "code": "T32"
+    },
+    {
+      "name": "Taranagar",
+      "code": "T33"
+    },
+    {
+      "name": "Tarapur",
+      "code": "T34"
+    },
+    {
+      "name": "TARIKERE",
+      "code": "T35"
+    },
+    {
+      "name": "Tarn Taran Sahib",
+      "code": "T36"
+    },
+    {
+      "name": "TASGAON",
+      "code": "T37"
+    },
+    {
+      "name": "TAVAREKERE",
+      "code": "T38"
+    },
+    {
+      "name": "Tehri",
+      "code": "T39"
+    },
+    {
+      "name": "Tekari",
+      "code": "T40"
+    },
+    {
+      "name": "TEKKALI",
+      "code": "T41"
+    },
+    {
+      "name": "TEKMAL",
+      "code": "T42"
+    },
+    {
+      "name": "Telegaon",
+      "code": "T43"
+    },
+    {
+      "name": "TELHARA",
+      "code": "T44"
+    },
+    {
+      "name": "TELIAMURA",
+      "code": "T45"
+    },
+    {
+      "name": "Telkoi",
+      "code": "T46"
+    },
+    {
+      "name": "TELLICHERY",
+      "code": "TEL"
+    },
+    {
+      "name": "TEMBURNI",
+      "code": "T47"
+    },
+    {
+      "name": "Tenali",
+      "code": "T48"
+    },
+    {
+      "name": "TENDUKHEDA",
+      "code": "T49"
+    },
+    {
+      "name": "Tengakhat",
+      "code": "T50"
+    },
+    {
+      "name": "TENKASI",
+      "code": "T51"
+    },
+    {
+      "name": "TEOK",
+      "code": "T52"
+    },
+    {
+      "name": "TERKHEDA",
+      "code": "T53"
+    },
+    {
+      "name": "TEZPUR",
+      "code": "TEZ"
+    },
+    {
+      "name": "TEZU",
+      "code": "T54"
+    },
+    {
+      "name": "Thailand",
+      "code": "TH"
+    },
+    {
+      "name": "THAKURDWARA",
+      "code": "T55"
+    },
+    {
+      "name": "Thakurganj",
+      "code": "T56"
+    },
+    {
+      "name": "Thakurmunda",
+      "code": "T57"
+    },
+    {
+      "name": "THALAIVASAL",
+      "code": "T58"
+    },
+    {
+      "name": "THALANATHAM",
+      "code": "T59"
+    },
+    {
+      "name": "THAMARASSERY",
+      "code": "T60"
+    },
+    {
+      "name": "Thanabhawan",
+      "code": "T61"
+    },
+    {
+      "name": "THANDLA",
+      "code": "T62"
+    },
+    {
+      "name": "THANE",
+      "code": "THN"
+    },
+    {
+      "name": "THANJAVUR",
+      "code": "THJ"
+    },
+    {
+      "name": "Tharad",
+      "code": "T63"
+    },
+    {
+      "name": "Theni",
+      "code": "T64"
+    },
+    {
+      "name": "THEOG",
+      "code": "T65"
+    },
+    {
+      "name": "THIKRI",
+      "code": "T66"
+    },
+    {
+      "name": "Thirthahalli",
+      "code": "T67"
+    },
+    {
+      "name": "THIRUCHENDUR",
+      "code": "T68"
+    },
+    {
+      "name": "Thirukkattupalli",
+      "code": "T69"
+    },
+    {
+      "name": "THIRUKOVILUR",
+      "code": "T70"
+    },
+    {
+      "name": "Thirumalagiri",
+      "code": "T71"
+    },
+    {
+      "name": "THIRUPARANKUNDRAM",
+      "code": "T72"
+    },
+    {
+      "name": "THIRUPPATHUR",
+      "code": "T73"
+    },
+    {
+      "name": "THIRUPPUVANAM",
+      "code": "T74"
+    },
+    {
+      "name": "Thiruthuraipoondi",
+      "code": "T75"
+    },
+    {
+      "name": "Thiruvadanai",
+      "code": "T76"
+    },
+    {
+      "name": "Thiruvananthapuram",
+      "code": "T77"
+    },
+    {
+      "name": "Thiruvarur",
+      "code": "T78"
+    },
+    {
+      "name": "THIRUVOTTIYUR",
+      "code": "TVT"
+    },
+    {
+      "name": "Thisayanvilai",
+      "code": "T79"
+    },
+    {
+      "name": "THODIYOOR",
+      "code": "T80"
+    },
+    {
+      "name": "THODUPUZHA",
+      "code": "T81"
+    },
+    {
+      "name": "Thondamuthur",
+      "code": "T82"
+    },
+    {
+      "name": "THOPPUMPADI",
+      "code": "T83"
+    },
+    {
+      "name": "Thoppur",
+      "code": "T84"
+    },
+    {
+      "name": "THOUBAL",
+      "code": "T85"
+    },
+    {
+      "name": "Thuckalay",
+      "code": "T86"
+    },
+    {
+      "name": "Thunag",
+      "code": "T87"
+    },
+    {
+      "name": "UCHCHHAL",
+      "code": "U01"
+    },
+    {
+      "name": "UDAIPUR",
+      "code": "UDI"
+    },
+    {
+      "name": "UDAIPURA",
+      "code": "U02"
+    },
+    {
+      "name": "UDAIPURWATI",
+      "code": "U03"
+    },
+    {
+      "name": "Udakishanganj",
+      "code": "U04"
+    },
+    {
+      "name": "UDALA ORISSA",
+      "code": "U05"
+    },
+    {
+      "name": "UDALGURI",
+      "code": "U06"
+    },
+    {
+      "name": "UDARBOND",
+      "code": "U07"
+    },
+    {
+      "name": "Udayagiri",
+      "code": "U08"
+    },
+    {
+      "name": "UDGIR",
+      "code": "U09"
+    },
+    {
+      "name": "Udhampur",
+      "code": "U10"
+    },
+    {
+      "name": "Udumalaipettai",
+      "code": "U11"
+    },
+    {
+      "name": "UDUMALPET",
+      "code": "U12"
+    },
+    {
+      "name": "UDUMELPET",
+      "code": "UDL"
+    },
+    {
+      "name": "UDUPI",
+      "code": "UDP"
+    },
+    {
+      "name": "Uganda",
+      "code": "UG"
+    },
+    {
+      "name": "Ugar",
+      "code": "U13"
+    },
+    {
+      "name": "UJJAIN",
+      "code": "UJJ"
+    },
+    {
+      "name": "Ukhunda",
+      "code": "U14"
+    },
+    {
+      "name": "Ukraine",
+      "code": "UA"
+    },
+    {
+      "name": "ULAGANAHALLI",
+      "code": "U15"
+    },
+    {
+      "name": "Ullal",
+      "code": "U16"
+    },
+    {
+      "name": "ULLALA",
+      "code": "U17"
+    },
+    {
+      "name": "ULLIYERI",
+      "code": "U18"
+    },
+    {
+      "name": "Uluberia",
+      "code": "U19"
+    },
+    {
+      "name": "Ulundurpet",
+      "code": "U20"
+    },
+    {
+      "name": "ULUNDURPETTAI",
+      "code": "U21"
+    },
+    {
+      "name": "UMARIA",
+      "code": "U22"
+    },
+    {
+      "name": "UMARKHED",
+      "code": "U23"
+    },
+    {
+      "name": "UMBERGAON",
+      "code": "U24"
+    },
+    {
+      "name": "Umerkote",
+      "code": "U25"
+    },
+    {
+      "name": "UMRED",
+      "code": "U26"
+    },
+    {
+      "name": "Umreth",
+      "code": "U27"
+    },
+    {
+      "name": "UMRI",
+      "code": "U28"
+    },
+    {
+      "name": "UNA",
+      "code": "U29"
+    },
+    {
+      "name": "UNAGJ",
+      "code": "U30"
+    },
+    {
+      "name": "Unchahar",
+      "code": "U31"
+    },
+    {
+      "name": "United Arab Emirates",
+      "code": "AE"
+    },
+    {
+      "name": "United Kingdom",
+      "code": "GB"
+    },
+    {
+      "name": "United States of America",
+      "code": "US"
+    },
+    {
+      "name": "UNJHA",
+      "code": "UNJ"
+    },
+    {
+      "name": "UNNAO",
+      "code": "UNN"
+    },
+    {
+      "name": "Upleta",
+      "code": "U32"
+    },
+    {
+      "name": "UPPAL",
+      "code": "U33"
+    },
+    {
+      "name": "UPPINANGADY",
+      "code": "U34"
+    },
+    {
+      "name": "Uruguay",
+      "code": "UY"
+    },
+    {
+      "name": "URVAKONDA",
+      "code": "U35"
+    },
+    {
+      "name": "US Minor Outlying Islands",
+      "code": "UM"
+    },
+    {
+      "name": "Usilampatti",
+      "code": "U36"
+    },
+    {
+      "name": "UTAIPATAN",
+      "code": "U37"
+    },
+    {
+      "name": "UTHANGARAI",
+      "code": "U38"
+    },
+    {
+      "name": "UTHIRAMERUR",
+      "code": "U39"
+    },
+    {
+      "name": "UTNOOR",
+      "code": "U40"
+    },
+    {
+      "name": "Utraula",
+      "code": "U41"
+    },
+    {
+      "name": "UTTAR PRADESH",
+      "code": "U.P"
+    },
+    {
+      "name": "Uttarkashi",
+      "code": "U42"
+    },
+    {
+      "name": "UTTARKHAND",
+      "code": "UTK"
+    },
+    {
+      "name": "UTTUR",
+      "code": "U43"
+    },
+    {
+      "name": "Uzbekistan",
+      "code": "UZ"
+    },
+    {
+      "name": "VADAKARA",
+      "code": "V00"
+    },
+    {
+      "name": "Vadakkenchery",
+      "code": "V01"
+    },
+    {
+      "name": "Vadipatti",
+      "code": "V02"
+    },
+    {
+      "name": "VADNAGAR",
+      "code": "V03"
+    },
+    {
+      "name": "VADODARA",
+      "code": "VAD"
+    },
+    {
+      "name": "VADUJ",
+      "code": "V04"
+    },
+    {
+      "name": "Vaduvanchal",
+      "code": "V05"
+    },
+    {
+      "name": "VAIJAPUR",
+      "code": "V06"
+    },
+    {
+      "name": "Vaikom",
+      "code": "V07"
+    },
+    {
+      "name": "VALAKOM",
+      "code": "V08"
+    },
+    {
+      "name": "VALANCHERY",
+      "code": "V09"
+    },
+    {
+      "name": "VALAPPADI",
+      "code": "V10"
+    },
+    {
+      "name": "VALIYANNUR",
+      "code": "V11"
+    },
+    {
+      "name": "Vallioor",
+      "code": "V12"
+    },
+    {
+      "name": "VALLIYOOR",
+      "code": "V13"
+    },
+    {
+      "name": "Valmiki Nagar",
+      "code": "V14"
+    },
+    {
+      "name": "Valparai",
+      "code": "V15"
+    },
+    {
+      "name": "VALSAD",
+      "code": "VAL"
+    },
+    {
+      "name": "Vandavasi",
+      "code": "V16"
+    },
+    {
+      "name": "Vansda",
+      "code": "V17"
+    },
+    {
+      "name": "Vanuatu",
+      "code": "VU"
+    },
+    {
+      "name": "VAPI",
+      "code": "VAP"
+    },
+    {
+      "name": "VARANASI",
+      "code": "VRS"
+    },
+    {
+      "name": "VASAI",
+      "code": "VAS"
+    },
+    {
+      "name": "VATADARA",
+      "code": "V18"
+    },
+    {
+      "name": "VEDASANTHUR",
+      "code": "V19"
+    },
+    {
+      "name": "Veenavanka",
+      "code": "V20"
+    },
+    {
+      "name": "VEETA",
+      "code": "V21"
+    },
+    {
+      "name": "VELAPUR",
+      "code": "V22"
+    },
+    {
+      "name": "VELDURTHI",
+      "code": "V23"
+    },
+    {
+      "name": "VELLAKOVIL",
+      "code": "V24"
+    },
+    {
+      "name": "VELLANAD",
+      "code": "V25"
+    },
+    {
+      "name": "VELLIMADUKUNNU",
+      "code": "V26"
+    },
+    {
+      "name": "VELLORE",
+      "code": "VEL"
+    },
+    {
+      "name": "Vempalli",
+      "code": "V27"
+    },
+    {
+      "name": "Venezuela",
+      "code": "VE"
+    },
+    {
+      "name": "VENGURLA",
+      "code": "V28"
+    },
+    {
+      "name": "Venjaramoodu",
+      "code": "V29"
+    },
+    {
+      "name": "VENKATAGIRI",
+      "code": "V30"
+    },
+    {
+      "name": "Venkatagirikota",
+      "code": "V31"
+    },
+    {
+      "name": "VENUR",
+      "code": "V32"
+    },
+    {
+      "name": "VERAVAL",
+      "code": "VRL"
+    },
+    {
+      "name": "VERKA",
+      "code": "VRK"
+    },
+    {
+      "name": "VETAPALEM",
+      "code": "V33"
+    },
+    {
+      "name": "VIDISHA",
+      "code": "VDH"
+    },
+    {
+      "name": "VIDYA NAGAR",
+      "code": "VID"
+    },
+    {
+      "name": "Viet Nam",
+      "code": "VN"
+    },
+    {
+      "name": "VIJAPUR",
+      "code": "V34"
+    },
+    {
+      "name": "VIJAYAMANGALAM",
+      "code": "V35"
+    },
+    {
+      "name": "VIJAYAPURA",
+      "code": "V36"
+    },
+    {
+      "name": "VIJAYAWADA",
+      "code": "VIJ"
+    },
+    {
+      "name": "VIJAYPUR",
+      "code": "V37"
+    },
+    {
+      "name": "Vikarabad",
+      "code": "V38"
+    },
+    {
+      "name": "VILATHIKULAM",
+      "code": "V39"
+    },
+    {
+      "name": "VILLUPURAM",
+      "code": "V40"
+    },
+    {
+      "name": "VINJAMUR",
+      "code": "V41"
+    },
+    {
+      "name": "VINUKONDA",
+      "code": "V42"
+    },
+    {
+      "name": "VIRAJPET",
+      "code": "VJP"
+    },
+    {
+      "name": "VIRAMGAM",
+      "code": "V43"
+    },
+    {
+      "name": "VIRAR",
+      "code": "V44"
+    },
+    {
+      "name": "VIRATNAGAR",
+      "code": "V45"
+    },
+    {
+      "name": "Virgin Islands, US",
+      "code": "VI"
+    },
+    {
+      "name": "VIRUDHACHALAM",
+      "code": "V46"
+    },
+    {
+      "name": "Virudhunagar",
+      "code": "V47"
+    },
+    {
+      "name": "VISAKHAPATNAM",
+      "code": "V48"
+    },
+    {
+      "name": "VISHAKAPATNAM",
+      "code": "VZG"
+    },
+    {
+      "name": "VISHAVADAR",
+      "code": "V49"
+    },
+    {
+      "name": "VISHWANATHGANJ",
+      "code": "V50"
+    },
+    {
+      "name": "Vita",
+      "code": "V51"
+    },
+    {
+      "name": "VITLA",
+      "code": "V52"
+    },
+    {
+      "name": "VIZHINJAM",
+      "code": "V53"
+    },
+    {
+      "name": "Vizianagaram",
+      "code": "V54"
+    },
+    {
+      "name": "VONITIMITTA",
+      "code": "V55"
+    },
+    {
+      "name": "Vrindavan",
+      "code": "V56"
+    },
+    {
+      "name": "VRINDAWAN",
+      "code": "V57"
+    },
+    {
+      "name": "VUYYUR",
+      "code": "V58"
+    },
+    {
+      "name": "Vyara",
+      "code": "V59"
+    },
+    {
+      "name": "VYARA GUJ",
+      "code": "V60"
+    },
+    {
+      "name": "VYPIN",
+      "code": "V61"
+    },
+    {
+      "name": "WADA  MH",
+      "code": "W00"
+    },
+    {
+      "name": "WADAKKANCHERY",
+      "code": "W01"
+    },
+    {
+      "name": "WADDADI",
+      "code": "W02"
+    },
+    {
+      "name": "WADKI",
+      "code": "W03"
+    },
+    {
+      "name": "Wadrafnagar",
+      "code": "W04"
+    },
+    {
+      "name": "WADSA",
+      "code": "W05"
+    },
+    {
+      "name": "WADWANI",
+      "code": "W06"
+    },
+    {
+      "name": "WAI",
+      "code": "W07"
+    },
+    {
+      "name": "WAIDHAN",
+      "code": "W08"
+    },
+    {
+      "name": "WALGAON",
+      "code": "W09"
+    },
+    {
+      "name": "Wallis and Futuna Islands",
+      "code": "WF"
+    },
+    {
+      "name": "Waluj",
+      "code": "W10"
+    },
+    {
+      "name": "WALWA",
+      "code": "W11"
+    },
+    {
+      "name": "WANI",
+      "code": "W12"
+    },
+    {
+      "name": "WANKANER",
+      "code": "W13"
+    },
+    {
+      "name": "WARANA KODOLI",
+      "code": "W14"
+    },
+    {
+      "name": "WARANGAL",
+      "code": "W15"
+    },
+    {
+      "name": "WARASEONI",
+      "code": "W16"
+    },
+    {
+      "name": "WARDHA",
+      "code": "VAR"
+    },
+    {
+      "name": "WARORA",
+      "code": "W17"
+    },
+    {
+      "name": "Warud",
+      "code": "W18"
+    },
+    {
+      "name": "WARWAND",
+      "code": "W19"
+    },
+    {
+      "name": "Washim",
+      "code": "W20"
+    },
+    {
+      "name": "Wazirganj",
+      "code": "W21"
+    },
+    {
+      "name": "WAZIRPUR",
+      "code": "W22"
+    },
+    {
+      "name": "Weir",
+      "code": "W23"
+    },
+    {
+      "name": "WEST BENGAL",
+      "code": "WST"
+    },
+    {
+      "name": "Western Sahara",
+      "code": "EH"
+    },
+    {
+      "name": "WILLIAM NAGAR",
+      "code": "W24"
+    },
+    {
+      "name": "WOKHA",
+      "code": "W25"
+    },
+    {
+      "name": "Yacharam",
+      "code": "Y00"
+    },
+    {
+      "name": "YADGIR",
+      "code": "Y01"
+    },
+    {
+      "name": "Yamuna Nagar",
+      "code": "Y02"
+    },
+    {
+      "name": "YAMUNANAGAR",
+      "code": "YMU"
+    },
+    {
+      "name": "YANAM",
+      "code": "Y03"
+    },
+    {
+      "name": "Yaragatti",
+      "code": "Y04"
+    },
+    {
+      "name": "Yavatmal",
+      "code": "Y05"
+    },
+    {
+      "name": "YAWAL",
+      "code": "Y06"
+    },
+    {
+      "name": "Yazali",
+      "code": "Y07"
+    },
+    {
+      "name": "YELAHANKA",
+      "code": "YEL"
+    },
+    {
+      "name": "YELBURAGA",
+      "code": "Y08"
+    },
+    {
+      "name": "YELESWARAM",
+      "code": "Y09"
+    },
+    {
+      "name": "Yellamanchili",
+      "code": "Y10"
+    },
+    {
+      "name": "YELLAMANCHILLI",
+      "code": "Y11"
+    },
+    {
+      "name": "YELLANDU",
+      "code": "Y12"
+    },
+    {
+      "name": "Yellapur",
+      "code": "Y13"
+    },
+    {
+      "name": "YELLAREDDY",
+      "code": "Y14"
+    },
+    {
+      "name": "YELLAREDDYPET",
+      "code": "Y15"
+    },
+    {
+      "name": "Yemen",
+      "code": "YE"
+    },
+    {
+      "name": "Yemmiganur",
+      "code": "Y16"
+    },
+    {
+      "name": "Yeola",
+      "code": "Y17"
+    },
+    {
+      "name": "YERRAGONDAPALEM",
+      "code": "Y18"
+    },
+    {
+      "name": "Yerrupalem",
+      "code": "Y19"
+    },
+    {
+      "name": "ZAHEERABAD",
+      "code": "Z00"
+    },
+    {
+      "name": "Zahirabad",
+      "code": "Z01"
+    },
+    {
+      "name": "ZAMANIYA",
+      "code": "Z02"
+    },
+    {
+      "name": "Zambia",
+      "code": "ZM"
+    },
+    {
+      "name": "ZANGIPUR",
+      "code": "Z03"
+    },
+    {
+      "name": "Zimbabwe",
+      "code": "ZW"
+    },
+    {
+      "name": "ZIRA",
+      "code": "Z04"
+    },
+    {
+      "name": "Zirakpur",
+      "code": "Z05"
+    },
+    {
+      "name": "ZIRAPUR",
+      "code": "Z06"
+    },
+    {
+      "name": "Ziro",
+      "code": "Z07"
+    },
+    {
+      "name": "ZUNHEBOTO",
+      "code": "Z08"
+    }
+  ],
+  "vendor": [
+    {
+      "name": "DHL",
+      "code": "DHL"
+    },
+    {
+      "name": "DHL CUSTOMER",
+      "code": "DHLC"
+    },
+    {
+      "name": "DHL MEDICINE",
+      "code": "DHLM"
+    },
+    {
+      "name": "DHL(5-20kg)",
+      "code": "DHLU"
+    },
+    {
+      "name": "DHL2",
+      "code": "DHL2"
+    },
+    {
+      "name": "DPD UK",
+      "code": "DPD"
+    },
+    {
+      "name": "DTDC AU",
+      "code": "DTAU"
+    },
+    {
+      "name": "DTDC NZ",
+      "code": "DTNZ"
+    },
+    {
+      "name": "Emirates",
+      "code": "EC"
+    },
+    {
+      "name": "SELF DPD BOMBAY",
+      "code": "SDB"
+    },
+    {
+      "name": "UPS",
+      "code": "UPS"
+    },
+    {
+      "name": "WORLD FIRST",
+      "code": "WF"
+    },
+    {
+      "name": "WORLDFIRST DTDC",
+      "code": "WFD"
+    }
+  ],
+  "product": [
+    {
+      "name": "INTL DOCUMENT",
+      "code": "DOX"
+    },
+    {
+      "name": "INTL SAMPLE",
+      "code": "SPX"
+    }
+  ],
+  "service": [
+    {
+      "name": "ANZ",
+      "code": "ANZ",
+      "vendorCode": "DTAU"
+    },
+    {
+      "name": "ARAMEX",
+      "code": "ARAMEX",
+      "vendorCode": "DTAU"
+    },
+    {
+      "name": "Aramex ATL",
+      "code": "Aramex ATL",
+      "vendorCode": "DTNZ"
+    },
+    {
+      "name": "AUSTRALIA POST",
+      "code": "AUSTRALIA POST",
+      "vendorCode": "DTAU"
+    },
+    {
+      "name": "CITYLINK",
+      "code": "CITYLINK",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Citylink food",
+      "code": "Citylink food",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Citylink non food",
+      "code": "Citylink non food",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Company to Company Only",
+      "code": "Company to Company Only",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "COURIERS PLEASE",
+      "code": "COURIERS PLEASE",
+      "vendorCode": "DTAU"
+    },
+    {
+      "name": "DDU",
+      "code": "DDU",
+      "vendorCode": "WFD"
+    },
+    {
+      "name": "DOCUMENT",
+      "code": "DOCUMENT",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "DPD NEXT DAY",
+      "code": "DPD NEXT DAY",
+      "vendorCode": "DPD"
+    },
+    {
+      "name": "Duty Extra No Receipt",
+      "code": "Duty Extra No Receipt",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Duty Paid",
+      "code": "Duty Paid",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Emirates premium",
+      "code": "Emirates premium",
+      "vendorCode": "EC"
+    },
+    {
+      "name": "ENVELOPE",
+      "code": "ENVELOPE",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "EX HYD DIRECT AUS",
+      "code": "EX HYD DIRECT AUS",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "EX MUM DIRECT AUS",
+      "code": "EX MUM DIRECT AUS",
+      "vendorCode": "SDB"
+    },
+    {
+      "name": "EX MUM DPD EUROPE",
+      "code": "EX MUM DPD EUROPE",
+      "vendorCode": "SDB"
+    },
+    {
+      "name": "EX MUM DPD UK",
+      "code": "EX MUM DPD UK",
+      "vendorCode": "SDB"
+    },
+    {
+      "name": "EX MUM REST OF UK",
+      "code": "EX MUM REST OF UK",
+      "vendorCode": "SDB"
+    },
+    {
+      "name": "EXPRESS",
+      "code": "EXPRESS",
+      "vendorCode": "WFD"
+    },
+    {
+      "name": "EXPRESS",
+      "code": "EXPRESS",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "EXPRESS",
+      "code": "EXPRESS",
+      "vendorCode": "DHL1"
+    },
+    {
+      "name": "Food Duty Paid",
+      "code": "Food Duty Paid",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "FOOD NOT  ALLOWED",
+      "code": "FOOD NOT  ALLOWED",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "GR DPD EXP",
+      "code": "GR DPD EXP",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "MEDICINE",
+      "code": "MEDICINE",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "MEDICINE",
+      "code": "MEDICINE",
+      "vendorCode": "DHL"
+    },
+    {
+      "name": "Non Duty Paid",
+      "code": "Non Duty Paid",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "PACK",
+      "code": "PACK",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "PALLET",
+      "code": "PALLET",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "REST OF UK",
+      "code": "REST OF UK",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "SELF",
+      "code": "SELF",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "SELF (10-12 Days)",
+      "code": "SELF (10-12 Days)",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "Self Duty Paid",
+      "code": "Self Duty Paid",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "UPS EXPEDITED",
+      "code": "UPS EXPEDITED",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "WF EX HYD DPD EUROPE",
+      "code": "WF EX HYD DPD EUROPE",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "WF EX HYD DPD UK",
+      "code": "WF EX HYD DPD UK",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "WF EX HYD REST OF UK",
+      "code": "WF EX HYD REST OF UK",
+      "vendorCode": "WF"
+    },
+    {
+      "name": "WORLDWIDE EXPEDITED",
+      "code": "WORLDWIDE EXPEDITED",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "WORLDWIDE EXPRESS",
+      "code": "WORLDWIDE EXPRESS",
+      "vendorCode": "DHLC"
+    },
+    {
+      "name": "WORLDWIDE EXPRESS",
+      "code": "WORLDWIDE EXPRESS",
+      "vendorCode": "DHL"
+    },
+    {
+      "name": "WORLDWIDE Express fright",
+      "code": "WORLDWIDE Express fright",
+      "vendorCode": "UPS"
+    },
+    {
+      "name": "WORLDWIDE EXPRESS SAVER",
+      "code": "WORLDWIDE EXPRESS SAVER",
+      "vendorCode": "UPS"
+    }
+  ]
+}

@@ -2,7 +2,9 @@ import type { CourierPartner, Shipment } from "@shared/schema";
 import type { BookingValidationIssue } from "@shared/booking-engine";
 import { resolveBookingMethod } from "@shared/booking-engine";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isWorldFirstPartner } from "@shared/world-first";
 import { getDelhiveryConfigFromEnv } from "../integrations/delhivery";
+import { getWorldFirstConfigFromEnv } from "../integrations/world-first";
 
 function digits(value: string | null | undefined): string {
   return (value || "").replace(/\D/g, "");
@@ -69,7 +71,8 @@ export function validateShipmentForBooking(
     });
   }
   const receiverPin = (shipment.receiverPincode || "").trim();
-  if (receiverPin && !/^\d{6}$/.test(receiverPin)) {
+  const isInternational = shipment.shipmentType === "international";
+  if (receiverPin && !isInternational && !/^\d{6}$/.test(receiverPin)) {
     issues.push({
       code: "receiver_pincode",
       message: "Receiver pincode must be 6 digits.",
@@ -94,17 +97,55 @@ export function validateShipmentForBooking(
     }
   }
 
+  if (method === "api" && isWorldFirstPartner(partner.code, partner.name)) {
+    if (!receiverPin) {
+      issues.push({
+        code: "receiver_pincode",
+        message: isInternational
+          ? "World First booking needs a destination postcode."
+          : "World First booking needs a 6-digit destination pincode.",
+        field: "receiverPincode",
+      });
+    }
+    if (!(shipment.senderCity || "").trim()) {
+      issues.push({
+        code: "sender_city",
+        message: "World First booking needs an origin city.",
+        field: "senderCity",
+      });
+    }
+    if (!(shipment.receiverCity || "").trim()) {
+      issues.push({
+        code: "receiver_city",
+        message: "World First booking needs a destination city.",
+        field: "receiverCity",
+      });
+    }
+    if (!(shipment.contentDescription || "").trim()) {
+      issues.push({
+        code: "content",
+        message: "World First booking needs a contents description.",
+        field: "contentDescription",
+      });
+    }
+  }
+
   const weight = Number.parseFloat(String(shipment.weight ?? "0"));
   if (!Number.isFinite(weight) || weight <= 0) {
     issues.push({ code: "weight", message: "Package weight is required.", field: "weight" });
   }
 
   if (method === "api") {
-    const config = getDelhiveryConfigFromEnv();
-    if (!config) {
+    if (isDelhiveryPartner(partner.code, partner.name) && !getDelhiveryConfigFromEnv()) {
       issues.push({
         code: "api_not_configured",
-        message: "Courier API credentials are not configured on the server.",
+        message: "Delhivery API credentials are not configured on the server.",
+      });
+    }
+    if (isWorldFirstPartner(partner.code, partner.name) && !getWorldFirstConfigFromEnv()) {
+      issues.push({
+        code: "api_not_configured",
+        message: "World First API credentials are not configured on the server.",
       });
     }
   }

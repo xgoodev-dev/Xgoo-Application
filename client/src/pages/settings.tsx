@@ -42,6 +42,7 @@ import { StaffManagement } from "@/components/settings/StaffManagement";
 import { PickupSlotSettings } from "@/components/settings/PickupSlotSettings";
 import { AppBannerSettings } from "@/components/settings/AppBannerSettings";
 import { DelhiveryApiSettings } from "@/components/settings/DelhiveryApiSettings";
+import { WorldFirstApiSettings } from "@/components/settings/WorldFirstApiSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useLocation } from "wouter";
@@ -402,7 +403,10 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="couriers" className="mt-0">
-          <DelhiveryApiSettings />
+          <div className="space-y-6">
+            <DelhiveryApiSettings />
+            <WorldFirstApiSettings />
+          </div>
         </TabsContent>
         <TabsContent value="staff" className="mt-0">
           <StaffManagement />

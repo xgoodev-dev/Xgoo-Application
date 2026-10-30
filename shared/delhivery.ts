@@ -105,8 +105,19 @@ export interface DelhiveryEditShipmentInput {
   shipmentHeight?: number;
 }
 
+function firstProductHsn(shipment: Shipment): string | null {
+  const products = Array.isArray(shipment.products) ? shipment.products : [];
+  for (const row of products) {
+    if (!row || typeof row !== "object") continue;
+    const hsn = String((row as { hsn?: string }).hsn ?? "").trim();
+    if (hsn) return hsn;
+  }
+  return null;
+}
+
 export function buildDelhiveryShipmentBody(input: DelhiveryCreateInput) {
-  const { shipment, pickupLocation } = input;
+  const { shipment } = input;
+  const pickupLocation = (shipment.pickupLocationName || input.pickupLocation || "").trim();
   const weightGm = shipmentWeightGrams(shipment);
   const length = shipment.length != null ? String(shipment.length) : undefined;
   const width = shipment.width != null ? String(shipment.width) : undefined;
@@ -126,11 +137,14 @@ export function buildDelhiveryShipmentBody(input: DelhiveryCreateInput) {
     country: "India",
     phone: (shipment.receiverPhone ?? "").replace(/\D/g, "").slice(-10),
     order: delhiverySafeText(shipment.bookingNumber),
-    payment_mode: "Prepaid",
+    payment_mode: shipment.orderPaymentType === "cod" ? "COD" : "Prepaid",
     products_desc: delhiverySafeText(shipment.contentDescription) || "General goods",
     quantity: String(shipment.numberOfPieces ?? 1),
     weight: String(weightGm),
-    cod_amount: "0",
+    cod_amount:
+      shipment.orderPaymentType === "cod"
+        ? String(shipment.collectableAmount ?? shipment.declaredValue ?? "0")
+        : "0",
     shipping_mode: shipment.serviceType === "air" ? "Express" : "Surface",
     seller_name: delhiverySafeText(shipment.senderName),
     seller_add: delhiverySafeText(shipment.senderAddress),
@@ -153,8 +167,9 @@ export function buildDelhiveryShipmentBody(input: DelhiveryCreateInput) {
   // Do not send `client` unless it is the exact registered Delhivery client id.
   // A wrong value (company legal name, admin person, "M/S …") returns
   // "shipment list contains no data". The API token already selects the account.
-  if (input.sellerGstTin?.trim()) row.seller_gst_tin = input.sellerGstTin.trim();
-  row.hsn_code = input.hsnCode?.trim() || "999799";
+  const gstin = (shipment.gstin || input.sellerGstTin || "").trim();
+  if (gstin) row.seller_gst_tin = gstin;
+  row.hsn_code = firstProductHsn(shipment) || input.hsnCode?.trim() || "999799";
 
   return {
     shipments: [row],

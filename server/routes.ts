@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, ensureHubBookingColumns } from "./storage";
 import { isAuthenticated, supabaseAdmin, generateStaffToken } from "./auth";
 import { verifyGoogleToken } from "./google-verify";
 import multer from "multer";
@@ -12,12 +12,15 @@ import { randomUUID } from "crypto";
 import { db, verifyDatabaseConnection, databaseHost } from "./db";
 import { isOpenAiConfigured, resolveOpenAiApiKey } from "./openai-config";
 import { shipments, offices, bookingRequests } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
+import { mergeHsnItems, searchHsnCatalog, type HsnCatalogItem } from "@shared/hsn-catalog";
+import { searchWorldFirstItems } from "@shared/world-first-hsn";
 import OpenAI from "openai";
 import express from "express";
 import {
   geocodeIndianPincode,
   searchIndianAddresses,
+  searchInternationalAddresses,
   reverseGeocodeLatLng,
   getPlacesAutocomplete,
   getDirectionsRoute,
@@ -40,6 +43,7 @@ import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settin
 import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isWorldFirstPartner } from "@shared/world-first";
 import {
   getDelhiveryConfigFromEnv,
   trackDelhiveryShipment,
@@ -49,6 +53,22 @@ import {
   cancelDelhiveryShipment,
   editDelhiveryShipment,
 } from "./integrations/delhivery";
+import {
+  ensureWorldFirstShipmentColumns,
+  getWorldFirstConfigFromEnv,
+  printWorldFirstAwb,
+  trackWorldFirstShipment,
+  worldFirstConfigPublicStatus,
+} from "./integrations/world-first";
+import {
+  formatWorldFirstDay,
+  generateWorldFirstManifest,
+  getWorldFirstCustomerRates,
+  getWorldFirstWallet,
+  listWorldFirstPendingAwbs,
+  printWorldFirstManifest,
+  searchWorldFirstManifests,
+} from "./integrations/world-first-portal";
 import {
   BookingEngineError,
   getBookingSnapshot,
@@ -368,6 +388,9 @@ const shipmentCreateSchema = z.object({
   giftwrapCharges: z.string().optional().nullable(),
   transactionCharges: z.string().optional().nullable(),
   resellerName: z.string().optional().nullable(),
+  partnerProduct: z.string().optional().nullable(),
+  partnerVendor: z.string().optional().nullable(),
+  partnerService: z.string().optional().nullable(),
   customsDocumentType: z.enum(["csb4", "csb5"]).optional().nullable(),
   incoTerms: z.string().optional().nullable(),
   invoiceNumber: z.string().optional().nullable(),
@@ -693,6 +716,9 @@ export async function registerRoutes(
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
+  void ensureWorldFirstShipmentColumns().catch((error) => {
+    console.error("World First shipment columns could not be added:", error);
+  });
 
   const fileStorage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -1319,12 +1345,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/command/rate-calculator", isAuthenticated, async (req: any, res) => {
+  async function handleRateCalculator(req: any, res: Response) {
     try {
-      const office = await requireSuperAdmin(req, res);
-      if (!office) return;
+      const officeId = await getOrCreateOffice(req.user.id);
       const data = rateCalculatorRequestSchema.parse(req.body);
-      const result = await runRateCalculator(office.id, data);
+      const result = await runRateCalculator(officeId, data);
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1339,7 +1364,10 @@ export async function registerRoutes(
       }
       res.status(status).json({ message });
     }
-  });
+  }
+
+  app.post("/api/booking/rate-calculator", isAuthenticated, handleRateCalculator);
+  app.post("/api/command/rate-calculator", isAuthenticated, handleRateCalculator);
 
   app.get("/api/command/pro-accounts", isAuthenticated, async (req: any, res) => {
     try {
@@ -2646,6 +2674,51 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/booking/item-catalog", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      await ensureHubBookingColumns();
+      const worldFirst = String(req.query.source || "").toLowerCase() === "world-first";
+      const query = String(req.query.q || "");
+      if (worldFirst) {
+        res.json({ items: searchWorldFirstItems(query, [], 40) });
+        return;
+      }
+      const rows = await db
+        .select({
+          products: shipments.products,
+          contentDescription: shipments.contentDescription,
+        })
+        .from(shipments)
+        .where(eq(shipments.officeId, officeId))
+        .orderBy(desc(shipments.bookedAt))
+        .limit(80);
+      const history: HsnCatalogItem[] = [];
+      for (const row of rows) {
+        const products = Array.isArray(row.products) ? row.products : [];
+        for (const product of products) {
+          if (!product || typeof product !== "object") continue;
+          const record = product as { name?: unknown; hsn?: unknown };
+          const name = String(record.name || "").trim();
+          if (!name) continue;
+          const stored = String(record.hsn || "").trim();
+          history.push({ name, hsn: stored || searchHsnCatalog(name, 1)[0]?.hsn || "" });
+        }
+        const content = String(row.contentDescription || "").trim();
+        if (content) {
+          history.push({
+            name: content,
+            hsn: searchHsnCatalog(content, 1)[0]?.hsn || "",
+          });
+        }
+      }
+      res.json({ items: mergeHsnItems(history, query, 40) });
+    } catch (error) {
+      console.error("Booking item catalog error:", error);
+      res.status(500).json({ message: "Failed to load item catalog" });
+    }
+  });
+
   // Route / Directions (distance, travel duration, polyline points)
   app.get("/api/maps/route", async (req: Request, res: Response) => {
     try {
@@ -2678,10 +2751,14 @@ export async function registerRoutes(
   app.get("/api/geocode/search", async (req: Request, res: Response) => {
     try {
       const q = String(req.query.q || "").trim();
+      const country = String(req.query.country || "IN").trim();
       if (q.length < 2) {
         return res.json([]);
       }
-      const results = await searchIndianAddresses(q, 6);
+      const results =
+        country && country.toUpperCase() !== "IN"
+          ? await searchInternationalAddresses(country, q, 6)
+          : await searchIndianAddresses(q, 6);
       res.json(results);
     } catch (error) {
       console.error("Geocode search error:", error);
@@ -3565,12 +3642,15 @@ export async function registerRoutes(
         giftwrapCharges: blankToNull(shipmentFields.giftwrapCharges),
         transactionCharges: blankToNull(shipmentFields.transactionCharges),
         resellerName: blankToNull(shipmentFields.resellerName),
+        partnerProduct: blankToNull(shipmentFields.partnerProduct),
+        partnerVendor: blankToNull(shipmentFields.partnerVendor),
+        partnerService: blankToNull(shipmentFields.partnerService),
         customsDocumentType: isInternational ? shipmentFields.customsDocumentType || "csb5" : null,
         incoTerms: isInternational ? blankToNull(shipmentFields.incoTerms) : null,
-        invoiceNumber: isInternational ? blankToNull(shipmentFields.invoiceNumber) : null,
-        invoiceDate: isInternational ? blankToNull(shipmentFields.invoiceDate) : null,
+        invoiceNumber: blankToNull(shipmentFields.invoiceNumber),
+        invoiceDate: blankToNull(shipmentFields.invoiceDate),
         currency: blankToNull(shipmentFields.currency) || (isInternational ? "INR" : "INR"),
-        gstin: isInternational ? blankToNull(shipmentFields.gstin) : null,
+        gstin: blankToNull(shipmentFields.gstin),
         iec: isInternational ? blankToNull(shipmentFields.iec) : null,
         ioss: isInternational ? blankToNull(shipmentFields.ioss) : null,
         eori: isInternational ? blankToNull(shipmentFields.eori) : null,
@@ -3768,6 +3848,210 @@ export async function registerRoutes(
 
   app.get("/api/integrations/delhivery/status", isAuthenticated, async (_req: any, res) => {
     res.json(delhiveryConfigPublicStatus());
+  });
+
+  app.get("/api/integrations/world-first/status", isAuthenticated, async (_req: any, res) => {
+    try {
+      await ensureWorldFirstShipmentColumns();
+    } catch (error) {
+      console.error("World First column ensure failed:", error);
+    }
+    res.json(worldFirstConfigPublicStatus());
+  });
+
+  app.get("/api/shipments/:id/world-first-track", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const partner = shipment.courierPartnerId
+        ? await storage.getPartner(shipment.courierPartnerId)
+        : shipment.courierPartner;
+      if (!partner || !isWorldFirstPartner(partner.code, partner.name)) {
+        return res.status(400).json({ message: "This shipment is not assigned to World First" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "Book on World First first, then track with the AWB." });
+      }
+      const config = getWorldFirstConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const tracking = await trackWorldFirstShipment(config, waybill);
+      res.json(tracking);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "World First tracking failed";
+      console.error("World First tracking error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/shipments/:id/world-first-label", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const shipment = await storage.getShipment(req.params.id);
+      if (!shipment || shipment.officeId !== officeId) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      const partner = shipment.courierPartnerId
+        ? await storage.getPartner(shipment.courierPartnerId)
+        : shipment.courierPartner;
+      if (!partner || !isWorldFirstPartner(partner.code, partner.name)) {
+        return res.status(400).json({ message: "This shipment is not assigned to World First" });
+      }
+      const waybill = (shipment.externalAwb || shipment.awbNumber || "").trim();
+      if (!waybill) {
+        return res.status(400).json({ message: "Book on World First first, then print the AWB." });
+      }
+      const config = getWorldFirstConfigFromEnv();
+      if (!config) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const printed = await printWorldFirstAwb(config, waybill);
+      const job = await storage.getLatestBookingJob(shipment.id);
+      if (job) {
+        await storage.updateBookingJob(job.id, {
+          labelUrl: printed.labelUrl,
+          bookingReference: printed.forwardingNo || job.bookingReference,
+        });
+      }
+      res.json({
+        awb: printed.awb,
+        forwardingNo: printed.forwardingNo,
+        labelUrl: printed.labelUrl,
+        invoiceUrl: printed.invoiceUrl,
+        boxLabelUrl: printed.boxLabelUrl,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "World First Print AWB failed";
+      console.error("World First print error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.post("/api/integrations/world-first/rate", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const body = req.body || {};
+      if (!String(body.destinationCountry || body.country || "").trim()) {
+        return res.status(400).json({ message: "Choose a destination country for World First rates." });
+      }
+      const quotes = await getWorldFirstCustomerRates({
+        originCity: body.originCity || body.senderCity || null,
+        originCode: body.originCode || null,
+        destinationCountry: String(body.destinationCountry || body.country || "").trim(),
+        destinationName: body.destinationName || null,
+        toPinCode: body.toPinCode || body.receiverPincode || null,
+        weightKg: Number(body.weightKg ?? body.weight ?? 0),
+        volumetricKg: body.volumetricKg != null ? Number(body.volumetricKg) : null,
+        packageType: body.packageType === "document" ? "document" : "package",
+        product: body.product || body.partnerProduct || null,
+        vendor: body.vendor || body.partnerVendor || null,
+        service: body.service || body.partnerService || null,
+      });
+      res.json({ quotes });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load World First rates.";
+      console.error("World First rate compare error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/integrations/world-first/wallet", isAuthenticated, async (_req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const wallet = await getWorldFirstWallet();
+      res.json(wallet);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load World First account balance.";
+      console.error("World First wallet error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/integrations/world-first/pending-awb", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const fromDate = String(req.query.from || formatWorldFirstDay());
+      const toDate = String(req.query.to || fromDate);
+      const vendorCode = String(req.query.vendor || "");
+      const rows = await listWorldFirstPendingAwbs({ fromDate, toDate, vendorCode });
+      res.json({ fromDate, toDate, vendorCode, rows });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load pending World First AWBs.";
+      console.error("World First pending AWB error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/integrations/world-first/manifests", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const fromDate = String(req.query.from || formatWorldFirstDay());
+      const toDate = String(req.query.to || fromDate);
+      const vendorCode = String(req.query.vendor || "");
+      const data = await searchWorldFirstManifests({ fromDate, toDate, vendorCode });
+      if (data.error) {
+        return res.status(400).json({ message: data.error, fromDate, toDate, vendorCode, rows: [] });
+      }
+      res.json({ fromDate, toDate, vendorCode, rows: data.result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load World First manifests.";
+      console.error("World First manifest search error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.post("/api/integrations/world-first/manifest", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const awbs = Array.isArray(req.body?.awbs)
+        ? req.body.awbs.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+        : [];
+      const result = await generateWorldFirstManifest({
+        awbs,
+        generatePickup: Boolean(req.body?.generatePickup),
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not generate World First manifest.";
+      console.error("World First manifest error:", error);
+      res.status(502).json({ message });
+    }
+  });
+
+  app.get("/api/integrations/world-first/manifest-print", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!getWorldFirstConfigFromEnv()) {
+        return res.status(400).json({ message: "World First API is not configured on the server." });
+      }
+      const manifestNo = String(req.query.manifestNo || "").trim();
+      if (!manifestNo) {
+        return res.status(400).json({ message: "Manifest number is required." });
+      }
+      const type = String(req.query.type || "AWB") === "label" ? "label" : "AWB";
+      const pdf = await printWorldFirstManifest(manifestNo, type);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="wf-manifest-${manifestNo}.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not print World First manifest.";
+      console.error("World First manifest print error:", error);
+      res.status(502).json({ message });
+    }
   });
 
   app.get("/api/shipments/:id/delhivery-track", isAuthenticated, async (req: any, res) => {

@@ -2,9 +2,20 @@ import { normalizePartnerCode } from "./partner-sync";
 
 /** World First agent portal (Xpresion). Login is saved username/password or OTP — credentials are not stored in XGoo. */
 export const WORLD_FIRST_XPRESION_URL = "https://xpresion.worldfirst.in/";
+export const WORLD_FIRST_API_DEFAULT_BASE_URL = "https://xpresion.worldfirst.in";
 /** Public door-pickup form on worldfirst.in (not the agent Xpresion console). */
 export const WORLD_FIRST_PUBLIC_BOOKING_URL = "https://www.worldfirst.in/bookingnew.html";
 export const WORLD_FIRST_SITE_URL = "https://www.worldfirst.in/";
+
+export const WORLD_FIRST_API_PATHS = {
+  awbEntry: "/api/v1/Awbentry/Awbentry",
+  tracking: "/api/v1/Tracking/Tracking",
+  cancelAwb: "/api/v1/Awbentry/CancelAWB",
+  printAwb: "/api/v1/Awbentry/printawb",
+  updatePerforma: "/api/v1/Awbentry/UpdatePerforma",
+  login: "/api/v1/Registration/Login",
+  destination: "/api/v1/AutoText/GetDestination",
+} as const;
 
 export function isWorldFirstPartner(code?: string | null, name?: string | null): boolean {
   const c = (code ?? "").trim().toUpperCase();
@@ -29,6 +40,14 @@ export const WORLD_FIRST_WORKFLOW = [
   { id: "fill_contents", label: "Enter contents and declared value" },
   { id: "review_submit", label: "Review and submit on World First" },
   { id: "capture_awb", label: "Capture AWB in XGoo" },
+] as const;
+
+export const WORLD_FIRST_API_WORKFLOW = [
+  { id: "connecting", label: "Connect to World First API" },
+  { id: "create_shipment", label: "Create AWB" },
+  { id: "label", label: "Download Vendor AWB and Invoice" },
+  { id: "wallet", label: "Check World First account balance" },
+  { id: "day_end", label: "View pending AWB and manifest" },
 ] as const;
 
 export type WorldFirstWorkflowStepId = (typeof WORLD_FIRST_WORKFLOW)[number]["id"];

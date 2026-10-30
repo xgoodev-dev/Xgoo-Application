@@ -168,6 +168,7 @@ export function PickupPanel({
   const [statusFilter, setStatusFilter] = useState<PickupStatusFilter>("all");
   const [sort, setSort] = useState<PickupSort>("newest");
   const [search, setSearch] = useState("");
+  const [addParcelOpen, setAddParcelOpen] = useState(false);
   const pickerRef = useRef<HTMLTableCellElement>(null);
   const mobilePickerRef = useRef<HTMLDivElement>(null);
 
@@ -213,6 +214,7 @@ export function PickupPanel({
         state: customer.state || "",
         pincode: customer.pincode || "",
       });
+      setAddParcelOpen(true);
     }
     onPrefillConsumed?.();
   }, [prefillCustomerId, customers, onPrefillConsumed]);
@@ -350,35 +352,35 @@ export function PickupPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col py-4" data-testid="business-today">
+    <div className="flex h-full min-h-0 flex-col py-3 sm:py-4" data-testid="business-today">
       <ProPageHeader
         title="Pickup"
         description={`${data?.profile.storeName || data?.profile.companyName || "Your store"} · ${date}. Filter current and previous pickup lists, then request today's collection.`}
         actions={
           <>
             {onOpenOrders ? (
-              <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenOrders}>
+              <Button variant="outline" className="h-11 rounded-xl sm:h-9 sm:rounded-none" onClick={onOpenOrders}>
                 From orders
               </Button>
             ) : (
-              <Button variant="outline" className="rounded-xl sm:rounded-none" onClick={onOpenCustomers}>
+              <Button variant="outline" className="h-11 rounded-xl sm:h-9 sm:rounded-none" onClick={onOpenCustomers}>
                 Customers
               </Button>
             )}
             <Button
-              className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:rounded-none"
+              className="h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:h-9 sm:rounded-none"
               disabled={planned.length === 0 || confirm.isPending}
               onClick={() => confirm.mutate()}
               data-testid="button-confirm-today"
             >
               {confirm.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-              Request pickup ({planned.length})
+              Request ({planned.length})
             </Button>
           </>
         }
       />
       <ProToolbar>
-        <div className="relative min-w-[12rem] flex-1">
+        <div className="relative col-span-2 min-w-0 md:min-w-[12rem] md:flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
             className={`${proSearchClass} pl-8`}
@@ -438,9 +440,19 @@ export function PickupPanel({
           )}
         </p>
       ) : null}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2 md:hidden">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 md:hidden">
         <ProSurface className="space-y-3 bg-[#FFF7F3]">
-          <p className="text-sm font-semibold text-zinc-900">Add parcel</p>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => setAddParcelOpen((open) => !open)}
+            aria-expanded={addParcelOpen}
+          >
+            <p className="text-sm font-semibold text-zinc-900">Add parcel</p>
+            <span className="text-xs font-semibold text-[#FF4907]">{addParcelOpen ? "Hide" : "Type here"}</span>
+          </button>
+          {addParcelOpen ? (
+          <>
           <div className="relative" ref={mobilePickerRef}>
             <ProField label="Customer">
               <input
@@ -531,6 +543,8 @@ export function PickupPanel({
               </Button>
             ) : null}
           </div>
+          </>
+          ) : null}
         </ProSurface>
         {visibleJobs.map((job) => (
           <ProSurface key={job.id} className="space-y-2">

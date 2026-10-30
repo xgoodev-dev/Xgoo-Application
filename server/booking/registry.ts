@@ -11,11 +11,11 @@ import {
   getConnectorForMethod,
   manualConnector,
 } from "./connectors";
-import { worldFirstConnector } from "./world-first";
+import { worldFirstApiConnector, worldFirstBrowserConnector } from "./world-first";
 
 /**
  * Pick a connector from the partner, not from the booking screen.
- * API vs browser is stored on the partner; World First currently has no public booking API.
+ * API vs browser is stored on the partner; World First and Delhivery use REST when configured.
  */
 export function getConnectorForPartner(partner: CourierPartner): CourierConnector {
   const method = resolveBookingMethod(partner);
@@ -24,13 +24,16 @@ export function getConnectorForPartner(partner: CourierPartner): CourierConnecto
   if (method === "manual") return manualConnector;
   if (method === "email") return emailConnector;
 
+  if (isWorldFirstPartner(partner.code, partner.name)) {
+    if (method === "api") return worldFirstApiConnector;
+    return worldFirstBrowserConnector;
+  }
+
   if (method === "api") {
     if (isDelhiveryPartner(partner.code, partner.name)) return delhiveryApiConnector;
-    if (isWorldFirstPartner(partner.code, partner.name)) return worldFirstConnector;
     return delhiveryApiConnector;
   }
 
-  if (isWorldFirstPartner(partner.code, partner.name)) return worldFirstConnector;
   return browserAssistConnector;
 }
 

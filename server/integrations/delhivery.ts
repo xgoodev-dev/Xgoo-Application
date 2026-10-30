@@ -196,11 +196,42 @@ export async function pingDelhiveryApi(config: DelhiveryConfig): Promise<{ ok: b
   }
 }
 
+export type DelhiveryPincodeInfo = {
+  serviceable: boolean;
+  prepaid: boolean;
+  city: string | null;
+  district: string | null;
+  state: string | null;
+  hub: string | null;
+  message: string;
+};
+
+function parseDelhiveryPostal(postal: Record<string, unknown>): Omit<DelhiveryPincodeInfo, "serviceable" | "prepaid" | "message"> {
+  const hub = Array.isArray(postal.center)
+    ? String((postal.center[0] as { cn?: string } | undefined)?.cn || "").trim()
+    : "";
+  const city = String(postal.city || "").trim();
+  const district = String(postal.district || "").trim();
+  const state = String(postal.state || postal.state_code || "").trim();
+  return {
+    city: city || district || null,
+    district: district || null,
+    state: state || null,
+    hub: hub || null,
+  };
+}
+
 export async function checkDelhiveryPincode(
   config: DelhiveryConfig,
   pincode: string,
-): Promise<{ serviceable: boolean; prepaid: boolean; message: string }> {
+): Promise<DelhiveryPincodeInfo> {
   const pin = pincode.trim();
+  const empty = {
+    city: null as string | null,
+    district: null as string | null,
+    state: null as string | null,
+    hub: null as string | null,
+  };
   const res = await delhiveryGet(pinCodeUrl(config.baseUrl, pin), config);
   const parsed = await readJson(res);
   if (!res.ok) {
@@ -209,20 +240,30 @@ export async function checkDelhiveryPincode(
   const codes = parsed.delivery_codes as Array<{ postal_code?: Record<string, unknown> }> | undefined;
   const postal = codes?.[0]?.postal_code;
   if (!postal) {
-    return { serviceable: false, prepaid: false, message: `Delhivery does not service pincode ${pin}.` };
+    return {
+      serviceable: false,
+      prepaid: false,
+      ...empty,
+      message: `Delhivery does not service pincode ${pin}.`,
+    };
   }
+  const place = parseDelhiveryPostal(postal);
   const prepaidFlag = postal.pre_paid ?? postal.prepaid;
   const prepaid = flagNo(prepaidFlag) ? false : flagYes(prepaidFlag) || Boolean(postal.center) || flagYes(postal.cash);
+  const placeLabel = [place.city, place.state, pin].filter(Boolean).join(", ");
   if (!prepaid) {
-    return { serviceable: false, prepaid: false, message: `Pincode ${pin} is not prepaid-serviceable on Delhivery.` };
+    return {
+      serviceable: false,
+      prepaid: false,
+      ...place,
+      message: `Pincode ${placeLabel || pin} is not prepaid-serviceable on Delhivery.`,
+    };
   }
-  const hub = Array.isArray(postal.center)
-    ? String((postal.center[0] as { cn?: string } | undefined)?.cn || "")
-    : "";
   return {
     serviceable: true,
     prepaid: true,
-    message: hub ? `Pincode ${pin} is serviceable (${hub}).` : `Pincode ${pin} is serviceable.`,
+    ...place,
+    message: [placeLabel, place.hub ? `hub ${place.hub}` : ""].filter(Boolean).join(" · "),
   };
 }
 
@@ -461,6 +502,9 @@ export interface DelhiveryCostEstimateResult {
   totalAmount: number;
   grossAmount?: number;
   freightCharge?: number;
+  peakCharge?: number;
+  fuelSurcharge?: number;
+  gstAmount?: number;
   raw: unknown;
 }
 
@@ -514,9 +558,18 @@ export async function calculateDelhiveryShippingCost(
       0,
   );
 
-  const grossAmount = item.gross_amount != null ? Number(item.gross_amount) : undefined;
-  const freightCharge =
-    item.charge_breakup?.freight_charge != null ? Number(item.charge_breakup.freight_charge) : undefined;
+  const breakup = item.charge_breakup && typeof item.charge_breakup === "object" ? item.charge_breakup : {};
+  const numOrUndef = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const grossAmount = numOrUndef(item.gross_amount);
+  const freightCharge = numOrUndef(breakup.freight_charge ?? breakup.A ?? item.freight_charge);
+  const peakCharge = numOrUndef(breakup.peak_charge ?? breakup.peak_surcharge);
+  const fuelSurcharge = numOrUndef(
+    breakup.fuel_surcharge ?? breakup.diesel_surcharge ?? breakup.FS,
+  );
+  const gstAmount = numOrUndef(breakup.gst_amount ?? breakup.GST ?? item.tax);
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     throw new Error("Delhivery rate API returned invalid or zero total amount");
@@ -526,6 +579,9 @@ export async function calculateDelhiveryShippingCost(
     totalAmount,
     grossAmount,
     freightCharge,
+    peakCharge,
+    fuelSurcharge,
+    gstAmount,
     raw: parsed,
   };
 }

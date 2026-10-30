@@ -307,11 +307,14 @@ async function tryDelhiveryLiveQuote(
   const config = getDelhiveryConfigFromEnv();
   if (!config) return null;
 
-  const weightInfo = chargeableWeight(input.weight, input.length, input.width, input.height);
-  const { billedWeight, rounded } = resolveBilledWeight(
-    weightInfo.chargeable,
-    input.weightRoundOff,
+  const weightInfo = chargeableWeight(
+    input.weight,
+    input.length,
+    input.width,
+    input.height,
+    input.volumetricWeight,
   );
+  const billedWeight = Math.round(weightInfo.chargeable * 1000) / 1000;
   const cgm = Math.max(1, Math.round(billedWeight * 1000));
 
   try {
@@ -355,7 +358,6 @@ async function tryDelhiveryLiveQuote(
       ...margin,
       transitDays,
       source: "api",
-      weightRoundOffApplied: rounded,
       message: transitDays
         ? `Live Delhivery API rate (~${transitDays} days) from ${originPin} to ${destPin}`
         : `Live Delhivery API rate from ${originPin} to ${destPin}`,

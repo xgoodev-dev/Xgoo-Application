@@ -4084,7 +4084,7 @@ export default function CustomerPortalPage() {
           ) : isBusiness && auth.token && auth.user ? (
             <>
               {activeTab === "home" && (
-                <div className="h-full min-h-0 overflow-y-auto px-3 sm:px-3 sm:px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-y-auto px-3 md:px-6">
                   {proGate || (
                     <ProHome
                       token={auth.token}
@@ -4108,7 +4108,7 @@ export default function CustomerPortalPage() {
                 </div>
               )}
               {activeTab === "orders" && (
-                <div className="h-full min-h-0 overflow-hidden px-3 sm:px-3 sm:px-4 md:px-6">
+                <div className="h-full min-h-0 overflow-hidden px-3 md:px-6">
                   {proGate || (
                     <OrdersPanel
                       token={auth.token}

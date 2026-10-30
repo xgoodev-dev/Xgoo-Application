@@ -53,6 +53,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { quotationForEnquiry, type EnquiryWithQuote } from "@/lib/enquiry-quote";
+import { bookingRequestToNewBookingHref, isCustomerBookingOrder } from "@/lib/booking-orders";
 import type { BookingRequest, PickupPartner, Quotation } from "@shared/schema";
 
 type EnquiryRow = EnquiryWithQuote;
@@ -213,10 +214,12 @@ export default function EnquiriesPage() {
     refetchInterval: 15_000,
   });
 
-  const enquiryRows = (bookingRequests || []).map((request) => ({
-    ...request,
-    quotation: quotationForEnquiry(request, quotations),
-  }));
+  const enquiryRows = (bookingRequests || [])
+    .filter((request) => !isCustomerBookingOrder(request))
+    .map((request) => ({
+      ...request,
+      quotation: quotationForEnquiry(request, quotations),
+    }));
 
   useEffect(() => {
     if (!selectedRequest) return;
@@ -273,36 +276,11 @@ export default function EnquiriesPage() {
   };
 
   const handleApprove = (request: EnquiryRow) => {
-    const params = new URLSearchParams({
-      senderName: request.senderName,
-      senderPhone: request.senderPhone,
-      senderEmail: request.senderEmail || "",
-      senderAddress: request.senderAddress,
-      senderCity: request.senderCity || "",
-      senderState: request.senderState || "",
-      senderPincode: request.senderPincode || "",
-      receiverName: request.receiverName,
-      receiverPhone: request.receiverPhone,
-      receiverAddress: request.receiverAddress,
-      receiverCity: request.receiverCity || "",
-      receiverState: request.receiverState || "",
-      receiverPincode: request.receiverPincode || "",
-      weight: request.weight || "",
-      numberOfPieces: String(request.numberOfPieces || 1),
-      contentDescription: request.contentDescription || "",
-      length: request.packageLength || "",
-      width: request.packageWidth || "",
-      height: request.packageHeight || "",
-      declaredValue: request.declaredValue || "",
-      serviceType: request.serviceType || "surface",
-      bookingRequestId: request.id,
-    });
-
     updateStatusMutation.mutate(
       { id: request.id, status: "approved" },
       {
         onSuccess: () => {
-          navigate(`/bookings/new?${params.toString()}`);
+          navigate(bookingRequestToNewBookingHref(request));
         },
       },
     );
@@ -568,7 +546,7 @@ export default function EnquiriesPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {search || statusFilter !== "all" || channelFilter !== "all"
                   ? "No enquiries match your search"
-                  : "New enquiries from Go, website, walk-in, and call will appear here"}
+                  : "Call and WhatsApp quotes appear here. Customer orders from Go, Pro, and In Store are under Bookings."}
               </p>
             </div>
           )}

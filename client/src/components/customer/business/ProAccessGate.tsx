@@ -139,8 +139,8 @@ export function ProApplicationForm({
                   onClick={() => setStoreType(type.id)}
                   className={
                     storeType === type.id
-                      ? "rounded-none border border-[#FF4907] bg-[#FF4907] px-3 py-2 text-sm font-semibold text-white"
-                      : "rounded-none border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:border-zinc-300"
+                      ? "rounded-xl border border-[#FF4907] bg-[#FF4907] px-3 py-2 text-sm font-semibold text-white sm:rounded-none"
+                      : "rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:border-zinc-300 sm:rounded-none"
                   }
                   data-testid={`chip-store-type-${type.id}`}
                 >

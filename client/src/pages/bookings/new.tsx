@@ -5,26 +5,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   ArrowLeft,
-  Package,
-  User,
-  MapPin,
   Scale,
   CreditCard,
   Truck,
   Loader2,
   Sparkles,
   Camera,
-  Wand2,
   Bot,
-  Mic,
   ScanLine,
   Plus,
   Trash2,
-  GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -52,11 +45,20 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { AddressMapField } from "@/components/bookings/AddressMapField";
 import { PackagePhotoCapture } from "@/components/bookings/PackagePhotoCapture";
+import { HubBookingAiBar } from "@/components/bookings/hub-booking-ai-bar";
+import { HubBookingPartySection } from "@/components/bookings/hub-booking-party-section";
 import {
-  HubBookingAddressExtras,
+  BOOKING_WIZARD_STEPS,
+  BOOKING_WIZARD_STEP_FIELDS,
+  BookingWizardFooter,
+  BookingWizardStepper,
+  bookingWizardStepIndex,
+  type BookingWizardStepId,
+} from "@/components/bookings/hub-booking-wizard";
+import {
   HubBookingCustomsSection,
+  HubBookingCourierApiSection,
   HubBookingOrderSection,
   HubBookingPartnerGate,
   HubBookingPaymentSection,
@@ -64,14 +66,17 @@ import {
   HubBookingScopeToggle,
   HubBookingWeightSummary,
 } from "@/components/bookings/hub-booking-fields";
+import { DelhiveryOrderForm } from "@/components/bookings/delhivery-order-form";
+import { WorldFirstAwbForm } from "@/components/bookings/world-first-awb-form";
 import {
   hubBookingDefaultValues,
   hubBookingFormSchema,
   type HubBookingFormData,
 } from "@/components/bookings/hub-booking-schema";
-import type { BranchWithServiceAreas, Customer, CourierPartner } from "@shared/schema";
+import type { BranchWithServiceAreas, Customer, CourierPartner, Office } from "@shared/schema";
 import type { PricingQuoteResult } from "@shared/pricing";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isWorldFirstPartner } from "@shared/world-first";
 import { resolveBookingMethod } from "@shared/booking-engine";
 import {
   filledProducts,
@@ -87,14 +92,25 @@ type DelhiveryStatus = {
   configured: boolean;
   pickupLocation: string | null;
   environment: string;
+  clientName?: string | null;
+};
+
+type WorldFirstStatus = {
+  configured: boolean;
+  product?: string | null;
+  vendor?: string | null;
+  service?: string | null;
+  clientId?: string | null;
 };
 
 function shouldBookOnCreate(
   partner: CourierPartner | undefined,
   delhiveryStatus: DelhiveryStatus | undefined,
+  worldFirstStatus?: WorldFirstStatus,
 ): boolean {
   if (!partner || resolveBookingMethod(partner) !== "api") return false;
   if (isDelhiveryPartner(partner.code, partner.name)) return !!delhiveryStatus?.configured;
+  if (isWorldFirstPartner(partner.code, partner.name)) return !!worldFirstStatus?.configured;
   return true;
 }
 
@@ -118,20 +134,25 @@ type PackageColumnKey =
   | "contentDescription"
   | "declaredValue";
 
-type BookingDetailsColumnKey =
-  | "name"
-  | "phone"
-  | "address"
-  | "city"
-  | "state"
-  | "pincode";
+const PACKAGE_COLUMNS: PackageColumnKey[] = [
+  "weight",
+  "numberOfPieces",
+  "length",
+  "width",
+  "height",
+  "contentDescription",
+  "declaredValue",
+];
 
-type ServiceBillingColumnKey =
-  | "courierPartner"
-  | "serviceType"
-  | "awb"
-  | "payment"
-  | "amountOverride";
+const PACKAGE_COLUMN_LABELS: Record<PackageColumnKey, string> = {
+  weight: "Weight (kg)",
+  numberOfPieces: "Pieces",
+  length: "L (cm)",
+  width: "W (cm)",
+  height: "H (cm)",
+  contentDescription: "Content",
+  declaredValue: "Value (Rs.)",
+};
 
 export default function NewBookingPage() {
   const [, setLocation] = useLocation();
@@ -146,7 +167,7 @@ export default function NewBookingPage() {
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
   const [isScanningPhotos, setIsScanningPhotos] = useState(false);
-  const [bookingView, setBookingView] = useState<"form" | "table">("form");
+  const [wizardStep, setWizardStep] = useState<BookingWizardStepId>("shipment");
   const [recommendation, setRecommendation] = useState<{
     recommendedPartnerId: string;
     reason: string;
@@ -156,33 +177,6 @@ export default function NewBookingPage() {
   } | null>(null);
   const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
   const [extraPackages, setExtraPackages] = useState<ExtraPackageRow[]>([]);
-  const [draggingColumn, setDraggingColumn] = useState<PackageColumnKey | null>(null);
-  const [bookingDetailsColumnOrder, setBookingDetailsColumnOrder] = useState<BookingDetailsColumnKey[]>([
-    "name",
-    "phone",
-    "address",
-    "city",
-    "state",
-    "pincode",
-  ]);
-  const [serviceBillingColumnOrder, setServiceBillingColumnOrder] = useState<ServiceBillingColumnKey[]>([
-    "courierPartner",
-    "serviceType",
-    "awb",
-    "payment",
-    "amountOverride",
-  ]);
-  const [draggingBookingColumn, setDraggingBookingColumn] = useState<BookingDetailsColumnKey | null>(null);
-  const [draggingServiceColumn, setDraggingServiceColumn] = useState<ServiceBillingColumnKey | null>(null);
-  const [packageColumnOrder, setPackageColumnOrder] = useState<PackageColumnKey[]>([
-    "weight",
-    "numberOfPieces",
-    "length",
-    "width",
-    "height",
-    "contentDescription",
-    "declaredValue",
-  ]);
 
   const [partnerConfirmed, setPartnerConfirmed] = useState(false);
   const [recordingSection, setRecordingSection] = useState<string | null>(null);
@@ -200,8 +194,14 @@ export default function NewBookingPage() {
   const { data: delhiveryStatus } = useQuery<DelhiveryStatus>({
     queryKey: ["/api/integrations/delhivery/status"],
   });
+  const { data: worldFirstStatus } = useQuery<WorldFirstStatus>({
+    queryKey: ["/api/integrations/world-first/status"],
+  });
   const { data: branches } = useQuery<BranchWithServiceAreas[]>({
     queryKey: ["/api/branches"],
+  });
+  const { data: office } = useQuery<Office>({
+    queryKey: ["/api/office"],
   });
 
   const form = useForm<BookingFormData>({
@@ -217,6 +217,21 @@ export default function NewBookingPage() {
 
     const bookingRequestId = params.get("bookingRequestId");
     if (bookingRequestId) setSourceBookingRequestId(bookingRequestId);
+    const partnerId = params.get("courierPartnerId") || params.get("partner");
+    if (partnerId) {
+      form.setValue("courierPartnerId", partnerId, { shouldValidate: true });
+      setPartnerConfirmed(true);
+    }
+    const fromPin = params.get("from") || params.get("senderPincode");
+    const toPin = params.get("to") || params.get("receiverPincode");
+    if (fromPin && !params.get("senderPincode")) form.setValue("senderPincode", fromPin);
+    if (toPin && !params.get("receiverPincode")) {
+      form.setValue("receiverPincode", toPin);
+    }
+    const service = params.get("service") || params.get("serviceType");
+    if (service === "air" || service === "surface") form.setValue("serviceType", service);
+    const type = params.get("type") || params.get("shipmentType");
+    if (type === "domestic" || type === "international") form.setValue("shipmentType", type);
 
     const textFields = [
       "senderName",
@@ -252,6 +267,9 @@ export default function NewBookingPage() {
       "shipmentType",
       "destinationCountry",
       "pickupLocationName",
+      "partnerProduct",
+      "partnerVendor",
+      "partnerService",
     ] as const;
 
     for (const key of textFields) {
@@ -266,6 +284,9 @@ export default function NewBookingPage() {
   const weight = form.watch("weight");
   const senderPincode = form.watch("senderPincode");
   const receiverPincode = form.watch("receiverPincode");
+  const senderCity = form.watch("senderCity");
+  const receiverCity = form.watch("receiverCity");
+  const destinationCountry = form.watch("destinationCountry");
   const length = form.watch("length");
   const width = form.watch("width");
   const height = form.watch("height");
@@ -361,123 +382,6 @@ export default function NewBookingPage() {
   const removePackageRow = (id: string) => {
     setExtraPackages((prev) => prev.filter((pkg) => pkg.id !== id));
     setTimeout(updateCalculatedAmount, 50);
-  };
-
-  const packageColumnLabels: Record<PackageColumnKey, string> = {
-    weight: "Weight (kg)",
-    numberOfPieces: "Pieces",
-    length: "L (cm)",
-    width: "W (cm)",
-    height: "H (cm)",
-    contentDescription: "Content",
-    declaredValue: "Value (Rs.)",
-  };
-
-  const movePackageColumnToPosition = (key: PackageColumnKey, targetIndex: number) => {
-    setPackageColumnOrder((prev) => {
-      const idx = prev.indexOf(key);
-      if (idx === -1) return prev;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      if (idx === targetIndex) return prev;
-      const next = [...prev];
-      next.splice(idx, 1);
-      next.splice(targetIndex, 0, key);
-      return next;
-    });
-  };
-
-  const resetPackageColumnOrder = () => {
-    setPackageColumnOrder([
-      "weight",
-      "numberOfPieces",
-      "length",
-      "width",
-      "height",
-      "contentDescription",
-      "declaredValue",
-    ]);
-  };
-
-  const handleColumnDragStart = (key: PackageColumnKey) => {
-    setDraggingColumn(key);
-  };
-
-  const handleColumnDrop = (targetKey: PackageColumnKey) => {
-    if (!draggingColumn || draggingColumn === targetKey) {
-      setDraggingColumn(null);
-      return;
-    }
-
-    setPackageColumnOrder((prev) => {
-      const from = prev.indexOf(draggingColumn);
-      const to = prev.indexOf(targetKey);
-      if (from === -1 || to === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-
-    setDraggingColumn(null);
-  };
-
-  const bookingDetailsColumnLabels: Record<BookingDetailsColumnKey, string> = {
-    name: "Name",
-    phone: "Phone",
-    address: "Address",
-    city: "City",
-    state: "State",
-    pincode: "Pincode",
-  };
-
-  const serviceBillingColumnLabels: Record<ServiceBillingColumnKey, string> = {
-    courierPartner: "Courier Partner",
-    serviceType: "Service Type",
-    awb: "AWB",
-    payment: "Payment",
-    amountOverride: "Amount Override",
-  };
-
-  const handleBookingColumnDragStart = (key: BookingDetailsColumnKey) => {
-    setDraggingBookingColumn(key);
-  };
-
-  const handleBookingColumnDrop = (targetKey: BookingDetailsColumnKey) => {
-    if (!draggingBookingColumn || draggingBookingColumn === targetKey) {
-      setDraggingBookingColumn(null);
-      return;
-    }
-    setBookingDetailsColumnOrder((prev) => {
-      const from = prev.indexOf(draggingBookingColumn);
-      const to = prev.indexOf(targetKey);
-      if (from === -1 || to === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-    setDraggingBookingColumn(null);
-  };
-
-  const handleServiceColumnDragStart = (key: ServiceBillingColumnKey) => {
-    setDraggingServiceColumn(key);
-  };
-
-  const handleServiceColumnDrop = (targetKey: ServiceBillingColumnKey) => {
-    if (!draggingServiceColumn || draggingServiceColumn === targetKey) {
-      setDraggingServiceColumn(null);
-      return;
-    }
-    setServiceBillingColumnOrder((prev) => {
-      const from = prev.indexOf(draggingServiceColumn);
-      const to = prev.indexOf(targetKey);
-      if (from === -1 || to === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-    setDraggingServiceColumn(null);
   };
 
   const renderPackageCell = (
@@ -582,7 +486,69 @@ export default function NewBookingPage() {
   };
 
   const selectedPartner = partners?.find((p) => p.id === selectedPartnerId);
-  const bookOnCreate = shouldBookOnCreate(selectedPartner, delhiveryStatus);
+  const worldFirstBooking = isWorldFirstPartner(selectedPartner?.code, selectedPartner?.name);
+  const delhiveryBooking = isDelhiveryPartner(selectedPartner?.code, selectedPartner?.name);
+  const bookOnCreate = shouldBookOnCreate(selectedPartner, delhiveryStatus, worldFirstStatus);
+
+  useEffect(() => {
+    if (!partnerConfirmed || !selectedPartner) return;
+    if (delhiveryBooking) {
+      form.setValue("shipmentType", "domestic");
+      form.setValue("receiverCountry", "India");
+      if (delhiveryStatus?.pickupLocation && !form.getValues("pickupLocationName")) {
+        form.setValue("pickupLocationName", delhiveryStatus.pickupLocation);
+      }
+      const sellerName = delhiveryStatus?.clientName || office?.name;
+      if (sellerName && !form.getValues("senderName")) {
+        form.setValue("senderName", sellerName);
+      }
+      if (office?.address && !form.getValues("senderAddress")) {
+        form.setValue("senderAddress", office.address);
+        form.setValue("senderCity", office.city || "");
+        form.setValue("senderState", office.state || "");
+        form.setValue("senderPincode", office.pincode || "");
+      }
+      if (office?.phone && !form.getValues("senderPhone")) {
+        form.setValue("senderPhone", office.phone);
+      }
+    }
+    if (worldFirstBooking) {
+      if (worldFirstStatus?.product && !form.getValues("partnerProduct")) {
+        form.setValue("partnerProduct", worldFirstStatus.product);
+      }
+      if (worldFirstStatus?.vendor && !form.getValues("partnerVendor")) {
+        form.setValue("partnerVendor", worldFirstStatus.vendor);
+      }
+      if (worldFirstStatus?.service && !form.getValues("partnerService")) {
+        form.setValue("partnerService", worldFirstStatus.service);
+      }
+      if (form.getValues("paymentMode") === "cash") {
+        form.setValue("paymentMode", "credit");
+      }
+      form.setValue("customsDocumentType", "csb4");
+      if (!form.getValues("shipmentPurpose") || form.getValues("shipmentPurpose") === "Gift") {
+        form.setValue("shipmentPurpose", "UNSOLICITED GIFT - NOT FOR SALE");
+      }
+      if (!form.getValues("gstInvoice")) {
+        form.setValue("gstInvoice", "no");
+      }
+      if (!form.getValues("senderDocumentType")) {
+        form.setValue("senderDocumentType", "GSTIN (Normal)");
+      }
+    }
+    if (office?.gstNumber && !form.getValues("gstin")) {
+      form.setValue("gstin", office.gstNumber);
+    }
+  }, [
+    partnerConfirmed,
+    selectedPartner,
+    delhiveryBooking,
+    worldFirstBooking,
+    delhiveryStatus,
+    worldFirstStatus,
+    office,
+    form,
+  ]);
 
   const { data: priceQuote, isFetching: isPricing } = useQuery<PricingQuoteResult>({
     queryKey: [
@@ -635,6 +601,19 @@ export default function NewBookingPage() {
   const updateCalculatedAmount = () => {
     const amount = calculatePrice();
     setCalculatedAmount(amount);
+  };
+
+  const changePackageField = (
+    id: string,
+    field: "weight" | "numberOfPieces" | "length" | "width" | "height",
+    value: string,
+  ) => {
+    if (id === "primary") {
+      form.setValue(field, value, { shouldDirty: true, shouldValidate: field === "weight" });
+      setTimeout(updateCalculatedAmount, 30);
+      return;
+    }
+    updateExtraPackage(id, field, value);
   };
 
   const handleSmartFill = async () => {
@@ -1016,20 +995,29 @@ export default function NewBookingPage() {
       const createRes = await apiRequest("POST", "/api/shipments", payload);
       const shipment = (await createRes.json()) as { id: string };
       const partner = partners?.find((p) => p.id === data.courierPartnerId);
-      if (!shouldBookOnCreate(partner, delhiveryStatus)) {
-        return { shipment, autoBook: false as const, job: null };
+      if (!shouldBookOnCreate(partner, delhiveryStatus, worldFirstStatus)) {
+        if (partner && resolveBookingMethod(partner) === "browser_automation") {
+          try {
+            await apiRequest("POST", `/api/shipments/${shipment.id}/booking/start`);
+          } catch {
+            // Shipment is saved; operator can open the partner portal from the shipment page.
+          }
+          return { shipment, autoBook: false as const, openPartner: true as const, job: null };
+        }
+        return { shipment, autoBook: false as const, openPartner: false as const, job: null };
       }
       try {
         const bookRes = await apiRequest("POST", `/api/shipments/${shipment.id}/booking/start`);
         const snapshot = (await bookRes.json()) as {
           job: { status: string; awbNumber?: string | null; error?: string | null } | null;
         };
-        return { shipment, autoBook: true as const, job: snapshot.job };
+        return { shipment, autoBook: true as const, openPartner: false as const, job: snapshot.job };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Courier booking failed";
         return {
           shipment,
           autoBook: true as const,
+          openPartner: false as const,
           job: { status: "booking_failed", awbNumber: null, error: message },
         };
       }
@@ -1038,10 +1026,26 @@ export default function NewBookingPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/booking-requests"] });
-      const { shipment, autoBook, job } = result;
-      if (autoBook && job?.status === "booked") {
+      const { shipment, autoBook, openPartner, job } = result;
+      if (openPartner) {
         toast({
-          title: "Booked on Delhivery",
+          title: `Ready to book in ${selectedPartner?.name || "partner"}`,
+          description: "Open the partner portal from this shipment to finish booking and print the AWB.",
+        });
+        setLocation(`/shipments/${shipment.id}`);
+        return;
+      }
+      if (autoBook && job?.status === "booked") {
+        if (worldFirstBooking) {
+          toast({
+            title: `World First AWB ${job.awbNumber || "created"}`,
+            description: "Download Vendor AWB and Invoice from this shipment, then finish Day End if needed.",
+          });
+          setLocation(`/shipments/${shipment.id}`);
+          return;
+        }
+        toast({
+          title: `Booked on ${selectedPartner?.name || "courier"}`,
           description: job.awbNumber
             ? `AWB ${job.awbNumber}. Print the customer bill to hand over.`
             : "Shipment created and booked. Print the customer bill to hand over.",
@@ -1051,7 +1055,7 @@ export default function NewBookingPage() {
       }
       if (autoBook) {
         toast({
-          title: "Shipment saved — Delhivery booking failed",
+          title: `Shipment saved — ${selectedPartner?.name || "courier"} booking failed`,
           description: job?.error || "Open the shipment to retry booking.",
           variant: "destructive",
         });
@@ -1092,6 +1096,51 @@ export default function NewBookingPage() {
     }
   };
 
+  const goToWizardStep = async (next: BookingWizardStepId) => {
+    const currentIndex = bookingWizardStepIndex(wizardStep);
+    const nextIndex = bookingWizardStepIndex(next);
+    if (nextIndex > currentIndex) {
+      for (let i = currentIndex; i < nextIndex; i += 1) {
+        const stepId = BOOKING_WIZARD_STEPS[i].id;
+        const valid = await form.trigger(BOOKING_WIZARD_STEP_FIELDS[stepId], { shouldFocus: true });
+        if (!valid) {
+          setWizardStep(stepId);
+          return false;
+        }
+      }
+    }
+    setWizardStep(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return true;
+  };
+
+  const goNextStep = async () => {
+    const next = BOOKING_WIZARD_STEPS[bookingWizardStepIndex(wizardStep) + 1];
+    if (next) await goToWizardStep(next.id);
+  };
+
+  const goBackStep = () => {
+    const prev = BOOKING_WIZARD_STEPS[bookingWizardStepIndex(wizardStep) - 1];
+    if (prev) {
+      setWizardStep(prev.id);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const currentWizard = BOOKING_WIZARD_STEPS[bookingWizardStepIndex(wizardStep)];
+  const manualAmount = form.watch("manualAmount");
+  const chargedAmount = (manualAmount ? parseFloat(manualAmount || "0") || 0 : calculatePrice()).toFixed(2);
+  const partnerLayout = delhiveryBooking ? "delhivery" : worldFirstBooking ? "world-first" : "generic";
+  const partnerBoxRows = packageRows.map((row) => ({
+    id: row.id,
+    isPrimary: row.isPrimary,
+    weight: row.weight,
+    length: row.length,
+    width: row.width,
+    height: row.height,
+    numberOfPieces: row.numberOfPieces,
+  }));
+
   if (!partnerConfirmed) {
     return (
       <HubBookingPartnerGate
@@ -1110,22 +1159,34 @@ export default function NewBookingPage() {
           }
           setPartnerConfirmed(true);
         }}
-        onCancel={() => setLocation("/shipments")}
+        onCancel={() => setLocation(sourceBookingRequestId ? "/bookings" : "/shipments")}
       />
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/shipments")} data-testid="button-back">
+      <div className="flex flex-wrap items-start gap-4">
+        <Button variant="ghost" size="icon" onClick={() => setLocation(sourceBookingRequestId ? "/bookings" : "/shipments")} data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">New Booking</h1>
-          <p className="text-muted-foreground">Create a domestic or international shipment</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold">
+            {partnerLayout === "delhivery"
+              ? "Create New Order"
+              : partnerLayout === "world-first"
+                ? "AWB Entry"
+                : "New Booking"}
+          </h1>
+          <p className="text-muted-foreground">
+            {partnerLayout === "delhivery"
+              ? "Delhivery pickup, consignee, order, product, and box details."
+              : partnerLayout === "world-first"
+                ? "World First shipper, consignee, services, pieces, and performa."
+                : `Step ${bookingWizardStepIndex(wizardStep) + 1} of ${BOOKING_WIZARD_STEPS.length}: ${currentWizard.label}`}
+          </p>
         </div>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedPartner ? (
             <Badge variant="secondary" className="h-8 gap-1.5 px-3" data-testid="badge-selected-partner">
               <Truck className="h-3.5 w-3.5" />
@@ -1141,377 +1202,233 @@ export default function NewBookingPage() {
           >
             Change partner
           </Button>
-          <HubBookingScopeToggle value={shipmentType} onChange={applyShipmentScope} />
-          <Button
-            type="button"
-            size="sm"
-            variant={bookingView === "table" ? "default" : "outline"}
-            onClick={() => setBookingView("table")}
-            data-testid="button-booking-view-table"
-          >
-            Table View
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={bookingView === "form" ? "default" : "outline"}
-            onClick={() => setBookingView("form")}
-            data-testid="button-booking-view-form"
-          >
-            Form View
-          </Button>
         </div>
       </div>
 
-      <Card className="border-dashed">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">AI Smart Fill</span>
-            <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={smartFillText}
-              onChange={(e) => setSmartFillText(e.target.value)}
-              placeholder='e.g. "Send 5kg parcel from Raj Kumar 9876543210 to Amit Sharma 9123456789 in Delhi by air via DTDC"'
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSmartFill(); } }}
-              data-testid="input-smart-fill"
-            />
-            <Button type="button" size="icon" variant="ghost" onClick={handleSmartFillVoice} data-testid="button-mic-smartfill" className={recordingSection === "smartfill" ? "text-red-500" : ""}>
-              <Mic className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSmartFill}
-              disabled={isSmartFilling || !smartFillText.trim()}
-              data-testid="button-smart-fill"
-            >
-              {isSmartFilling ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-dashed border-primary/30 bg-muted/30">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <ScanLine className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Scan package photos (AI)</span>
-                <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-                  Vision
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground max-w-xl">
-                Photograph the parcel, shipping label, or handwritten From / To addresses. AI reads the images and fills
-                sender, receiver, package, and service fields—then review before submitting.
-              </p>
-            </div>
-            <div className="shrink-0 flex gap-2">
-              <input
-                ref={scanPhotosInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handlePackagePhotoScan}
-                data-testid="input-scan-package-photos"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={isScanningPhotos}
-                onClick={() => scanPhotosInputRef.current?.click()}
-                data-testid="button-scan-package-photos"
-              >
-                {isScanningPhotos ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Scanning…
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-4 w-4 mr-2" />
-                    Choose photos
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {partnerLayout === "generic" ? (
+        <BookingWizardStepper current={wizardStep} onSelect={(id) => void goToWizardStep(id)} />
+      ) : null}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <HubBookingOrderSection form={form} branches={branches} scope={shipmentType} />
-          {bookingView === "table" ? (
-            <>
+        <form
+          onSubmit={(event) => {
+            if (partnerLayout === "generic" && wizardStep !== "charge") {
+              event.preventDefault();
+              void goNextStep();
+              return;
+            }
+            form.handleSubmit(onSubmit)(event);
+          }}
+          className="space-y-6"
+        >
+          {partnerLayout === "delhivery" ? (
+            <DelhiveryOrderForm
+              form={form}
+              branches={branches}
+              office={office}
+              sellerName={delhiveryStatus?.clientName || office?.name}
+              delhiveryPickupLocation={delhiveryStatus?.pickupLocation}
+              boxRows={partnerBoxRows}
+              onAddBox={addPackageRow}
+              onRemoveBox={removePackageRow}
+              onChangeBox={changePackageField}
+              chargedAmount={chargedAmount}
+              isPricing={isPricing}
+              submitting={createBookingMutation.isPending}
+              submitLabel={`Book in ${selectedPartner?.name || "Delhivery"}`}
+              submitPendingLabel={bookOnCreate ? `Booking in ${selectedPartner?.name || "Delhivery"}...` : "Creating..."}
+              onRefreshRate={updateCalculatedAmount}
+            />
+          ) : null}
+
+          {partnerLayout === "world-first" ? (
+            <WorldFirstAwbForm
+              form={form}
+              office={office}
+              partner={selectedPartner}
+              customers={customers}
+              onCustomerSelect={handleCustomerSelect}
+              pieceRows={partnerBoxRows}
+              onAddPiece={addPackageRow}
+              onRemovePiece={removePackageRow}
+              onChangePiece={changePackageField}
+              maxLength={maxLength}
+              maxWidth={maxWidth}
+              maxHeight={maxHeight}
+              totalWeight={totalWeight}
+              submitting={createBookingMutation.isPending}
+              submitLabel={`Book in ${selectedPartner?.name || "World First"}`}
+              submitPendingLabel={bookOnCreate ? `Booking in ${selectedPartner?.name || "World First"}...` : "Creating..."}
+              clientId={worldFirstStatus?.clientId}
+            />
+          ) : null}
+
+          {partnerLayout === "generic" && wizardStep === "shipment" ? (
+            <div className="space-y-6">
               <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <User className="h-4 w-4" />
-                    Booking Details (Table)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Section</TableHead>
-                          {bookingDetailsColumnOrder.map((key) => (
-                            <TableHead
-                              key={`booking-head-${key}`}
-                              onDragOver={(e) => e.preventDefault()}
-                              onDrop={() => handleBookingColumnDrop(key)}
-                              className={draggingBookingColumn === key ? "opacity-60" : ""}
-                            >
-                              <div
-                                draggable
-                                onDragStart={() => handleBookingColumnDragStart(key)}
-                                onDragEnd={() => setDraggingBookingColumn(null)}
-                                className="flex cursor-grab items-center gap-1"
-                                title="Drag to rearrange column"
-                              >
-                                <GripVertical className="h-3 w-3 text-muted-foreground" />
-                                {bookingDetailsColumnLabels[key]}
-                              </div>
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="font-medium">Sender</TableCell>
-                          {bookingDetailsColumnOrder.map((key) => (
-                            <TableCell key={`sender-cell-${key}`}>
-                              {key === "name" && (
-                                <Input value={form.watch("senderName") || ""} onChange={(e) => form.setValue("senderName", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-name" />
-                              )}
-                              {key === "phone" && (
-                                <Input value={form.watch("senderPhone") || ""} onChange={(e) => form.setValue("senderPhone", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-phone" />
-                              )}
-                              {key === "address" && (
-                                <Input value={form.watch("senderAddress") || ""} onChange={(e) => form.setValue("senderAddress", e.target.value, { shouldValidate: true })} data-testid="table-input-sender-address" />
-                              )}
-                              {key === "city" && (
-                                <Input value={form.watch("senderCity") || ""} onChange={(e) => form.setValue("senderCity", e.target.value)} data-testid="table-input-sender-city" />
-                              )}
-                              {key === "state" && (
-                                <Input value={form.watch("senderState") || ""} onChange={(e) => form.setValue("senderState", e.target.value)} data-testid="table-input-sender-state" />
-                              )}
-                              {key === "pincode" && (
-                                <Input value={form.watch("senderPincode") || ""} onChange={(e) => form.setValue("senderPincode", e.target.value)} data-testid="table-input-sender-pincode" />
-                              )}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">Receiver</TableCell>
-                          {bookingDetailsColumnOrder.map((key) => (
-                            <TableCell key={`receiver-cell-${key}`}>
-                              {key === "name" && (
-                                <Input value={form.watch("receiverName") || ""} onChange={(e) => form.setValue("receiverName", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-name" />
-                              )}
-                              {key === "phone" && (
-                                <Input value={form.watch("receiverPhone") || ""} onChange={(e) => form.setValue("receiverPhone", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-phone" />
-                              )}
-                              {key === "address" && (
-                                <Input value={form.watch("receiverAddress") || ""} onChange={(e) => form.setValue("receiverAddress", e.target.value, { shouldValidate: true })} data-testid="table-input-receiver-address" />
-                              )}
-                              {key === "city" && (
-                                <Input value={form.watch("receiverCity") || ""} onChange={(e) => form.setValue("receiverCity", e.target.value)} data-testid="table-input-receiver-city" />
-                              )}
-                              {key === "state" && (
-                                <Input value={form.watch("receiverState") || ""} onChange={(e) => form.setValue("receiverState", e.target.value)} data-testid="table-input-receiver-state" />
-                              )}
-                              {key === "pincode" && (
-                                <Input value={form.watch("receiverPincode") || ""} onChange={(e) => form.setValue("receiverPincode", e.target.value)} data-testid="table-input-receiver-pincode" />
-                              )}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-base">Pickup & delivery extras</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div>
-                    <p className="mb-3 text-sm font-medium">Pickup / sender</p>
-                    <HubBookingAddressExtras form={form} party="sender" scope={shipmentType} />
-                  </div>
-                  <div>
-                    <p className="mb-3 text-sm font-medium">Delivery / receiver</p>
-                    <HubBookingAddressExtras form={form} party="receiver" scope={shipmentType} />
-                  </div>
-                </CardContent>
-              </Card>
-              <HubBookingProductSection form={form} scope={shipmentType} />
-              <HubBookingPaymentSection form={form} scope={shipmentType} />
-              {shipmentType === "international" ? <HubBookingCustomsSection form={form} /> : null}
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Truck className="h-4 w-4" />
-                    Service & Billing (Table)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {serviceBillingColumnOrder.map((key) => (
-                            <TableHead
-                              key={`service-head-${key}`}
-                              onDragOver={(e) => e.preventDefault()}
-                              onDrop={() => handleServiceColumnDrop(key)}
-                              className={draggingServiceColumn === key ? "opacity-60" : ""}
-                            >
-                              <div
-                                draggable
-                                onDragStart={() => handleServiceColumnDragStart(key)}
-                                onDragEnd={() => setDraggingServiceColumn(null)}
-                                className="flex cursor-grab items-center gap-1"
-                                title="Drag to rearrange column"
-                              >
-                                <GripVertical className="h-3 w-3 text-muted-foreground" />
-                                {serviceBillingColumnLabels[key]}
-                              </div>
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          {serviceBillingColumnOrder.map((key) => (
-                            <TableCell key={`service-cell-${key}`}>
-                              {key === "courierPartner" && (
-                                <Select
-                                  onValueChange={(value) => {
-                                    form.setValue("courierPartnerId", value, { shouldValidate: true });
-                                    setTimeout(updateCalculatedAmount, 100);
-                                  }}
-                                  value={form.watch("courierPartnerId")}
-                                >
-                                  <SelectTrigger data-testid="table-select-partner">
-                                    <SelectValue placeholder="Select partner" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {partners?.map((partner) => (
-                                      <SelectItem key={partner.id} value={partner.id}>
-                                        {partner.name} ({partner.code})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                              {key === "serviceType" && (
-                                <Select
-                                  onValueChange={(value) => {
-                                    form.setValue("serviceType", value as "air" | "surface");
-                                    setTimeout(updateCalculatedAmount, 100);
-                                  }}
-                                  value={form.watch("serviceType")}
-                                >
-                                  <SelectTrigger data-testid="table-select-service-type">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="surface">Surface</SelectItem>
-                                    <SelectItem value="air">Air</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                              {key === "awb" && (
-                                <Input
-                                  value={form.watch("awbNumber") || ""}
-                                  onChange={(e) => form.setValue("awbNumber", e.target.value)}
-                                  data-testid="table-input-awb"
-                                />
-                              )}
-                              {key === "payment" && (
-                                <Select onValueChange={(value) => form.setValue("paymentMode", value as BookingFormData["paymentMode"])} value={form.watch("paymentMode")}>
-                                  <SelectTrigger data-testid="table-select-payment-mode">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="cash">Cash</SelectItem>
-                                    <SelectItem value="upi">UPI</SelectItem>
-                                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                                    <SelectItem value="credit">Credit</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                              {key === "amountOverride" && (
-                                <Input
-                                  value={form.watch("manualAmount") || ""}
-                                  onChange={(e) => form.setValue("manualAmount", e.target.value)}
-                                  data-testid="table-input-manual-amount"
-                                />
-                              )}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Scale className="h-4 w-4" />
-                    Package Details (Table)
-                  </CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Shipment</CardTitle>
+                  <p className="text-sm text-muted-foreground">Choose domestic or international, then set pickup and order details.</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-md border">
+                  <HubBookingScopeToggle value={shipmentType} onChange={applyShipmentScope} />
+                </CardContent>
+              </Card>
+              <HubBookingOrderSection form={form} branches={branches} scope={shipmentType} />
+              <Card className="border-dashed">
+                <CardContent className="space-y-2 pt-4">
+                  <p className="text-sm font-medium">Quick fill this booking</p>
+                  <HubBookingAiBar
+                    value={smartFillText}
+                    onChange={setSmartFillText}
+                    onSubmit={() => void handleSmartFill()}
+                    onVoice={() => void handleSmartFillVoice()}
+                    loading={isSmartFilling}
+                    recording={recordingSection === "smartfill"}
+                    testIdPrefix="smart-fill"
+                    placeholder='e.g. "Send 5kg parcel from Raj Kumar 9876543210 to Amit Sharma in Delhi by air"'
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {wizardStep === "shipper" ? (
+            <HubBookingPartySection
+              form={form}
+              party="sender"
+              scope={shipmentType}
+              customers={customers}
+              onCustomerSelect={handleCustomerSelect}
+              aiText={sectionAiText.sender || ""}
+              onAiText={(value) => setSectionAiText((prev) => ({ ...prev, sender: value }))}
+              onAiFill={() => void handleSectionAiFill("sender")}
+              onVoice={() => void handleVoiceRecord("sender")}
+              aiLoading={sectionAiLoading.sender}
+              recording={recordingSection === "sender"}
+            />
+          ) : null}
+
+          {wizardStep === "consignee" ? (
+            <HubBookingPartySection
+              form={form}
+              party="receiver"
+              scope={shipmentType}
+              aiText={sectionAiText.receiver || ""}
+              onAiText={(value) => setSectionAiText((prev) => ({ ...prev, receiver: value }))}
+              onAiFill={() => void handleSectionAiFill("receiver")}
+              onVoice={() => void handleVoiceRecord("receiver")}
+              aiLoading={sectionAiLoading.receiver}
+              recording={recordingSection === "receiver"}
+            />
+          ) : null}
+
+          {wizardStep === "package" ? (
+            <div className="space-y-6">
+              <Card className="border-dashed border-primary/30 bg-muted/30">
+                <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <ScanLine className="h-4 w-4 text-[#FF4907]" />
+                      <span className="text-sm font-medium">Scan package photos</span>
+                    </div>
+                    <p className="max-w-xl text-xs text-muted-foreground">
+                      Photograph the parcel or label. AI fills sender, receiver, and package fields for you to review.
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <input
+                      ref={scanPhotosInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handlePackagePhotoScan}
+                      data-testid="input-scan-package-photos"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isScanningPhotos}
+                      onClick={() => scanPhotosInputRef.current?.click()}
+                      data-testid="button-scan-package-photos"
+                    >
+                      {isScanningPhotos ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Scanning…
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="mr-2 h-4 w-4" />
+                          Choose photos
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Scale className="h-4 w-4" />
+                      Package
+                    </CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">Weight, pieces, and dimensions for this shipment.</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleCameraCapture}
+                      data-testid="input-camera-capture"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={isMeasuring}
+                      data-testid="button-scan-package"
+                    >
+                      {isMeasuring ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Camera className="mr-1 h-3 w-3" />}
+                      Measure from photo
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <HubBookingAiBar
+                    value={sectionAiText.package || ""}
+                    onChange={(value) => setSectionAiText((prev) => ({ ...prev, package: value }))}
+                    onSubmit={() => void handleSectionAiFill("package")}
+                    onVoice={() => void handleVoiceRecord("package")}
+                    loading={sectionAiLoading.package}
+                    recording={recordingSection === "package"}
+                    testIdPrefix="package"
+                    placeholder="e.g. 5 kilo electronics, value 10000"
+                  />
+                  <div className="overflow-x-auto rounded-md border">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>#</TableHead>
-                          {packageColumnOrder.map((key) => (
-                            <TableHead
-                              key={`table-view-head-${key}`}
-                              onDragOver={(e) => e.preventDefault()}
-                              onDrop={() => handleColumnDrop(key)}
-                              className={draggingColumn === key ? "opacity-60" : ""}
-                            >
-                              <div
-                                draggable
-                                onDragStart={() => handleColumnDragStart(key)}
-                                onDragEnd={() => setDraggingColumn(null)}
-                                className="flex cursor-grab items-center gap-1"
-                                title="Drag to rearrange column"
-                              >
-                                <GripVertical className="h-3 w-3 text-muted-foreground" />
-                                {packageColumnLabels[key]}
-                              </div>
-                            </TableHead>
+                          {PACKAGE_COLUMNS.map((key) => (
+                            <TableHead key={key}>{PACKAGE_COLUMN_LABELS[key]}</TableHead>
                           ))}
                           <TableHead className="w-12" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {packageRows.map((pkg, index) => (
-                          <TableRow key={`table-view-${pkg.id}`}>
+                          <TableRow key={pkg.id}>
                             <TableCell>{index + 1}</TableCell>
-                            {packageColumnOrder.map((key) => (
-                              <TableCell key={`table-view-cell-${pkg.id}-${key}`}>
-                                {renderPackageCell(pkg, index, key, "table-view-input-package")}
-                              </TableCell>
+                            {PACKAGE_COLUMNS.map((key) => (
+                              <TableCell key={`${pkg.id}-${key}`}>{renderPackageCell(pkg, index, key, "input-package")}</TableCell>
                             ))}
                             <TableCell>
                               {!pkg.isPrimary && (
@@ -1520,7 +1437,7 @@ export default function NewBookingPage() {
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => removePackageRow(pkg.id)}
-                                  data-testid={`table-view-button-remove-package-${index}`}
+                                  data-testid={`button-remove-package-${index}`}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1535,11 +1452,18 @@ export default function NewBookingPage() {
                     <p className="text-sm text-muted-foreground">
                       Total: {totalWeight.toFixed(2)} kg, {totalPieces} piece(s), Declared Rs. {totalDeclaredValue.toFixed(2)}
                     </p>
-                    <Button type="button" variant="outline" size="sm" onClick={addPackageRow} data-testid="table-view-button-add-package-row">
+                    <Button type="button" variant="outline" size="sm" onClick={addPackageRow} data-testid="button-add-package-row">
                       <Plus className="mr-1 h-3.5 w-3.5" />
-                      Add Package
+                      Add package
                     </Button>
                   </div>
+                  <PackagePhotoCapture
+                    photos={packagePhotos}
+                    onChange={(next) => {
+                      setPackagePhotos(next);
+                      form.setValue("packagePhotoUrls", next, { shouldDirty: true });
+                    }}
+                  />
                   <HubBookingWeightSummary
                     deadWeight={totalWeight}
                     length={maxLength}
@@ -1548,759 +1472,249 @@ export default function NewBookingPage() {
                   />
                 </CardContent>
               </Card>
-            </>
-          ) : (
-          <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <User className="h-4 w-4" />
-                  Sender / pickup details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2 mb-4 pb-3 border-b border-dashed">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <Input
-                    value={sectionAiText.sender}
-                    onChange={(e) => setSectionAiText(prev => ({ ...prev, sender: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("sender"); } }}
-                    placeholder='e.g. Raj Kumar, 9876543210, MG Road Bangalore (any language)'
-                    className="text-sm"
-                    disabled={sectionAiLoading.sender}
-                    data-testid="input-ai-sender"
-                  />
-                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("sender")} data-testid="button-mic-sender" className={recordingSection === "sender" ? "text-red-500" : ""}>
-                    <Mic className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleSectionAiFill("sender")}
-                    disabled={sectionAiLoading.sender || !sectionAiText.sender?.trim()}
-                    data-testid="button-ai-sender"
-                  >
-                    {sectionAiLoading.sender ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <FormField
-                  control={form.control}
-                  name="customerId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Select Customer (Optional)</FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          handleCustomerSelect(value);
-                        }}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-customer">
-                            <SelectValue placeholder="Walk-in Customer" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {customers?.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.name} - {customer.phone}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )}
-                />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="senderName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Name *</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Sender name" data-testid="input-sender-name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="senderPhone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone *</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="10-digit phone" data-testid="input-sender-phone" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="senderAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address *</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} placeholder="Full address" className="resize-none" data-testid="input-sender-address" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <AddressMapField
-                  label="Pin sender on map"
-                  testIdPrefix="sender"
-                  value={{
-                    address: form.watch("senderAddress") || "",
-                    city: form.watch("senderCity"),
-                    state: form.watch("senderState"),
-                    pincode: form.watch("senderPincode"),
-                  }}
-                  onChange={(v) => {
-                    if (v.address) form.setValue("senderAddress", v.address, { shouldDirty: true });
-                    if (v.city) form.setValue("senderCity", v.city, { shouldDirty: true });
-                    if (v.state) form.setValue("senderState", v.state, { shouldDirty: true });
-                    if (v.pincode) form.setValue("senderPincode", v.pincode, { shouldDirty: true });
-                  }}
-                />
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <FormField
-                    control={form.control}
-                    name="senderCity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="City" data-testid="input-sender-city" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="senderState"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="State" data-testid="input-sender-state" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="senderPincode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{shipmentType === "international" ? "Postal code" : "Pincode"}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder={shipmentType === "international" ? "Postal code" : "Pincode"} data-testid="input-sender-pincode" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <HubBookingAddressExtras form={form} party="sender" scope={shipmentType} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <MapPin className="h-4 w-4" />
-                  Delivery details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2 mb-4 pb-3 border-b border-dashed">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <Input
-                    value={sectionAiText.receiver}
-                    onChange={(e) => setSectionAiText(prev => ({ ...prev, receiver: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("receiver"); } }}
-                    placeholder='e.g. Amit Sharma ko Delhi 110001 bhejo (any language)'
-                    className="text-sm"
-                    disabled={sectionAiLoading.receiver}
-                    data-testid="input-ai-receiver"
-                  />
-                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("receiver")} data-testid="button-mic-receiver" className={recordingSection === "receiver" ? "text-red-500" : ""}>
-                    <Mic className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleSectionAiFill("receiver")}
-                    disabled={sectionAiLoading.receiver || !sectionAiText.receiver?.trim()}
-                    data-testid="button-ai-receiver"
-                  >
-                    {sectionAiLoading.receiver ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="receiverName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Name *</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Receiver name" data-testid="input-receiver-name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="receiverPhone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone *</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="10-digit phone" data-testid="input-receiver-phone" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="receiverAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address *</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} placeholder="Full address" className="resize-none" data-testid="input-receiver-address" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <AddressMapField
-                  label="Pin receiver on map"
-                  testIdPrefix="receiver"
-                  value={{
-                    address: form.watch("receiverAddress") || "",
-                    city: form.watch("receiverCity"),
-                    state: form.watch("receiverState"),
-                    pincode: form.watch("receiverPincode"),
-                  }}
-                  onChange={(v) => {
-                    if (v.address) form.setValue("receiverAddress", v.address, { shouldDirty: true });
-                    if (v.city) form.setValue("receiverCity", v.city, { shouldDirty: true });
-                    if (v.state) form.setValue("receiverState", v.state, { shouldDirty: true });
-                    if (v.pincode) form.setValue("receiverPincode", v.pincode, { shouldDirty: true });
-                  }}
-                />
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <FormField
-                    control={form.control}
-                    name="receiverCity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>City</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="City" data-testid="input-receiver-city" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="receiverState"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>State</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="State" data-testid="input-receiver-state" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="receiverPincode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{shipmentType === "international" ? "Postal code" : "Pincode"}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder={shipmentType === "international" ? "Postal code" : "Pincode"} data-testid="input-receiver-pincode" />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <HubBookingAddressExtras form={form} party="receiver" scope={shipmentType} />
-              </CardContent>
-            </Card>
-          </div>
-
-            <HubBookingProductSection form={form} scope={shipmentType} />
-            <HubBookingPaymentSection form={form} scope={shipmentType} />
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Scale className="h-4 w-4" />
-                  Package Details
-                </CardTitle>
-                <div className="flex items-center gap-1">
-                  <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handleCameraCapture}
-                    data-testid="input-camera-capture"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => cameraInputRef.current?.click()}
-                    disabled={isMeasuring}
-                    data-testid="button-scan-package"
-                  >
-                    {isMeasuring ? (
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    ) : (
-                      <Camera className="mr-1 h-3 w-3" />
-                    )}
-                    Scan Package
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2 mb-4 pb-3 border-b border-dashed">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <Input
-                    value={sectionAiText.package}
-                    onChange={(e) => setSectionAiText(prev => ({ ...prev, package: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("package"); } }}
-                    placeholder='e.g. 5 kilo electronics, value 10000 (any language)'
-                    className="text-sm"
-                    disabled={sectionAiLoading.package}
-                    data-testid="input-ai-package"
-                  />
-                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("package")} data-testid="button-mic-package" className={recordingSection === "package" ? "text-red-500" : ""}>
-                    <Mic className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleSectionAiFill("package")}
-                    disabled={sectionAiLoading.package || !sectionAiText.package?.trim()}
-                    data-testid="button-ai-package"
-                  >
-                    {sectionAiLoading.package ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        {packageColumnOrder.map((key) => (
-                          <TableHead
-                            key={`form-view-head-${key}`}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => handleColumnDrop(key)}
-                            className={draggingColumn === key ? "opacity-60" : ""}
-                          >
-                            <div
-                              draggable
-                              onDragStart={() => handleColumnDragStart(key)}
-                              onDragEnd={() => setDraggingColumn(null)}
-                              className="flex cursor-grab items-center gap-1"
-                              title="Drag to rearrange column"
-                            >
-                              <GripVertical className="h-3 w-3 text-muted-foreground" />
-                              {packageColumnLabels[key]}
-                            </div>
-                          </TableHead>
-                        ))}
-                        <TableHead className="w-12" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {packageRows.map((pkg, index) => (
-                        <TableRow key={pkg.id}>
-                          <TableCell>{index + 1}</TableCell>
-                          {packageColumnOrder.map((key) => (
-                            <TableCell key={`form-view-cell-${pkg.id}-${key}`}>
-                              {renderPackageCell(pkg, index, key, "input-package")}
-                            </TableCell>
-                          ))}
-                          <TableCell>
-                            {!pkg.isPrimary && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removePackageRow(pkg.id)}
-                                data-testid={`button-remove-package-${index}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Total: {totalWeight.toFixed(2)} kg, {totalPieces} piece(s), Declared Rs. {totalDeclaredValue.toFixed(2)}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" onClick={addPackageRow} data-testid="button-add-package-row">
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    Add Package
-                  </Button>
-                </div>
-
-                <PackagePhotoCapture
-                  photos={packagePhotos}
-                  onChange={(next) => {
-                    setPackagePhotos(next);
-                    form.setValue("packagePhotoUrls", next, { shouldDirty: true });
-                  }}
-                />
-
-                <HubBookingWeightSummary
-                  deadWeight={totalWeight}
-                  length={maxLength}
-                  width={maxWidth}
-                  height={maxHeight}
-                />
-              </CardContent>
-            </Card>
-
-            {shipmentType === "international" ? <HubBookingCustomsSection form={form} /> : null}
-
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Truck className="h-4 w-4" />
-                  Service & Partner
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2 mb-4 pb-3 border-b border-dashed">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <Input
-                    value={sectionAiText.service}
-                    onChange={(e) => setSectionAiText(prev => ({ ...prev, service: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSectionAiFill("service"); } }}
-                    placeholder='e.g. DTDC se air express, UPI payment (any language)'
-                    className="text-sm"
-                    disabled={sectionAiLoading.service}
-                    data-testid="input-ai-service"
-                  />
-                  <Button type="button" size="icon" variant="ghost" onClick={() => handleVoiceRecord("service")} data-testid="button-mic-service" className={recordingSection === "service" ? "text-red-500" : ""}>
-                    <Mic className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleSectionAiFill("service")}
-                    disabled={sectionAiLoading.service || !sectionAiText.service?.trim()}
-                    data-testid="button-ai-service"
-                  >
-                    {sectionAiLoading.service ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <FormField
-                  control={form.control}
-                  name="courierPartnerId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Courier Partner *</FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          setTimeout(updateCalculatedAmount, 100);
-                        }}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-partner">
-                            <SelectValue placeholder="Select partner" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {partners?.map((partner) => (
-                            <SelectItem key={partner.id} value={partner.id}>
-                              {partner.name} ({partner.code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="serviceType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Service Type *</FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          setTimeout(updateCalculatedAmount, 100);
-                        }}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-service-type">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="surface">Surface (Standard)</SelectItem>
-                          <SelectItem value="air">Air (Express)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="awbNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>AWB Number</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="Auto-generated or manual entry" data-testid="input-awb" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <div className="border-t pt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Bot className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">AI Courier Recommendation</span>
-                    <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">AI</Badge>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAiRecommend}
-                    disabled={isRecommending}
-                    data-testid="button-ai-recommend"
-                  >
-                    {isRecommending ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-1 h-3 w-3" />
-                        Get AI Recommendation
-                      </>
-                    )}
-                  </Button>
-                  {recommendation && (
-                    <div className="mt-3 space-y-2">
-                      {(() => {
-                        const recommended = partners?.find((p) => p.id === recommendation.recommendedPartnerId);
-                        return recommended ? (
-                          <div className="rounded-md border p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{recommended.name}</span>
-                                <Badge variant="default" className="text-[10px]">Recommended</Badge>
-                              </div>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => acceptRecommendation(recommendation.recommendedPartnerId)}
-                                data-testid="button-accept-recommendation"
-                              >
-                                Accept
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{recommendation.reason}</p>
-                            {recommendation.estimatedCost && (
-                              <p className="text-xs text-muted-foreground">Est. cost: Rs. {recommendation.estimatedCost}</p>
-                            )}
-                          </div>
-                        ) : null;
-                      })()}
-                      {(() => {
-                        const alt = recommendation.alternativePartnerId
-                          ? partners?.find((p) => p.id === recommendation.alternativePartnerId)
-                          : null;
-                        return alt ? (
-                          <div className="rounded-md border border-dashed p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{alt.name}</span>
-                                <Badge variant="outline" className="text-[10px]">Alternative</Badge>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => acceptRecommendation(recommendation.alternativePartnerId!)}
-                                data-testid="button-accept-alternative"
-                              >
-                                Use Instead
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{recommendation.alternativeReason}</p>
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          )}
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CreditCard className="h-4 w-4" />
-                Hub collection
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 sm:grid-cols-3">
-                <FormField
-                  control={form.control}
-                  name="paymentMode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Mode *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-payment-mode">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="upi">UPI</SelectItem>
-                          <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                          <SelectItem value="credit">Credit</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )}
-                />
-                <div>
-                  <FormLabel>Calculated Amount</FormLabel>
-                  <div className="mt-2 text-2xl font-bold text-primary flex items-center gap-2">
-                    {isPricing && <Loader2 className="h-5 w-5 animate-spin" />}
-                    Rs. {(form.watch("manualAmount") ? parseFloat(form.watch("manualAmount") || "0") || 0 : calculatePrice()).toFixed(2)}
-                  </div>
-                  {calculatePrice() <= 0 && !form.watch("manualAmount") && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      {!selectedPartnerId
-                        ? "Select a courier partner to calculate the amount."
-                        : totalWeight <= 0
-                        ? "Enter package weight to calculate the amount."
-                        : "No rate configured for this partner. Set rates under Courier Partners or enter an override amount."}
-                    </p>
-                  )}
-                  {priceQuote && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Tariff: Rs. {priceQuote.tariffAmount.toFixed(2)} + Margin: Rs. {priceQuote.marginTotal.toFixed(2)}
-                      {priceQuote.chargeableWeight > parseFloat(weight || "0") && (
-                        <> · Chg. weight: {priceQuote.chargeableWeight.toFixed(2)} kg</>
-                      )}
-                      {priceQuote.source === "tariff" ? " · from tariff sheet" : " · fallback rate card"}
-                    </p>
-                  )}
-                  {!priceQuote && selectedPartner && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Base: Rs. {serviceType === "air" ? selectedPartner.baseRateAir : selectedPartner.baseRateSurface} +
-                      Rs. {serviceType === "air" ? selectedPartner.ratePerKgAir : selectedPartner.ratePerKgSurface}/kg
-                    </p>
-                  )}
-                </div>
-                <FormField
-                  control={form.control}
-                  name="manualAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Override Amount (Optional)</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" placeholder="Leave blank to use calculated" data-testid="input-manual-amount" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex flex-col items-end gap-2">
-            {bookOnCreate ? (
-              <p className="text-xs text-muted-foreground">
-                Delhivery API is connected. This creates the XGoo bill and books the AWB in one step.
-              </p>
-            ) : selectedPartner && isDelhiveryPartner(selectedPartner.code, selectedPartner.name) ? (
-              <p className="text-xs text-muted-foreground">
-                Delhivery API is not configured, so this only saves the XGoo shipment. Book later from
-                the shipment page, or add the token in Settings → Courier APIs.
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-4">
-              <Button type="button" variant="outline" onClick={() => setLocation("/shipments")} data-testid="button-cancel">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createBookingMutation.isPending} data-testid="button-create-booking">
-                {createBookingMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {bookOnCreate ? "Creating and booking..." : "Creating..."}
-                  </>
-                ) : bookOnCreate ? (
-                  <>
-                    <Truck className="mr-2 h-4 w-4" />
-                    Create and book on Delhivery
-                  </>
-                ) : (
-                  <>
-                    <Package className="mr-2 h-4 w-4" />
-                    Create Booking
-                  </>
-                )}
-              </Button>
             </div>
-          </div>
+          ) : null}
+
+          {wizardStep === "goods" ? (
+            <div className="space-y-6">
+              <HubBookingProductSection form={form} scope={shipmentType} partner={selectedPartner} />
+              {shipmentType === "international" || worldFirstBooking ? (
+                <HubBookingCustomsSection form={form} performa={worldFirstBooking} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {wizardStep === "charge" ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Review</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Courier</p>
+                    <p className="font-medium">{selectedPartner ? `${selectedPartner.name} (${selectedPartner.code})` : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Lane</p>
+                    <p className="font-medium">
+                      {shipmentType === "international" ? destinationCountry || "International" : "Domestic"} · {senderCity || "Origin"} → {receiverCity || "Destination"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Package</p>
+                    <p className="font-medium">{totalWeight.toFixed(2)} kg · {totalPieces} pcs</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Amount</p>
+                    <p className="font-medium text-[#FF4907]">Rs. {chargedAmount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <HubBookingCourierApiSection
+                form={form}
+                partner={selectedPartner}
+                delhiveryPickupLocation={delhiveryStatus?.pickupLocation}
+              />
+              <HubBookingPaymentSection form={form} scope={shipmentType} />
+
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Truck className="h-4 w-4" />
+                    Service
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <HubBookingAiBar
+                    value={sectionAiText.service || ""}
+                    onChange={(value) => setSectionAiText((prev) => ({ ...prev, service: value }))}
+                    onSubmit={() => void handleSectionAiFill("service")}
+                    onVoice={() => void handleVoiceRecord("service")}
+                    loading={sectionAiLoading.service}
+                    recording={recordingSection === "service"}
+                    testIdPrefix="service"
+                    placeholder="e.g. air express, UPI payment"
+                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="serviceType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Service type *</FormLabel>
+                          <Select
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              setTimeout(updateCalculatedAmount, 100);
+                            }}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-service-type">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="surface">Surface (Standard)</SelectItem>
+                              <SelectItem value="air">Air (Express)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="awbNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>AWB number</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Auto-generated or manual entry" data-testid="input-awb" />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="border-t pt-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-[#FF4907]" />
+                      <span className="text-sm font-medium">AI courier recommendation</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAiRecommend}
+                      disabled={isRecommending}
+                      data-testid="button-ai-recommend"
+                    >
+                      {isRecommending ? (
+                        <>
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-1 h-3 w-3" />
+                          Get recommendation
+                        </>
+                      )}
+                    </Button>
+                    {recommendation ? (
+                      <div className="mt-3 space-y-2">
+                        {(() => {
+                          const recommended = partners?.find((p) => p.id === recommendation.recommendedPartnerId);
+                          return recommended ? (
+                            <div className="space-y-2 rounded-md border p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium">{recommended.name}</span>
+                                  <Badge>Recommended</Badge>
+                                </div>
+                                <Button type="button" size="sm" onClick={() => acceptRecommendation(recommendation.recommendedPartnerId)} data-testid="button-accept-recommendation">
+                                  Accept
+                                </Button>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{recommendation.reason}</p>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CreditCard className="h-4 w-4" />
+                    Hub collection
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-6 sm:grid-cols-3">
+                    <FormField
+                      control={form.control}
+                      name="paymentMode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Payment mode *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-payment-mode">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="credit">Credit</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                    <div>
+                      <FormLabel>Calculated amount</FormLabel>
+                      <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-[#FF4907]">
+                        {isPricing ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                        Rs. {chargedAmount}
+                      </div>
+                      {calculatePrice() <= 0 && !manualAmount ? (
+                        <p className="mt-1 text-xs text-amber-600">
+                          {!selectedPartnerId
+                            ? "Select a courier partner to calculate the amount."
+                            : totalWeight <= 0
+                              ? "Enter package weight to calculate the amount."
+                              : "No rate configured for this partner. Enter an override amount."}
+                        </p>
+                      ) : null}
+                      {priceQuote ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Tariff: Rs. {priceQuote.tariffAmount.toFixed(2)} + Margin: Rs. {priceQuote.marginTotal.toFixed(2)}
+                          {priceQuote.source === "tariff" ? " · from tariff sheet" : " · fallback rate card"}
+                        </p>
+                      ) : null}
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="manualAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Override amount</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="number" placeholder="Leave blank to use calculated" data-testid="input-manual-amount" />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {bookOnCreate ? (
+                <p className="text-xs text-muted-foreground">
+                  {selectedPartner?.name} API is connected. This creates the XGoo bill and books the AWB in one step.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {partnerLayout === "generic" ? (
+            <BookingWizardFooter
+              current={wizardStep}
+              submitting={createBookingMutation.isPending}
+              submitLabel={`Book in ${selectedPartner?.name || "partner"}`}
+              submitPendingLabel={bookOnCreate ? `Booking in ${selectedPartner?.name || "partner"}...` : "Creating..."}
+              onBack={goBackStep}
+              onNext={() => void goNextStep()}
+              onCancel={() => setLocation(sourceBookingRequestId ? "/bookings" : "/shipments")}
+            />
+          ) : null}
         </form>
       </Form>
     </div>

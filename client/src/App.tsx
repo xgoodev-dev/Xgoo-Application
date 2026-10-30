@@ -26,6 +26,7 @@ import ContactPage from "@/pages/contact";
 import LegalPage from "@/pages/legal";
 import DashboardPage from "@/pages/dashboard";
 import NewBookingPage from "@/pages/bookings/new";
+import BookingsPage from "@/pages/bookings/index";
 import BookingCameraPage from "@/pages/bookings/camera";
 import ShipmentsPage from "@/pages/shipments";
 import ShipmentLabelPage from "@/pages/shipments/label";
@@ -41,6 +42,7 @@ import ReportsPage from "@/pages/reports";
 import PricingPage from "@/pages/pricing";
 import RateCalculatorPage from "@/pages/rate-calculator";
 import DocumentsPage from "@/pages/documents";
+import WorldFirstDayEndPage from "@/pages/world-first-day-end";
 import SettingsPage from "@/pages/settings";
 import HubSettingsPage from "@/pages/hub-settings";
 import BotAssistantPage from "@/pages/bot-assistant";
@@ -82,8 +84,7 @@ function CommandOnlyRedirect() {
       location.startsWith("/referrals") ||
       location.startsWith("/settings") ||
       location === "/partners" ||
-      location === "/pricing" ||
-      location === "/rate-calculator";
+      location === "/pricing";
     if (commandOnly && !isCommandWorkspace) setLocation("/dashboard");
   }, [isCommandWorkspace, isLoading, location, setLocation]);
 
@@ -114,7 +115,9 @@ function AuthenticatedApp() {
             <Switch>
               <Route path="/dashboard" component={DashboardPage} />
               <Route path="/bookings/new" component={NewBookingPage} />
+              <Route path="/bookings" component={BookingsPage} />
               <Route path="/shipments" component={ShipmentsPage} />
+              <Route path="/world-first/day-end" component={WorldFirstDayEndPage} />
               <Route path="/shipments/:id/label" component={ShipmentLabelPage} />
               <Route path="/shipments/:id/invoice" component={ShipmentInvoicePage} />
               <Route path="/shipments/:id/bill" component={ShipmentBillPage} />

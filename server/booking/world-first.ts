@@ -7,8 +7,14 @@ import {
 } from "@shared/world-first";
 import type { CourierPartner } from "@shared/schema";
 import type { ConnectorContext, ConnectorResult, CourierConnector } from "./connector";
+import {
+  createWorldFirstShipment,
+  getWorldFirstConfigFromEnv,
+  pingWorldFirstApi,
+} from "../integrations/world-first";
+import { getWorldFirstWallet } from "../integrations/world-first-portal";
 
-export const worldFirstConnector: CourierConnector = {
+export const worldFirstBrowserConnector: CourierConnector = {
   id: "world_first_browser",
   method: "browser_automation",
   async testConnection(partner: CourierPartner) {
@@ -50,3 +56,70 @@ export const worldFirstConnector: CourierConnector = {
     };
   },
 };
+
+export const worldFirstApiConnector: CourierConnector = {
+  id: "world_first_api",
+  method: "api",
+  async testConnection(partner: CourierPartner) {
+    if (!isWorldFirstPartner(partner.code, partner.name)) {
+      return { ok: false, message: "This connector is only for World First Courier." };
+    }
+    const config = getWorldFirstConfigFromEnv();
+    if (!config) {
+      return {
+        ok: false,
+        message:
+          "World First API is not configured. Set WORLD_FIRST_API_USERNAME and WORLD_FIRST_API_PASSWORD, then restart the server.",
+      };
+    }
+    const ping = await pingWorldFirstApi(config);
+    if (!ping.ok) return ping;
+    try {
+      const wallet = await getWorldFirstWallet();
+      return {
+        ok: true,
+        message: `${ping.message} Account Limit ${wallet.limit}, Used ${wallet.used}, Balance ${wallet.balance}.`,
+      };
+    } catch {
+      return ping;
+    }
+  },
+  async createShipment(ctx: ConnectorContext): Promise<ConnectorResult> {
+    if (!isWorldFirstPartner(ctx.partner.code, ctx.partner.name)) {
+      return { ok: false, status: "booking_failed", error: "This API connector only supports World First." };
+    }
+
+    const existingAwb = ctx.shipment.externalAwb?.trim();
+    if (existingAwb) {
+      await ctx.log("duplicate_check", `Shipment already has partner AWB ${existingAwb}`);
+      return { ok: true, status: "booked", awb: existingAwb, bookingReference: existingAwb };
+    }
+
+    const config = getWorldFirstConfigFromEnv();
+    if (!config) {
+      await ctx.log(
+        "api_missing",
+        "World First API credentials are missing. Falling back to browser assist.",
+        "warn",
+      );
+      return worldFirstBrowserConnector.createShipment(ctx);
+    }
+
+    await ctx.log("connecting", `Creating World First AWB at ${config.baseUrl}`);
+    const result = await createWorldFirstShipment(config, ctx.shipment);
+    await ctx.log("booked", `World First assigned AWB ${result.awb}`);
+    if (result.labelUrl) {
+      await ctx.log("label", "World First AWB label is ready to print");
+    }
+    return {
+      ok: true,
+      status: "booked",
+      awb: result.awb,
+      bookingReference: result.forwardingNo || result.awb,
+      labelUrl: result.labelUrl,
+    };
+  },
+};
+
+/** @deprecated Use worldFirstApiConnector when credentials exist. */
+export const worldFirstConnector = worldFirstApiConnector;

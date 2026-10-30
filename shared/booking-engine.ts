@@ -1,4 +1,5 @@
 import { isDelhiveryPartner } from "./delhivery";
+import { isWorldFirstPartner } from "./world-first";
 
 export const BOOKING_METHODS = [
   "api",
@@ -68,7 +69,7 @@ export function resolveBookingMethod(partner: {
   code?: string | null;
   name?: string | null;
 }): BookingMethod {
-  if (isDelhiveryPartner(partner.code, partner.name)) {
+  if (isDelhiveryPartner(partner.code, partner.name) || isWorldFirstPartner(partner.code, partner.name)) {
     if (partner.bookingMethod === "manual" || partner.bookingMethod === "disabled" || partner.bookingMethod === "email") {
       return partner.bookingMethod;
     }
@@ -79,5 +80,6 @@ export function resolveBookingMethod(partner: {
 }
 
 export function defaultBookingMethodForPartner(code?: string | null, name?: string | null): BookingMethod {
-  return isDelhiveryPartner(code, name) ? "api" : "browser_automation";
+  if (isDelhiveryPartner(code, name) || isWorldFirstPartner(code, name)) return "api";
+  return "browser_automation";
 }

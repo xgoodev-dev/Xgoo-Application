@@ -501,7 +501,7 @@ export function TrackingLoadsWorkspace({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 md:pb-24">
         {isLoading ? (
           <div className="space-y-3 py-2">
             {[0, 1, 2].map((i) => (
@@ -580,7 +580,7 @@ export function TrackingLoadsWorkspace({
         )}
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 border-t border-zinc-200/80 bg-[#F4F4F5]/95 p-4 backdrop-blur-sm">
+      <div className="absolute inset-x-0 bottom-0 border-t border-zinc-200/80 bg-[#F4F4F5]/95 p-3 backdrop-blur-sm sm:p-4">
         <Button
           type="button"
           onClick={onAddLoad}

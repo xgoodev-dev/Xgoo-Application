@@ -561,10 +561,9 @@ export default function PartnersPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        API books the shipment on Delhivery from XGoo (needs DELHIVERY_API_TOKEN and
-                        the registered warehouse name in .env). The Delhivery One MCP JSON is for
-                        Cursor only and cannot create bookings. Browser assist opens the partner
-                        site; it is not unattended login. Manual waits for an operator AWB.
+                        API books Delhivery or World First from XGoo (needs the matching .env
+                        credentials). Browser assist opens the partner site; it is not unattended
+                        login. Manual waits for an operator AWB.
                       </p>
                       <FormMessage />
                     </FormItem>

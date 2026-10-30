@@ -47,6 +47,7 @@ import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { apiRequest } from "@/lib/queryClient";
 import { quotationForEnquiry, type EnquiryWithQuote } from "@/lib/enquiry-quote";
+import { isCustomerBookingOrder } from "@/lib/booking-orders";
 import type { ShipmentWithRelations, Quotation } from "@shared/schema";
 
 interface DashboardStats {
@@ -246,10 +247,12 @@ export default function DashboardPage() {
   const { data: quotations = [] } = useQuery<Quotation[]>({
     queryKey: ["/api/quotations"],
   });
-  const recentEnquiries = (bookingRequests || []).map((request) => ({
-    ...request,
-    quotation: quotationForEnquiry(request, quotations),
-  }));
+  const recentBookings = (bookingRequests || [])
+    .filter((request) => isCustomerBookingOrder(request))
+    .map((request) => ({
+      ...request,
+      quotation: quotationForEnquiry(request, quotations),
+    }));
 
   const { data: reportData, isLoading: chartsLoading } = useQuery<ReportData>({
     queryKey: ["dashboard-charts", chartFrom, chartTo],
@@ -340,9 +343,9 @@ export default function DashboardPage() {
             />
             ) : null}
             <QuickActionIcon
-              href="/enquiries"
+              href="/bookings"
               icon={Inbox}
-              label="Enquiries"
+              label="Bookings"
               badge={stats?.pendingBookingRequests}
               testId="button-quick-booking-requests"
               bgClassName="from-amber-500/25 to-amber-500/5 border-amber-500/25"
@@ -624,7 +627,7 @@ export default function DashboardPage() {
                 <Inbox className="h-5 w-5 text-amber-700 dark:text-amber-400" />
               </div>
               <div>
-                <p className="font-semibold">New enquiries</p>
+                <p className="font-semibold">New bookings</p>
                 <p className="text-sm text-muted-foreground">
                   {stats?.pendingBookingRequests || 0} pending
                   {(stats?.todayBookingRequests ?? 0) > 0 && ` · ${stats?.todayBookingRequests} today`}
@@ -632,7 +635,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <Button asChild>
-              <Link href="/enquiries">Review enquiries</Link>
+              <Link href="/bookings">Open bookings</Link>
             </Button>
           </CardContent>
         </Card>
@@ -641,9 +644,9 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-lg">Recent enquiries</CardTitle>
+            <CardTitle className="text-lg">Recent bookings</CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/enquiries">
+              <Link href="/bookings">
                 View all <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
@@ -655,9 +658,9 @@ export default function DashboardPage() {
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
-            ) : recentEnquiries.length > 0 ? (
+            ) : recentBookings.length > 0 ? (
               <div className="space-y-3">
-                {recentEnquiries.slice(0, 5).map((req) => (
+                {recentBookings.slice(0, 5).map((req) => (
                   <div key={req.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
                       <p className="text-sm font-medium">{req.requestNumber}</p>

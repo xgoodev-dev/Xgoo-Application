@@ -9,7 +9,11 @@ import {
   Circle,
   Clock,
   Ban,
+  FileText,
+  Printer,
 } from "lucide-react";
+import { Link } from "wouter";
+import { WorldFirstWalletBar } from "@/components/bookings/world-first-wallet-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,6 +71,7 @@ interface BookingSnapshot {
     actionRequiredReason?: string | null;
     nextAction?: string | null;
     awbNumber?: string | null;
+    bookingReference?: string | null;
     labelUrl?: string | null;
   } | null;
   events: Array<{ id: string; step: string; message: string; createdAt: string }>;
@@ -124,11 +129,12 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
   const portalConfigured = !!resolvedPortalUrl;
   const isDelhivery = isDelhiveryPartner(partner?.code, partner?.name);
   const isWorldFirst = isWorldFirstPartner(partner?.code, partner?.name);
+  const partnerName = partner?.name ?? shipment.courierPartner?.name ?? "Courier partner";
 
   const bookingMethod = booking?.method ?? resolveBookingMethod(partner ?? {});
   const jobStatus = booking?.job?.status;
-  const isApiBooking = bookingMethod === "api" && !isWorldFirst;
-  const needsBrowserAssist = bookingMethod === "browser_automation" || isWorldFirst;
+  const isApiBooking = bookingMethod === "api";
+  const needsBrowserAssist = bookingMethod === "browser_automation";
 
   const invalidateBooking = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/shipments"] });
@@ -210,15 +216,15 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     onSuccess: (snapshot) => {
       invalidateBooking();
       toast({
-        title: "Cancelled on Delhivery",
+        title: `Cancelled on ${partnerName}`,
         description: snapshot.job?.awbNumber
-          ? `AWB ${snapshot.job.awbNumber} was cancelled. It should leave Manifested after a refresh.`
-          : "Delhivery cancellation was sent.",
+          ? `AWB ${snapshot.job.awbNumber} was cancelled.`
+          : `${partnerName} cancellation was sent.`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not cancel on Delhivery",
+        title: `Could not cancel on ${partnerName}`,
         description: error.message,
         variant: "destructive",
       });
@@ -227,22 +233,74 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
 
   const trackMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("GET", `/api/shipments/${shipment.id}/delhivery-track`);
+      const path = isWorldFirst
+        ? `/api/shipments/${shipment.id}/world-first-track`
+        : `/api/shipments/${shipment.id}/delhivery-track`;
+      const res = await apiRequest("GET", path);
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(err.message || "Tracking failed");
       }
-      return res.json() as Promise<{
-        waybill: string;
+      const data = (await res.json()) as {
+        waybill?: string;
+        awb?: string;
         status: string;
         origin: string | null;
         destination: string | null;
         scans: Array<{ status: string; location: string | null; at: string | null }>;
-      }>;
+      };
+      return { ...data, waybill: data.waybill || data.awb || "" };
     },
     onError: (error: Error) => {
       toast({
-        title: "Delhivery tracking failed",
+        title: `${partnerName} tracking failed`,
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const printAwbMutation = useMutation({
+    mutationFn: async (kind: "label" | "invoice" | "box" = "label") => {
+      const res = await apiRequest("GET", `/api/shipments/${shipment.id}/world-first-label`);
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(err.message || "Print AWB failed");
+      }
+      const data = (await res.json()) as {
+        awb: string;
+        forwardingNo?: string | null;
+        labelUrl: string;
+        invoiceUrl?: string | null;
+        boxLabelUrl?: string | null;
+      };
+      const openUrl =
+        kind === "invoice" ? data.invoiceUrl : kind === "box" ? data.boxLabelUrl : data.labelUrl;
+      if (!openUrl) {
+        throw new Error(
+          kind === "invoice"
+            ? "World First did not return an invoice PDF for this AWB."
+            : kind === "box"
+              ? "World First did not return a box label for this AWB."
+              : "World First did not return a Vendor AWB PDF.",
+        );
+      }
+      return { ...data, kind, openUrl };
+    },
+    onSuccess: (result) => {
+      invalidateBooking();
+      window.open(result.openUrl, "_blank", "noopener,noreferrer");
+      const titles = { label: "Vendor AWB ready", invoice: "Invoice ready", box: "Box label ready" };
+      toast({
+        title: titles[result.kind],
+        description: result.forwardingNo
+          ? `World First AWB ${result.awb} · Vendor AWB ${result.forwardingNo}`
+          : `World First AWB ${result.awb}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not download World First document",
         description: error.message,
         variant: "destructive",
       });
@@ -331,12 +389,12 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     toast({ title: "Payload copied", description: "JSON copied for extension or manual use." });
   };
 
-  const partnerName = partner?.name ?? shipment.courierPartner?.name ?? "Courier partner";
   const actionDisabled =
     syncMutation.isPending ||
     bookMutation.isPending ||
     resumeMutation.isPending ||
     cancelMutation.isPending ||
+    printAwbMutation.isPending ||
     partnersLoading ||
     bookingLoading;
   const alreadySynced = !!(
@@ -345,8 +403,8 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
     jobStatus === "booked"
   );
   const isCancelled = shipment.status === "cancelled" || jobStatus === "cancelled";
-  const delhiveryAwb = (shipment.externalAwb || booking?.job?.awbNumber || "").trim();
-  const canCancelDelhivery = isDelhivery && isApiBooking && !!delhiveryAwb && !isCancelled;
+  const partnerAwb = (shipment.externalAwb || booking?.job?.awbNumber || "").trim();
+  const canCancelCourier = (isDelhivery || isWorldFirst) && isApiBooking && !!partnerAwb && !isCancelled;
   const canRetry = jobStatus === "booking_failed" && (booking?.job?.attemptCount ?? 0) < (booking?.job?.maxAttempts ?? 3);
   const loginDone = booking?.events?.some((event) => event.step === "resume") ?? false;
   const waitingOnLogin =
@@ -427,20 +485,16 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
             ) : (
               <CheckCircle2 className="mr-2 h-4 w-4" />
             )}
-            {alreadySynced ? "Booked" : canRetry ? "Retry booking" : "Book shipment"}
+            {alreadySynced ? "Booked" : canRetry ? `Retry in ${partnerName}` : `Book in ${partnerName}`}
           </Button>
-          {canCancelDelhivery ? (
+          {canCancelCourier ? (
             <Button
               variant="outline"
               className="text-red-700 hover:text-red-800 dark:text-red-400"
               disabled={actionDisabled}
-              data-testid="button-cancel-delhivery"
+              data-testid="button-cancel-courier"
               onClick={() => {
-                if (
-                  !window.confirm(
-                    `Cancel Delhivery AWB ${delhiveryAwb}? This removes it from Manifested if pickup has not happened.`,
-                  )
-                ) {
+                if (!window.confirm(`Cancel ${partnerName} AWB ${partnerAwb}?`)) {
                   return;
                 }
                 cancelMutation.mutate();
@@ -451,10 +505,10 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
               ) : (
                 <Ban className="mr-2 h-4 w-4" />
               )}
-              Cancel on Delhivery
+              Cancel on {partnerName}
             </Button>
           ) : null}
-          {isDelhivery && isApiBooking && (shipment.externalAwb || booking?.job?.awbNumber) ? (
+          {(isDelhivery || isWorldFirst) && isApiBooking && partnerAwb ? (
             <Button
               variant="outline"
               onClick={() => trackMutation.mutate()}
@@ -465,16 +519,43 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
               ) : (
                 <Clock className="mr-2 h-4 w-4" />
               )}
-              Track on Delhivery
+              Track on {partnerName}
             </Button>
           ) : null}
-          {booking?.job?.labelUrl ? (
+          {booking?.job?.labelUrl && !isWorldFirst ? (
             <Button variant="outline" asChild>
               <a href={booking.job.labelUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Packing slip
               </a>
             </Button>
+          ) : null}
+          {isWorldFirst && isApiBooking && partnerAwb ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => printAwbMutation.mutate("label")}
+                disabled={printAwbMutation.isPending}
+              >
+                {printAwbMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="mr-2 h-4 w-4" />
+                )}
+                Vendor AWB
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => printAwbMutation.mutate("invoice")}
+                disabled={printAwbMutation.isPending}
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                Invoice
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/world-first/day-end">Day End</Link>
+              </Button>
+            </>
           ) : null}
           {waitingOnLogin ? (
             <Button
@@ -518,6 +599,20 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
             </>
           ) : null}
         </div>
+
+        {isWorldFirst && isApiBooking ? <WorldFirstWalletBar /> : null}
+
+        {isWorldFirst && partnerAwb ? (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <p className="text-xs text-muted-foreground">World First AWB ID</p>
+            <p className="font-mono text-lg font-semibold tracking-wide">{partnerAwb}</p>
+            {booking?.job?.bookingReference && booking.job.bookingReference !== partnerAwb ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Vendor AWB {booking.job.bookingReference}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {isWorldFirst && needsBrowserAssist ? (
           <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
@@ -577,7 +672,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
         {trackMutation.data ? (
           <div className="rounded-none border p-3 text-sm">
             <p className="font-medium">
-              Delhivery · {trackMutation.data.waybill} · {trackMutation.data.status}
+              {partnerName} · {trackMutation.data.waybill} · {trackMutation.data.status}
             </p>
             <p className="text-muted-foreground mt-1">
               {trackMutation.data.origin || "—"} → {trackMutation.data.destination || "—"}
@@ -615,6 +710,17 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
               <code className="text-xs">DELHIVERY_PICKUP_LOCATION</code> to{" "}
               <code className="text-xs">.env</code>, then restart the server. The MCP JSON on that
               page is for Cursor only and cannot create bookings.
+            </p>
+          </div>
+        )}
+
+        {isWorldFirst && isApiBooking && booking?.issues.some((issue) => issue.code === "api_not_configured") && !partnersLoading && (
+          <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Add <code className="text-xs">WORLD_FIRST_API_USERNAME</code> and{" "}
+              <code className="text-xs">WORLD_FIRST_API_PASSWORD</code> to{" "}
+              <code className="text-xs">.env</code>, then restart the server.
             </p>
           </div>
         )}
@@ -743,7 +849,9 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
 
         <p className="text-xs text-muted-foreground">
           {isApiBooking
-            ? "API booking creates the Delhivery AWB from this screen, then requests pickup. MCP in Cursor is separate and read-only."
+            ? isWorldFirst
+              ? "API booking creates the World First AWB from this screen. Download Vendor AWB and Invoice here, then use Day End to view pending AWBs and manifest."
+              : "API booking creates the Delhivery AWB from this screen, then requests pickup. MCP in Cursor is separate and read-only."
             : needsBrowserAssist
               ? extensionInstalled
                 ? isWorldFirst

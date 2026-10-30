@@ -197,11 +197,11 @@ export function ProHome({
   const storeLabel = profile?.storeName || profile?.companyName || XGOO_MODULES.pro.name;
 
   return (
-    <div className="space-y-6 py-4 sm:py-5" data-testid="business-home">
+    <div className="space-y-5 py-3 sm:space-y-6 sm:py-5" data-testid="business-home">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#FF4907]">Dashboard</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-zinc-900">Good day, {firstName}</h1>
+          <h1 className="mt-1 text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl">Good day, {firstName}</h1>
           <p className="mt-1 text-sm leading-5 text-zinc-500">
             {storeLabel}
             {profile?.storeType ? ` · ${storeTypeLabel(profile.storeType)}` : ""}
@@ -226,7 +226,7 @@ export function ProHome({
         </button>
       </div>
 
-      <TectangleShopsBanner />
+      <TectangleShopsBanner compact />
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
         <StatCard label="Open orders" value={openOrders.length} onClick={onOrders} />
@@ -533,7 +533,7 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-sm hover:border-[#FF4907]/40"
+      className="flex min-h-[3.25rem] items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left shadow-sm hover:border-[#FF4907]/40"
     >
       <span
         className={

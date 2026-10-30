@@ -26,6 +26,7 @@ export const HUB_INCO_TERMS = [
 export type HubIncoTerm = (typeof HUB_INCO_TERMS)[number];
 
 export const HUB_SHIPMENT_PURPOSES = [
+  "UNSOLICITED GIFT - NOT FOR SALE",
   "Gift",
   "Sample",
   "Documents",
@@ -76,6 +77,9 @@ export function emptyHubProduct() {
     discount: "",
     taxPercent: "",
     weight: "",
+    boxNo: "1",
+    packages: "1",
+    unit: "PCS",
   };
 }
 
@@ -89,6 +93,9 @@ export const hubProductLineSchema = z.object({
   discount: z.string().optional().default(""),
   taxPercent: z.string().optional().default(""),
   weight: z.string().optional().default(""),
+  boxNo: z.string().optional().default("1"),
+  packages: z.string().optional().default("1"),
+  unit: z.string().optional().default("PCS"),
 });
 
 export type HubProductLine = z.infer<typeof hubProductLineSchema>;

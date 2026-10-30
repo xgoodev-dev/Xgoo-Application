@@ -29,11 +29,12 @@ export const rateCalculatorRequestSchema = z.object({
   shipmentType: z.enum(["domestic", "international"]).default("domestic"),
   packageType: z.enum(["document", "package"]).default("package"),
   senderPincode: z.string().trim().min(4).max(10),
-  receiverPincode: z.string().trim().max(12).optional().nullable(),
+  receiverPincode: z.string().trim().max(16).optional().nullable(),
   originCountry: z.string().trim().max(4).optional().nullable(),
   destinationCountry: z.string().trim().max(4).optional().nullable(),
   weight: z.coerce.number().positive(),
   weightUnit: z.enum(["kg", "gm"]).default("kg"),
+  volumetricWeight: z.coerce.number().min(0).optional().nullable(),
   length: z.coerce.number().positive().optional().nullable(),
   width: z.coerce.number().positive().optional().nullable(),
   height: z.coerce.number().positive().optional().nullable(),
@@ -69,6 +70,15 @@ export type RateCalculatorQuoteCard = {
   estimated: boolean;
   popular: boolean;
   message?: string;
+  quoteKey?: string;
+  laneLabel?: string;
+  partnerProduct?: string;
+  partnerVendor?: string;
+  partnerService?: string;
+  freightAmount?: number;
+  otherCharges?: number;
+  fuelSurcharge?: number;
+  taxAmount?: number;
 };
 
 export type RateCalculatorResponse = {

@@ -131,7 +131,7 @@ export function GoProfile({
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-5 md:px-6">
+    <div className="mx-auto max-w-3xl px-4 py-5 pb-8 md:px-6">
       <h2 className="text-xl font-bold text-zinc-900">Profile</h2>
       <p className="mt-1 text-sm text-zinc-500">Your {product.name} account.</p>
       <Card className="mt-5 flex items-center gap-4 border-zinc-100 p-4 shadow-none">
@@ -238,7 +238,7 @@ function MenuRow({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+    <button type="button" onClick={onClick} className="flex min-h-14 w-full items-center gap-3 px-4 py-4 text-left">
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
         <Icon className="h-4 w-4" />
       </span>

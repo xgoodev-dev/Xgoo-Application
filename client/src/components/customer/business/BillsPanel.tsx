@@ -12,7 +12,15 @@ import {
   type BusinessSettlementMode,
 } from "@shared/business-courier";
 import { businessApi } from "./business-api";
-import { ProChip, ProPageHeader, ProSurface, ProTableFrame, ProTableHead } from "./pro-table";
+import {
+  ProChip,
+  ProPageHeader,
+  ProSurface,
+  ProTableFrame,
+  ProTableHead,
+  proChipClass,
+  proMobileInputClass,
+} from "./pro-table";
 
 type BillRow = {
   id: string;
@@ -159,13 +167,13 @@ export function BillsPanel({ token }: { token: string }) {
   const outstanding = Number(data?.outstandingTotal || 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col py-5" data-testid="business-bills">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto py-3 sm:py-5 md:overflow-hidden" data-testid="business-bills">
       <ProPageHeader
         title="Bills"
         description="Every shipment charge in one place. Pay XGoo once for all outstanding movement."
         actions={
           <Button
-            className="rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:rounded-none"
+            className="col-span-2 h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:col-span-1 sm:h-9 sm:rounded-none"
             disabled={outstanding <= 0}
             onClick={() => setPaying(true)}
           >
@@ -174,7 +182,7 @@ export function BillsPanel({ token }: { token: string }) {
         }
       />
 
-      <div className="mb-4 grid gap-3 lg:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Due now</p>
           <p className="mt-1 text-2xl font-extrabold text-zinc-900">{rupees(data?.outstandingTotal || "0")}</p>
@@ -211,8 +219,8 @@ export function BillsPanel({ token }: { token: string }) {
               onClick={() => saveCycle.mutate(item.id)}
               className={
                 cycle === item.id
-                  ? "rounded-none border border-[#FF4907] bg-[#FF4907] px-3 py-1.5 text-sm font-semibold text-white"
-                  : "rounded-none border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700"
+                  ? `${proChipClass} border-[#FF4907] bg-[#FF4907] font-semibold text-white`
+                  : `${proChipClass} border-zinc-200 bg-white text-zinc-700`
               }
             >
               {item.label}
@@ -227,8 +235,8 @@ export function BillsPanel({ token }: { token: string }) {
               onClick={() => setFilter(item.id)}
               className={
                 filter === item.id
-                  ? "rounded-none border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-sm text-white"
-                  : "rounded-none border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700"
+                  ? `${proChipClass} border-zinc-900 bg-zinc-900 text-white`
+                  : `${proChipClass} border-zinc-200 bg-white text-zinc-700`
               }
             >
               {item.label}
@@ -238,13 +246,13 @@ export function BillsPanel({ token }: { token: string }) {
       </div>
 
       {paying ? (
-        <div className="mb-3 flex flex-wrap items-end gap-2 border border-[#FF4907]/30 bg-[#FFF7F3] px-3 py-3">
-          <label className="min-w-[140px] text-sm">
+        <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-[#FF4907]/30 bg-[#FFF7F3] px-3 py-3 sm:flex-row sm:flex-wrap sm:items-end sm:rounded-none">
+          <label className="min-w-0 flex-1 text-sm sm:min-w-[140px]">
             <span className="mb-1 block text-xs font-semibold uppercase text-zinc-500">Pay by</span>
             <select
               value={paymentMode}
               onChange={(event) => setPaymentMode(event.target.value as BusinessSettlementMode)}
-              className="h-9 w-full border border-zinc-200 bg-white px-2 text-sm outline-none"
+              className={proMobileInputClass}
             >
               {BUSINESS_SETTLEMENT_MODES.map((mode) => (
                 <option key={mode.id} value={mode.id}>
@@ -253,17 +261,17 @@ export function BillsPanel({ token }: { token: string }) {
               ))}
             </select>
           </label>
-          <label className="min-w-[180px] flex-1 text-sm">
+          <label className="min-w-0 flex-1 text-sm sm:min-w-[180px]">
             <span className="mb-1 block text-xs font-semibold uppercase text-zinc-500">Reference</span>
             <input
               value={reference}
               onChange={(event) => setReference(event.target.value)}
               placeholder="UPI / bank reference"
-              className="h-9 w-full border border-zinc-200 bg-white px-2 text-sm outline-none"
+              className={proMobileInputClass}
             />
           </label>
           <Button
-            className="h-9 rounded-none bg-[#FF4907] text-white hover:bg-[#e03d00]"
+            className="h-11 rounded-xl bg-[#FF4907] text-white hover:bg-[#e03d00] sm:h-9 sm:rounded-none"
             disabled={settle.isPending}
             onClick={() => settle.mutate()}
           >
@@ -271,7 +279,7 @@ export function BillsPanel({ token }: { token: string }) {
           </Button>
           <Button
             variant="outline"
-            className="h-9 rounded-none"
+            className="h-11 rounded-xl sm:h-9 sm:rounded-none"
             disabled={settle.isPending}
             onClick={() => setPaying(false)}
           >
