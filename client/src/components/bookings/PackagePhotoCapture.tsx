@@ -29,6 +29,7 @@ type PackagePhotoCaptureProps = {
   photos: string[];
   onChange: (photos: string[]) => void;
   maxPhotos?: number;
+  compact?: boolean;
 };
 
 async function uploadImageFile(file: File): Promise<string> {
@@ -61,6 +62,7 @@ export function PackagePhotoCapture({
   photos,
   onChange,
   maxPhotos = 3,
+  compact,
 }: PackagePhotoCaptureProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
@@ -288,18 +290,26 @@ export function PackagePhotoCapture({
   };
 
   return (
-    <div className="border-t pt-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Upload className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Package Photos</span>
-        <span className="text-xs text-muted-foreground">
-          ({photos.length}/{maxPhotos})
-        </span>
-      </div>
-      <p className="mb-3 text-xs text-muted-foreground">
-        Connect the staff phone with USB or Continuity Camera / Bluetooth, then tap Phone camera.
-        Photos attach to this booking immediately.
-      </p>
+    <div className={compact ? "space-y-3" : "border-t pt-4"}>
+      {compact ? (
+        <p className="text-xs text-muted-foreground">
+          {photos.length}/{maxPhotos} · phone camera, upload, or webcam
+        </p>
+      ) : (
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Upload className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Package Photos</span>
+            <span className="text-xs text-muted-foreground">
+              ({photos.length}/{maxPhotos})
+            </span>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Connect the staff phone with USB or Continuity Camera / Bluetooth, then tap Phone camera.
+            Photos attach to this booking immediately.
+          </p>
+        </>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         {photos.map((url, index) => (
           <div key={url} className="relative group">

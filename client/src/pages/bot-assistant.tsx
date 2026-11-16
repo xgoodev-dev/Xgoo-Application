@@ -1,56 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Bot, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useOperatingStore } from "@/hooks/use-operating-store";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { kioskUrl } from "@/features/kiosk/KioskApp";
-import type { BranchWithServiceAreas, Office } from "@shared/schema";
+import type { Office } from "@shared/schema";
 
 const PIN_KEY = "xgoo_kiosk_staff_pin";
 
 export default function BotAssistantPage() {
-  const [, setLocation] = useLocation();
-  const { isCommandWorkspace, isLoading, branchId } = useStaffAccess();
+  const { isCommandWorkspace, store: hub, isLoading } = useOperatingStore();
   const { data: office } = useQuery<Office>({
     queryKey: ["/api/office"],
-    enabled: !isLoading && !isCommandWorkspace,
-  });
-  const { data: branches } = useQuery<BranchWithServiceAreas[]>({
-    queryKey: ["/api/branches"],
-    enabled: !isLoading && !isCommandWorkspace,
   });
   const [pin, setPin] = useState("");
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && isCommandWorkspace) setLocation("/stores");
-  }, [isCommandWorkspace, isLoading, setLocation]);
-
-  useEffect(() => {
     setPin(localStorage.getItem(PIN_KEY) || "");
   }, []);
 
-  const hub =
-    branches?.find((branch) => branch.id === branchId) ||
-    branches?.find((branch) => branch.isPrimary) ||
-    branches?.[0];
-
   const url = useMemo(() => {
-    if (typeof window === "undefined" || !office?.publicSlug) return "";
-    return kioskUrl(window.location.origin, office.publicSlug, hub?.id);
+    if (typeof window === "undefined" || !office?.publicSlug || !hub?.id) return "";
+    return kioskUrl(window.location.origin, office.publicSlug, hub.id);
   }, [office?.publicSlug, hub?.id]);
-
-  if (isLoading || isCommandWorkspace) return null;
 
   const openKiosk = () => {
     if (!url) return;
-    const withFrom = `${url}${url.includes("?") ? "&" : "?"}from=hub`;
-    window.location.href = withFrom;
+    const from = isCommandWorkspace ? "command" : "hub";
+    window.location.href = `${url}${url.includes("?") ? "&" : "?"}from=${from}`;
   };
 
   return (
@@ -58,22 +40,27 @@ export default function BotAssistantPage() {
       <div>
         <h1 className="text-2xl font-bold">XGoo Bot Assistant</h1>
         <p className="text-sm text-muted-foreground">
-          Walk-in receptionist for this {XGOO_MODULES.hub.name} store. Open it on the counter tablet.
+          Walk-in receptionist for this {XGOO_MODULES.hub.name} store. Open it on the counter tablet
+          {isCommandWorkspace ? ". Pick the store in the header." : "."}
         </p>
       </div>
-      {!office?.publicSlug ? (
+      {isLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : !office?.publicSlug ? (
         <p className="text-sm text-muted-foreground">
           Finish Hub setup (store slug) before opening Bot Assistant.
         </p>
+      ) : !hub ? (
+        <p className="text-sm text-muted-foreground">Select a store in the header first.</p>
       ) : (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-[#FF4907]" />
-              {office.name}
+              {hub.name}
             </CardTitle>
             <CardDescription>
-              Bound to this store{hub ? ` · ${hub.name}` : ""}. Customers cannot switch stores.
+              Bound to this store. Customers cannot switch stores.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -124,7 +111,6 @@ export default function BotAssistantPage() {
           </CardContent>
         </Card>
       )}
-      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
     </div>
   );
 }

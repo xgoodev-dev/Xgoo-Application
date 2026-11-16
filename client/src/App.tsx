@@ -7,7 +7,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { InstallExtensionButton } from "@/components/InstallExtensionButton";
 import { useAuth } from "@/hooks/use-auth";
 import {
   customerGoogleOAuthBookPath,
@@ -16,7 +15,8 @@ import {
 } from "@/lib/customer-google-oauth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { LocationChip } from "@/components/location-chip";
+import { HubHeaderSearch } from "@/components/hub-header-search";
+import { StoreLocationChip } from "@/components/store-location-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 
@@ -42,7 +42,6 @@ import ReportsPage from "@/pages/reports";
 import PricingPage from "@/pages/pricing";
 import RateCalculatorPage from "@/pages/rate-calculator";
 import DocumentsPage from "@/pages/documents";
-import WorldFirstDayEndPage from "@/pages/world-first-day-end";
 import SettingsPage from "@/pages/settings";
 import HubSettingsPage from "@/pages/hub-settings";
 import BotAssistantPage from "@/pages/bot-assistant";
@@ -61,6 +60,13 @@ import NotFound from "@/pages/not-found";
 import CourierRoutePage from "@/pages/courier-route";
 import InternationalCourierPage from "@/pages/international-courier";
 import DomesticCourierPage from "@/pages/domestic-courier";
+import {
+  CourierPickupFromHomePage,
+  CourierServicesHyderabadPage,
+  HowItWorksPage,
+  InternationalCourierChargesPage,
+  InternationalCourierHyderabadPage,
+} from "@/pages/service-landing";
 import { MetaPixel } from "@/components/analytics/MetaPixel";
 import { WhatsAppFloatingButton } from "@/components/marketing/WhatsAppFloatingButton";
 
@@ -68,6 +74,14 @@ function QuotationsRedirect() {
   const [, setLocation] = useLocation();
   useEffect(() => {
     setLocation("/documents/quotations");
+  }, [setLocation]);
+  return null;
+}
+
+function WorldFirstDayEndRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/bookings/new?view=day-end");
   }, [setLocation]);
   return null;
 }
@@ -102,11 +116,11 @@ function AuthenticatedApp() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 overflow-hidden bg-background">
-          <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-4">
+          <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <LocationChip className="min-w-0 flex-1" />
+            <HubHeaderSearch />
             <div className="flex items-center gap-2">
-              <InstallExtensionButton />
+              <StoreLocationChip />
               <ThemeToggle />
             </div>
           </header>
@@ -117,7 +131,7 @@ function AuthenticatedApp() {
               <Route path="/bookings/new" component={NewBookingPage} />
               <Route path="/bookings" component={BookingsPage} />
               <Route path="/shipments" component={ShipmentsPage} />
-              <Route path="/world-first/day-end" component={WorldFirstDayEndPage} />
+              <Route path="/world-first/day-end" component={WorldFirstDayEndRedirect} />
               <Route path="/shipments/:id/label" component={ShipmentLabelPage} />
               <Route path="/shipments/:id/invoice" component={ShipmentInvoicePage} />
               <Route path="/shipments/:id/bill" component={ShipmentBillPage} />
@@ -233,6 +247,11 @@ function Router() {
       <Route path="/s/:storeId" component={StoreCustomerOrderPage} />
       <Route path="/international-courier" component={InternationalCourierPage} />
       <Route path="/domestic-courier" component={DomesticCourierPage} />
+      <Route path="/how-it-works" component={HowItWorksPage} />
+      <Route path="/courier-services-hyderabad" component={CourierServicesHyderabadPage} />
+      <Route path="/international-courier-hyderabad" component={InternationalCourierHyderabadPage} />
+      <Route path="/courier-pickup-from-home" component={CourierPickupFromHomePage} />
+      <Route path="/international-courier-charges" component={InternationalCourierChargesPage} />
       <Route path={/^\/courier-from-hyderabad-to-[a-z0-9-]+$/} component={CourierRoutePage} />
       <Route>
         {isLoading || customerOAuth ? (

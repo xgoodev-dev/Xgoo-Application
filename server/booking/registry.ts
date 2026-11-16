@@ -1,4 +1,5 @@
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isErpPortalCourier } from "@shared/erp-courier";
 import { resolveBookingMethod } from "@shared/booking-engine";
 import { isWorldFirstPartner } from "@shared/world-first";
 import type { CourierPartner } from "@shared/schema";
@@ -11,6 +12,7 @@ import {
   getConnectorForMethod,
   manualConnector,
 } from "./connectors";
+import { erpCourierApiConnector } from "./erp-courier";
 import { worldFirstApiConnector, worldFirstBrowserConnector } from "./world-first";
 
 /**
@@ -30,6 +32,7 @@ export function getConnectorForPartner(partner: CourierPartner): CourierConnecto
   }
 
   if (method === "api") {
+    if (isErpPortalCourier(partner.code, partner.name)) return erpCourierApiConnector;
     if (isDelhiveryPartner(partner.code, partner.name)) return delhiveryApiConnector;
     return delhiveryApiConnector;
   }

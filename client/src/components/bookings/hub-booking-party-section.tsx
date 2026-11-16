@@ -39,6 +39,9 @@ export function HubBookingPartySection({
   onVoice,
   aiLoading,
   recording,
+  title,
+  hint,
+  compact,
 }: {
   form: UseFormReturn<HubBookingFormData>;
   party: "sender" | "receiver";
@@ -51,6 +54,9 @@ export function HubBookingPartySection({
   onVoice: () => void;
   aiLoading?: boolean;
   recording?: boolean;
+  title?: string;
+  hint?: string;
+  compact?: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const isShipper = party === "sender";
@@ -73,18 +79,39 @@ export function HubBookingPartySection({
       } as const;
   const postalLabel = scope === "international" ? "Postal code" : "Pincode";
 
+  const mapField = (
+        <AddressMapField
+          label={`Pin ${isShipper ? "sender" : "receiver"} on map`}
+          testIdPrefix={isShipper ? "sender" : "receiver"}
+          value={{
+            address: form.watch(names.address) || "",
+            city: form.watch(names.city),
+            state: form.watch(names.state),
+            pincode: form.watch(names.pincode),
+          }}
+          onChange={(next) => {
+            if (next.address) form.setValue(names.address, next.address, { shouldDirty: true });
+            if (next.city) form.setValue(names.city, next.city, { shouldDirty: true });
+            if (next.state) form.setValue(names.state, next.state, { shouldDirty: true });
+            if (next.pincode) form.setValue(names.pincode, next.pincode, { shouldDirty: true });
+          }}
+        />
+  );
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className={compact ? "h-full" : undefined}>
+      <CardHeader className={compact ? "pb-2" : "pb-3"}>
         <CardTitle className="flex items-center gap-2 text-base">
           {isShipper ? <User className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
-          {isShipper ? "Shipper" : "Consignee"}
+          {title || (isShipper ? "Shipper" : "Consignee")}
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {isShipper ? "Who is sending this shipment." : "Where this shipment should be delivered."}
-        </p>
+        {hint || !compact ? (
+          <p className="text-sm text-muted-foreground">
+            {hint || (isShipper ? "Who is sending this shipment." : "Where this shipment should be delivered.")}
+          </p>
+        ) : null}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className={compact ? "space-y-3" : "space-y-4"}>
         <HubBookingAiBar
           value={aiText}
           onChange={onAiText}
@@ -130,7 +157,7 @@ export function HubBookingPartySection({
             )}
           />
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className={`grid grid-cols-2 ${compact ? "gap-3" : "gap-4"}`}>
           <FormField
             control={form.control}
             name={names.name}
@@ -165,29 +192,13 @@ export function HubBookingPartySection({
             <FormItem>
               <FormLabel>Address *</FormLabel>
               <FormControl>
-                <Textarea {...field} placeholder="Full address" className="resize-none" data-testid={`input-${isShipper ? "sender" : "receiver"}-address`} />
+                <Textarea {...field} placeholder="Full address" rows={compact ? 2 : 3} className="resize-none" data-testid={`input-${isShipper ? "sender" : "receiver"}-address`} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <AddressMapField
-          label={`Pin ${isShipper ? "sender" : "receiver"} on map`}
-          testIdPrefix={isShipper ? "sender" : "receiver"}
-          value={{
-            address: form.watch(names.address) || "",
-            city: form.watch(names.city),
-            state: form.watch(names.state),
-            pincode: form.watch(names.pincode),
-          }}
-          onChange={(next) => {
-            if (next.address) form.setValue(names.address, next.address, { shouldDirty: true });
-            if (next.city) form.setValue(names.city, next.city, { shouldDirty: true });
-            if (next.state) form.setValue(names.state, next.state, { shouldDirty: true });
-            if (next.pincode) form.setValue(names.pincode, next.pincode, { shouldDirty: true });
-          }}
-        />
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className={`grid gap-3 ${compact ? "grid-cols-3" : "gap-4 sm:grid-cols-3"}`}>
           <FormField
             control={form.control}
             name={names.city}
@@ -225,9 +236,22 @@ export function HubBookingPartySection({
             )}
           />
         </div>
+        {compact ? (
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-0 text-muted-foreground" data-testid={`button-${isShipper ? "sender" : "receiver"}-map`}>
+                <ChevronDown className="mr-1 h-4 w-4" />
+                Pin on map
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">{mapField}</CollapsibleContent>
+          </Collapsible>
+        ) : (
+          mapField
+        )}
         <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
           <CollapsibleTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="px-0" data-testid={`button-${isShipper ? "sender" : "receiver"}-more`}>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-0" data-testid={`button-${isShipper ? "sender" : "receiver"}-more`}>
               <ChevronDown className={`mr-1 h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
               {moreOpen ? "Hide extra details" : "Email, landmark, and extra address"}
             </Button>

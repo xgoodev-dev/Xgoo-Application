@@ -100,6 +100,32 @@ export function addNotificationResponseReceivedListener(
   }
 }
 
+export async function notifyLocal(title: string, body: string) {
+  const Notifications = getNotifications();
+  if (!Notifications) return false;
+  ensureNotificationHandler();
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('pickup-live', {
+        name: 'Pickup movement',
+        description: 'Arrival and route updates while you are collecting',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#FF4907',
+        sound: 'default',
+      });
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: 'default' },
+      trigger: null,
+    });
+    return true;
+  } catch (error) {
+    console.warn('Local notification skipped', error);
+    return false;
+  }
+}
+
 export async function registerForPushNotifications() {
   if (!canUseRemotePush()) return null;
 

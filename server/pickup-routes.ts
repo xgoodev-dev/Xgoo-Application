@@ -54,7 +54,20 @@ import {
   saveOfficeFuelRate,
   startPartnerShift,
 } from "./pickup-fuel";
+import {
+  createAssignedDemoJob,
+  jobDrivingRoute,
+  listOfficeLivePartners,
+  partnerStats,
+} from "./pickup-live";
 import { storage } from "./storage";
+
+function liveError(res: Response, error: unknown, fallback: string) {
+  const status = (error as { status?: number })?.status || 500;
+  return res.status(status).json({
+    message: error instanceof Error ? error.message : fallback,
+  });
+}
 
 const ACTIVE_JOB_STATUSES = new Set([
   "assigned",
@@ -476,6 +489,44 @@ export function registerPickupRoutes(app: Express) {
     res.json(await Promise.all(filtered.map((job) => enrichJob(job))));
   });
 
+  app.get("/api/pickup/stats", isPickupAuthenticated, async (req: any, res) => {
+    try {
+      await ensurePickupTables();
+      res.json(await partnerStats(req.pickupPartner));
+    } catch (error) {
+      console.error("Pickup stats failed:", error);
+      liveError(res, error, "Failed to load pickup stats");
+    }
+  });
+
+  app.post("/api/pickup/jobs/demo", isPickupAuthenticated, async (req: any, res) => {
+    try {
+      await ensurePickupTables();
+      const result = await createAssignedDemoJob(req.pickupPartner);
+      res.json({
+        ...result,
+        job: await enrichJob(result.job),
+      });
+    } catch (error) {
+      console.error("Create demo pickup failed:", error);
+      liveError(res, error, "Failed to create demo pickup");
+    }
+  });
+
+  app.get("/api/pickup/jobs/:id/route", isPickupAuthenticated, async (req: any, res) => {
+    try {
+      const originLat = Number(req.query.lat);
+      const originLng = Number(req.query.lng);
+      const origin =
+        Number.isFinite(originLat) && Number.isFinite(originLng)
+          ? { lat: originLat, lng: originLng }
+          : undefined;
+      res.json(await jobDrivingRoute(req.pickupPartner, req.params.id, origin));
+    } catch (error) {
+      liveError(res, error, "Failed to calculate route");
+    }
+  });
+
   app.get("/api/pickup/jobs/:id", isPickupAuthenticated, async (req: any, res) => {
     const job = await jobForPartner(req.params.id, req.pickupPartner);
     if (!job) return res.status(404).json({ message: "Job not found" });
@@ -847,6 +898,38 @@ export function registerPickupRoutes(app: Express) {
     );
     ready.sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
     res.json(await Promise.all(ready.map((partner) => toPublicPickupPartner(partner))));
+  });
+
+  app.get("/api/pickup-partners/live", isAuthenticated, async (req: any, res) => {
+    try {
+      const context = await requireStaffPartnerAccess(req, res);
+      if (!context) return;
+      await ensurePickupTables();
+      res.json(await listOfficeLivePartners(context.office.id, context.branchId));
+    } catch (error) {
+      console.error("Pickup live partners failed:", error);
+      liveError(res, error, "Failed to load live partners");
+    }
+  });
+
+  app.post("/api/pickup-partners/:id/demo-job", isAuthenticated, async (req: any, res) => {
+    try {
+      const context = await requireStaffPartnerAccess(req, res);
+      if (!context) return;
+      await ensurePickupTables();
+      const partner = await storage.getPickupPartner(req.params.id);
+      if (!partner || partner.officeId !== context.office.id) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      if (context.branchId && partner.branchId && partner.branchId !== context.branchId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const result = await createAssignedDemoJob(partner);
+      res.json(result);
+    } catch (error) {
+      console.error("Staff demo pickup failed:", error);
+      liveError(res, error, "Failed to create demo pickup");
+    }
   });
 
   app.post("/api/pickup-partners", isAuthenticated, async (req: any, res) => {

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { isPublicSitePath } from "@/lib/app-routes";
 
 type Theme = "light" | "dark";
 
@@ -11,48 +12,24 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const STAFF_PATH_PREFIXES = [
-  "/dashboard",
-  "/bookings",
-  "/shipments",
-  "/documents",
-  "/quotations",
-  "/booking-requests",
-  "/enquiries",
-  "/customers",
-  "/partners",
-  "/pricing",
-  "/reports",
-  "/staff",
-  "/stores",
-  "/pro-accounts",
-  "/referrals",
-  "/hub-settings",
-  "/settings",
-];
-
-function isStaffAppPath(path: string): boolean {
-  return STAFF_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("xgoo-theme") as Theme;
-      if (stored) return stored;
+      if (stored === "light" || stored === "dark") return stored;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     return "light";
   });
 
-  const pathOnly = location.split("?")[0] || "/";
-  const appliedTheme = isStaffAppPath(pathOnly) ? theme : "light";
+  const appliedTheme = isPublicSitePath(location) ? "light" : theme;
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(appliedTheme);
+    root.style.colorScheme = appliedTheme;
   }, [appliedTheme]);
 
   useEffect(() => {

@@ -80,6 +80,7 @@ export const hubBookingFormSchema = z
     eori: z.string().optional(),
     shipmentPurpose: z.string().optional(),
     manualAmount: z.string().optional(),
+    gstAmount: z.string().optional(),
     packagePhotoUrls: z.array(z.string()).optional(),
   })
   .superRefine((data, ctx) => {
@@ -179,5 +180,6 @@ export function hubBookingDefaultValues(): HubBookingFormData {
     ioss: "",
     eori: "",
     shipmentPurpose: "Gift",
+    gstAmount: "",
   };
 }

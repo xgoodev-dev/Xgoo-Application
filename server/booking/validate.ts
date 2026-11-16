@@ -2,8 +2,10 @@ import type { CourierPartner, Shipment } from "@shared/schema";
 import type { BookingValidationIssue } from "@shared/booking-engine";
 import { resolveBookingMethod } from "@shared/booking-engine";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { erpCourierBrand, isErpPortalCourier, isPaperShipperCourier } from "@shared/erp-courier";
 import { isWorldFirstPartner } from "@shared/world-first";
 import { getDelhiveryConfigFromEnv } from "../integrations/delhivery";
+import { getErpCourierConfig } from "../integrations/erp-courier-portal";
 import { getWorldFirstConfigFromEnv } from "../integrations/world-first";
 
 function digits(value: string | null | undefined): string {
@@ -135,6 +137,25 @@ export function validateShipmentForBooking(
     issues.push({ code: "weight", message: "Package weight is required.", field: "weight" });
   }
 
+  if (isPaperShipperCourier(partner.code, partner.name) && !(shipment.awbNumber || shipment.externalAwb || "").trim()) {
+    issues.push({
+      code: "awb",
+      message: `Enter the physical ${partner.name} AWB from the shipper.`,
+      field: "awbNumber",
+    });
+  }
+
+  if (method === "api" && isErpPortalCourier(partner.code, partner.name)) {
+    const photos = shipment.packagePhotoUrls || [];
+    if (photos.length < 1) {
+      issues.push({
+        code: "photos",
+        message: `${partner.name} needs parcel photos before Hub can update their portal.`,
+        field: "packagePhotoUrls",
+      });
+    }
+  }
+
   if (method === "api") {
     if (isDelhiveryPartner(partner.code, partner.name) && !getDelhiveryConfigFromEnv()) {
       issues.push({
@@ -146,6 +167,13 @@ export function validateShipmentForBooking(
       issues.push({
         code: "api_not_configured",
         message: "World First API credentials are not configured on the server.",
+      });
+    }
+    const erpBrand = erpCourierBrand(partner.code, partner.name);
+    if (erpBrand && !getErpCourierConfig(erpBrand)) {
+      issues.push({
+        code: "api_not_configured",
+        message: `${partner.name} portal credentials are not configured on the server.`,
       });
     }
   }

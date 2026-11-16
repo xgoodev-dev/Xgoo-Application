@@ -50,7 +50,8 @@ export default function TrackPage() {
 
   return (
     <MarketingLayout>
-      <PageSeo {...SEO_PAGES.track} />
+      {/* Individual shipment results stay out of search results. */}
+      <PageSeo {...SEO_PAGES.track} noIndex={Boolean(params.ref)} />
       <section className="mx-auto w-full max-w-xl px-4 pb-16 pt-4 sm:px-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: ORANGE }}>
           Track shipment

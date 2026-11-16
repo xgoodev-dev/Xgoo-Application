@@ -6,7 +6,7 @@ import { useAppTheme } from '@/lib/theme';
 
 export function LocationBar() {
   const { colors } = useAppTheme();
-  const [label, setLabel] = useState('Tap for live location');
+  const [label, setLabel] = useState('Tap to share live location');
   const [locating, setLocating] = useState(false);
   const [live, setLive] = useState(false);
 
@@ -52,7 +52,13 @@ export function LocationBar() {
     <Pressable
       onPress={refresh}
       disabled={locating}
-      style={[styles.bar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+      style={[
+        styles.bar,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+      ]}
       accessibilityRole="button"
       accessibilityLabel={live ? 'Refresh live location' : 'Fetch live location'}
     >
@@ -60,7 +66,7 @@ export function LocationBar() {
       <Text style={[styles.text, { color: colors.text }]} numberOfLines={1}>
         {locating ? 'Finding live location…' : label}
       </Text>
-      <LocateFixed size={14} color={colors.accent} />
+      <LocateFixed size={13} color={colors.accent} />
       <Text style={[styles.action, { color: colors.accent }]}>
         {locating ? '…' : live ? 'Refresh' : 'Live'}
       </Text>
@@ -73,10 +79,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderRadius: 999,
   },
   text: { flex: 1, fontSize: 12, fontWeight: '600' },
-  action: { fontSize: 11, fontWeight: '700' },
+  action: { fontSize: 11, fontWeight: '800' },
 });

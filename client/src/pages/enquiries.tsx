@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -189,8 +189,16 @@ function assignablePartners(partners: PickupPartner[], enquiry: EnquiryRow) {
   );
 }
 
+function querySearchTerm(searchString: string): string {
+  const raw = searchString.startsWith("?") ? searchString.slice(1) : searchString;
+  return new URLSearchParams(raw).get("q")?.trim() || "";
+}
+
 export default function EnquiriesPage() {
-  const [search, setSearch] = useState("");
+  const searchString = useSearch();
+  const [search, setSearch] = useState(() =>
+    querySearchTerm(typeof window !== "undefined" ? window.location.search : ""),
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState<EnquiryChannel | "all">("all");
   const [selectedRequest, setSelectedRequest] = useState<EnquiryRow | null>(null);
@@ -198,6 +206,11 @@ export default function EnquiriesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const q = querySearchTerm(searchString);
+    if (q) setSearch(q);
+  }, [searchString]);
 
   const { data: pickupPartners = [] } = useQuery<PickupPartner[]>({
     queryKey: ["/api/pickup-partners"],

@@ -78,6 +78,41 @@ export type PickupDutySnapshot = {
   claims: PickupFuelClaim[];
 };
 
+export type PickupLiveTotals = {
+  distanceKm: number;
+  fuelLitres: number;
+  fuelCost: number;
+  pickupsCompleted: number;
+  durationMinutes: number;
+};
+
+export type PickupBadge = {
+  id: string;
+  title: string;
+  detail: string;
+  earned: boolean;
+};
+
+export type PickupPartnerStats = {
+  today: PickupLiveTotals;
+  week: { pickupsCompleted: number; distanceKm: number };
+  streakDays: number;
+  rank: number | null;
+  partnerCount: number;
+  badges: PickupBadge[];
+};
+
+export type PickupJobRoute = {
+  origin: { lat: number; lng: number } | null;
+  destination: { lat: number; lng: number; label?: string | null };
+  points?: Array<[number, number]>;
+  polyline?: string;
+  distanceKm: number;
+  distanceText: string;
+  durationSeconds: number;
+  durationText: string;
+};
+
 export type PickupJob = {
   id: string;
   status: string;
@@ -291,6 +326,13 @@ export const pickupApi = {
   },
   job(token: string, id: string) {
     return request<PickupJob>(`/api/pickup/jobs/${id}`, {}, token);
+  },
+  stats(token: string) {
+    return request<PickupPartnerStats>('/api/pickup/stats', {}, token);
+  },
+  jobRoute(token: string, id: string, origin?: { lat: number; lng: number }) {
+    const query = origin ? `?lat=${origin.lat}&lng=${origin.lng}` : '';
+    return request<PickupJobRoute>(`/api/pickup/jobs/${id}/route${query}`, {}, token);
   },
   action(token: string, id: string, action: string, body?: Record<string, unknown>) {
     return request<PickupJob>(

@@ -14,6 +14,7 @@ export default function HistoryScreen() {
   return (
     <JobList
       title="History"
+      subtitle="Finished and declined pickups."
       jobs={jobs.data || []}
       refreshing={jobs.isFetching}
       onRefresh={() => void jobs.refetch()}

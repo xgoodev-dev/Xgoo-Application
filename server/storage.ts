@@ -71,17 +71,34 @@ import {
   type PickupJob,
   type InsertPickupJob,
   type ShipmentWithRelations,
+  storeRelocationRequests,
+  type StoreRelocationRequest,
+  type InsertStoreRelocationRequest,
   users,
   type User,
   type UpsertUser,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, inArray, ne } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, asc, sql, count, sum, isNotNull, isNull, inArray, ne, ilike, like } from "drizzle-orm";
 import { ensureReferralSchema } from "./referral";
+import { HUB_BOOKING_COURIERS, matchHubBookingCourier } from "@shared/hub-booking-couriers";
+import {
+  bookingNumberSequence,
+  formatXgooBookingNumber,
+  isXgooBookingNumber,
+  parseBookingChannel,
+  xgooBookingNumberPrefix,
+} from "@shared/booking-number";
 
 const SUPER_ADMIN_EMAIL = (
   process.env.XGOO_SUPER_ADMIN_EMAIL || "xgoo.express@gmail.com"
 ).toLowerCase();
+
+function likeContainsPattern(query: string): string | null {
+  const q = query.trim().replace(/[%_\\]/g, "");
+  if (q.length < 2) return null;
+  return `%${q}%`;
+}
 
 let customerIntakeColumnsReady: Promise<void> | null = null;
 let customerAccountTypeReady: Promise<void> | null = null;
@@ -89,6 +106,8 @@ let bookingPackageColumnsReady: Promise<void> | null = null;
 let xgooOrderIdColumnsReady: Promise<void> | null = null;
 let hubServiceAreaColumnsReady: Promise<void> | null = null;
 let hubBookingColumnsReady: Promise<void> | null = null;
+let storeRelocationTableReady: Promise<void> | null = null;
+let bookingNumberSequenceTableReady: Promise<void> | null = null;
 
 function ensureCustomerIntakeColumns() {
   if (!customerIntakeColumnsReady) {
@@ -253,6 +272,64 @@ export function ensureHubServiceAreaColumns() {
   return hubServiceAreaColumnsReady;
 }
 
+export function ensureStoreRelocationTable() {
+  if (!storeRelocationTableReady) {
+    storeRelocationTableReady = db.execute(sql`
+      CREATE TABLE IF NOT EXISTS store_relocation_requests (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        office_id varchar NOT NULL REFERENCES offices(id) ON DELETE CASCADE,
+        branch_id varchar NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        requested_by_user_id varchar NOT NULL,
+        requested_by_name varchar(255),
+        reason text,
+        proposed_address text,
+        proposed_city varchar(100),
+        proposed_state varchar(100),
+        proposed_pincode varchar(10),
+        proposed_lat numeric(10, 7),
+        proposed_lng numeric(10, 7),
+        status varchar(20) NOT NULL DEFAULT 'pending',
+        reviewed_by_user_id varchar,
+        reviewed_at timestamp,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `).then(async () => {
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_relocation_office ON store_relocation_requests (office_id)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_relocation_branch ON store_relocation_requests (branch_id)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_relocation_status ON store_relocation_requests (status)`);
+    }).catch((error) => {
+      storeRelocationTableReady = null;
+      throw error;
+    });
+  }
+  return storeRelocationTableReady;
+}
+
+export function ensureBookingNumberSequenceTable() {
+  if (!bookingNumberSequenceTableReady) {
+    bookingNumberSequenceTableReady = db.execute(sql`
+      CREATE TABLE IF NOT EXISTS booking_number_sequences (
+        prefix varchar(32) PRIMARY KEY,
+        next_seq integer NOT NULL DEFAULT 1,
+        updated_at timestamp DEFAULT now()
+      )
+    `).catch((error) => {
+      bookingNumberSequenceTableReady = null;
+      throw error;
+    });
+  }
+  return bookingNumberSequenceTableReady;
+}
+
+function returningSeq(result: unknown): number {
+  const rows = Array.isArray(result)
+    ? result
+    : ((result as { rows?: Array<Record<string, unknown>> })?.rows || []);
+  const row = rows[0] || {};
+  return Number(row.next_seq ?? row.nextSeq ?? 0);
+}
+
 export function ensureXgooOrderIdColumns() {
   if (!xgooOrderIdColumnsReady) {
     xgooOrderIdColumnsReady = (async () => {
@@ -402,6 +479,14 @@ export interface IStorage {
   deleteBranchServiceArea(id: string): Promise<boolean>;
   ensureDefaultBranchForOffice(office: Office): Promise<Branch>;
   backfillBranches(): Promise<void>;
+  createRelocationRequest(request: InsertStoreRelocationRequest): Promise<StoreRelocationRequest>;
+  getOpenRelocationRequest(branchId: string): Promise<StoreRelocationRequest | undefined>;
+  getRelocationRequest(id: string): Promise<StoreRelocationRequest | undefined>;
+  listRelocationRequests(officeId: string, status?: string): Promise<StoreRelocationRequest[]>;
+  updateRelocationRequest(
+    id: string,
+    data: Partial<StoreRelocationRequest>,
+  ): Promise<StoreRelocationRequest | undefined>;
   findBranchForPickup(
     officeId: string,
     options: { pincode?: string | null; lat?: number | null; lng?: number | null },
@@ -416,6 +501,7 @@ export interface IStorage {
 
   // Courier Partner operations
   getPartnersByOffice(officeId: string): Promise<CourierPartner[]>;
+  ensureHubBookingPartners(officeId: string): Promise<CourierPartner[]>;
   getPartner(id: string): Promise<CourierPartner | undefined>;
   createPartner(partner: InsertCourierPartner): Promise<CourierPartner>;
   updatePartner(id: string, partner: Partial<InsertCourierPartner>): Promise<CourierPartner | undefined>;
@@ -432,6 +518,10 @@ export interface IStorage {
   getActiveTariffRows(officeId: string, courierPartnerId: string): Promise<TariffRateRow[]>;
   getTariffRateRowsByVersion(tariffVersionId: string): Promise<TariffRateRow[]>;
   getTariffRateRowsEnriched(tariffVersionId: string): Promise<Array<TariffRateRow & { partnerName: string; partnerCode: string }>>;
+  getConsolidatedRateCard(officeId: string): Promise<{
+    versions: Array<TariffVersion & { partnerName?: string | null }>;
+    rows: Array<TariffRateRow & { partnerName: string; partnerCode: string }>;
+  }>;
   getTariffRateRow(id: string): Promise<TariffRateRow | undefined>;
   updateTariffRateRow(id: string, data: Partial<InsertTariffRateRow>): Promise<TariffRateRow | undefined>;
   deleteTariffRateRows(ids: string[]): Promise<number>;
@@ -454,8 +544,20 @@ export interface IStorage {
 
   // Shipment operations
   getShipmentsByOffice(officeId: string): Promise<ShipmentWithRelations[]>;
+  searchShipments(officeId: string, query: string): Promise<ShipmentWithRelations[]>;
+  searchBookingRequests(officeId: string, query: string): Promise<BookingRequest[]>;
   getShipment(id: string): Promise<ShipmentWithRelations | undefined>;
-  createShipment(shipment: InsertShipment): Promise<Shipment>;
+  allocateBookingNumber(input: {
+    channel?: string | null;
+    shipmentType?: string | null;
+    partnerCode?: string | null;
+    partnerName?: string | null;
+  }): Promise<string>;
+  createShipment(
+    shipment: InsertShipment,
+    preferredBookingNumber?: string | null,
+    channel?: string | null,
+  ): Promise<Shipment>;
   updateShipmentStatus(id: string, status: string): Promise<Shipment | undefined>;
   updateShipmentPartnerSync(
     id: string,
@@ -867,6 +969,31 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(courierPartners).where(eq(courierPartners.officeId, officeId)).orderBy(desc(courierPartners.createdAt));
   }
 
+  async ensureHubBookingPartners(officeId: string): Promise<CourierPartner[]> {
+    const existing = await this.getPartnersByOffice(officeId);
+    const extra: CourierPartner[] = [];
+    for (const def of HUB_BOOKING_COURIERS) {
+      if (def.status !== "live") continue;
+      const found = existing.find((partner) => matchHubBookingCourier(partner)?.key === def.key);
+      if (found) continue;
+      try {
+        extra.push(
+          await this.createPartner({
+            officeId,
+            name: def.name,
+            code: def.codes[0],
+            isActive: true,
+            bookingMethod: def.bookingMethod,
+            portalUrl: def.portalUrl,
+          }),
+        );
+      } catch (error) {
+        console.error(`[partners] failed to add ${def.name}:`, error);
+      }
+    }
+    return extra.length > 0 ? [...existing, ...extra] : existing;
+  }
+
   async getPartner(id: string): Promise<CourierPartner | undefined> {
     const [partner] = await db.select().from(courierPartners).where(eq(courierPartners.id, id));
     return partner;
@@ -998,6 +1125,16 @@ export class DatabaseStorage implements IStorage {
       .from(tariffRateRows)
       .where(eq(tariffRateRows.tariffVersionId, tariffVersionId))
       .orderBy(asc(tariffRateRows.weightMin));
+  }
+
+  async getConsolidatedRateCard(officeId: string) {
+    const versions = await this.getTariffVersionsByOffice(officeId);
+    const selected = versions.filter((version) => version.status === "active" || version.status === "draft");
+    const rowSets = await Promise.all(selected.map((version) => this.getTariffRateRowsEnriched(version.id)));
+    return {
+      versions: selected,
+      rows: rowSets.flat().filter((row) => row.isActive !== false),
+    };
   }
 
   async getTariffRateRowsEnriched(tariffVersionId: string) {
@@ -1183,6 +1320,58 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async searchShipments(officeId: string, query: string): Promise<ShipmentWithRelations[]> {
+    await ensureXgooOrderIdColumns();
+    await ensureHubBookingColumns();
+    const pattern = likeContainsPattern(query);
+    if (!pattern) return [];
+    const results = await db
+      .select()
+      .from(shipments)
+      .leftJoin(customers, eq(shipments.customerId, customers.id))
+      .leftJoin(courierPartners, eq(shipments.courierPartnerId, courierPartners.id))
+      .where(
+        and(
+          eq(shipments.officeId, officeId),
+          or(
+            ilike(shipments.bookingNumber, pattern),
+            ilike(shipments.awbNumber, pattern),
+            ilike(shipments.externalAwb, pattern),
+            ilike(shipments.xgooOrderId, pattern),
+          ),
+        ),
+      )
+      .orderBy(desc(shipments.bookedAt))
+      .limit(8);
+
+    return results.map((row) => ({
+      ...row.shipments,
+      customer: row.customers,
+      courierPartner: row.courier_partners,
+    }));
+  }
+
+  async searchBookingRequests(officeId: string, query: string): Promise<BookingRequest[]> {
+    await ensureBookingPackageColumns();
+    await ensureXgooOrderIdColumns();
+    const pattern = likeContainsPattern(query);
+    if (!pattern) return [];
+    return db
+      .select()
+      .from(bookingRequests)
+      .where(
+        and(
+          eq(bookingRequests.officeId, officeId),
+          or(
+            ilike(bookingRequests.requestNumber, pattern),
+            ilike(bookingRequests.xgooOrderId, pattern),
+          ),
+        ),
+      )
+      .orderBy(desc(bookingRequests.createdAt))
+      .limit(8);
+  }
+
   async getShipment(id: string): Promise<ShipmentWithRelations | undefined> {
     await ensureXgooOrderIdColumns();
     await ensureHubBookingColumns();
@@ -1203,15 +1392,86 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async createShipment(shipment: InsertShipment): Promise<Shipment> {
+  async allocateBookingNumber(input: {
+    channel?: string | null;
+    shipmentType?: string | null;
+    partnerCode?: string | null;
+    partnerName?: string | null;
+  }): Promise<string> {
+    await ensureBookingNumberSequenceTable();
+    const prefix = xgooBookingNumberPrefix(input);
+    const bumped = await db.execute(sql`
+      INSERT INTO booking_number_sequences (prefix, next_seq)
+      VALUES (${prefix}, 1)
+      ON CONFLICT (prefix) DO UPDATE
+      SET next_seq = booking_number_sequences.next_seq + 1,
+          updated_at = now()
+      RETURNING next_seq
+    `);
+    let seq = returningSeq(bumped);
+    if (seq <= 1) {
+      const [existing] = await db
+        .select({ bookingNumber: shipments.bookingNumber })
+        .from(shipments)
+        .where(like(shipments.bookingNumber, `${prefix}%`))
+        .orderBy(desc(shipments.bookingNumber))
+        .limit(1);
+      const highest = bookingNumberSequence(existing?.bookingNumber, prefix);
+      if (highest >= seq) {
+        seq = highest + 1;
+        await db.execute(sql`
+          UPDATE booking_number_sequences
+          SET next_seq = ${seq}, updated_at = now()
+          WHERE prefix = ${prefix} AND next_seq < ${seq}
+        `);
+      }
+    }
+    if (seq < 1) seq = 1;
+    return formatXgooBookingNumber(prefix, seq);
+  }
+
+  async createShipment(
+    shipment: InsertShipment,
+    preferredBookingNumber?: string | null,
+    channel?: string | null,
+  ): Promise<Shipment> {
     await ensureXgooOrderIdColumns();
     await ensureHubBookingColumns();
-    const bookingNumber = `XG${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-    const [created] = await db
-      .insert(shipments)
-      .values({ ...shipment, bookingNumber })
-      .returning();
-    return created;
+    const partner = shipment.courierPartnerId
+      ? await this.getPartner(shipment.courierPartnerId)
+      : undefined;
+    const allocate = () =>
+      this.allocateBookingNumber({
+        channel: parseBookingChannel(channel) || "SR",
+        shipmentType: shipment.shipmentType,
+        partnerCode: partner?.code,
+        partnerName: partner?.name,
+      });
+    let bookingNumber = (preferredBookingNumber || "").trim().toUpperCase();
+    if (!isXgooBookingNumber(bookingNumber)) {
+      bookingNumber = await allocate();
+    } else {
+      const [existing] = await db
+        .select({ id: shipments.id })
+        .from(shipments)
+        .where(eq(shipments.bookingNumber, bookingNumber))
+        .limit(1);
+      if (existing) bookingNumber = await allocate();
+    }
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const [created] = await db
+          .insert(shipments)
+          .values({ ...shipment, bookingNumber })
+          .returning();
+        return created;
+      } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (code !== "23505" || attempt === 5) throw error;
+        bookingNumber = await allocate();
+      }
+    }
+    throw new Error("Could not allocate a unique booking ID");
   }
 
   async updateShipmentStatus(id: string, status: string): Promise<Shipment | undefined> {
@@ -1799,6 +2059,61 @@ export class DatabaseStorage implements IStorage {
 
   async getBranch(id: string): Promise<BranchWithServiceAreas | undefined> {
     return this.loadBranchWithAreas(id);
+  }
+
+  async createRelocationRequest(request: InsertStoreRelocationRequest): Promise<StoreRelocationRequest> {
+    await ensureStoreRelocationTable();
+    const [created] = await db.insert(storeRelocationRequests).values(request).returning();
+    return created;
+  }
+
+  async getOpenRelocationRequest(branchId: string): Promise<StoreRelocationRequest | undefined> {
+    await ensureStoreRelocationTable();
+    const [row] = await db
+      .select()
+      .from(storeRelocationRequests)
+      .where(
+        and(
+          eq(storeRelocationRequests.branchId, branchId),
+          or(eq(storeRelocationRequests.status, "pending"), eq(storeRelocationRequests.status, "approved")),
+        ),
+      )
+      .orderBy(desc(storeRelocationRequests.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async getRelocationRequest(id: string): Promise<StoreRelocationRequest | undefined> {
+    await ensureStoreRelocationTable();
+    const [row] = await db.select().from(storeRelocationRequests).where(eq(storeRelocationRequests.id, id)).limit(1);
+    return row;
+  }
+
+  async listRelocationRequests(officeId: string, status?: string): Promise<StoreRelocationRequest[]> {
+    await ensureStoreRelocationTable();
+    const rows = await db
+      .select()
+      .from(storeRelocationRequests)
+      .where(
+        status
+          ? and(eq(storeRelocationRequests.officeId, officeId), eq(storeRelocationRequests.status, status))
+          : eq(storeRelocationRequests.officeId, officeId),
+      )
+      .orderBy(desc(storeRelocationRequests.createdAt));
+    return rows;
+  }
+
+  async updateRelocationRequest(
+    id: string,
+    data: Partial<StoreRelocationRequest>,
+  ): Promise<StoreRelocationRequest | undefined> {
+    await ensureStoreRelocationTable();
+    const [updated] = await db
+      .update(storeRelocationRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(storeRelocationRequests.id, id))
+      .returning();
+    return updated;
   }
 
   async ensureDefaultBranchForOffice(office: Office): Promise<Branch> {

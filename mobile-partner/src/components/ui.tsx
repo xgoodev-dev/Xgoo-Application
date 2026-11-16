@@ -29,7 +29,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, type Edges } from 'react-native-safe-area-context';
 import { XGOO_PICKUP } from '@/lib/site-info';
 import { useAppTheme } from '@/lib/theme';
 
@@ -71,6 +71,7 @@ type ScreenProps = PropsWithChildren<{
   scroll?: boolean;
   padded?: boolean;
   keyboard?: boolean;
+  edges?: Edges;
   contentStyle?: ViewStyle;
   refreshControl?: ScrollViewProps['refreshControl'];
 }>;
@@ -80,6 +81,7 @@ export function Screen({
   scroll = true,
   padded = true,
   keyboard = false,
+  edges,
   contentStyle,
   refreshControl,
 }: ScreenProps) {
@@ -182,7 +184,7 @@ export function Screen({
     <KeyboardScrollContext.Provider value={{ scrollToFocused }}>
       <SafeAreaView
         style={[styles.safe, { backgroundColor: colors.background }]}
-        edges={keyboard && keyboardHeight > 0 ? ['top'] : ['top', 'bottom']}
+        edges={edges || (keyboard && keyboardHeight > 0 ? ['top'] : ['top', 'bottom'])}
       >
         {body}
       </SafeAreaView>
@@ -527,7 +529,7 @@ const styles = StyleSheet.create({
   pageSubtitle: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 16,
     shadowOpacity: 0.06,
     shadowRadius: 12,

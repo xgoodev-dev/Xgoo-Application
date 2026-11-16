@@ -15,6 +15,7 @@ import {
   ScanLine,
   Plus,
   Trash2,
+  Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useOperatingStore } from "@/hooks/use-operating-store";
 import { apiRequest } from "@/lib/queryClient";
 import { PackagePhotoCapture } from "@/components/bookings/PackagePhotoCapture";
 import { HubBookingAiBar } from "@/components/bookings/hub-booking-ai-bar";
@@ -60,14 +62,22 @@ import {
   HubBookingCustomsSection,
   HubBookingCourierApiSection,
   HubBookingOrderSection,
-  HubBookingPartnerGate,
+  HubBookingPartnerTabs,
   HubBookingPaymentSection,
   HubBookingProductSection,
   HubBookingScopeToggle,
   HubBookingWeightSummary,
 } from "@/components/bookings/hub-booking-fields";
 import { DelhiveryOrderForm } from "@/components/bookings/delhivery-order-form";
+import { PaperShipperBookingForm } from "@/components/bookings/paper-shipper-form";
+import {
+  hubBookingTrackUrl,
+  hubPaymentLabel,
+  printHubBookingLabel,
+} from "@/components/bookings/hub-booking-label";
 import { WorldFirstAwbForm } from "@/components/bookings/world-first-awb-form";
+import WorldFirstDayEndPage from "@/pages/world-first-day-end";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   hubBookingDefaultValues,
   hubBookingFormSchema,
@@ -76,8 +86,10 @@ import {
 import type { BranchWithServiceAreas, Customer, CourierPartner, Office } from "@shared/schema";
 import type { PricingQuoteResult } from "@shared/pricing";
 import { isDelhiveryPartner } from "@shared/delhivery";
+import { isFranchCourier, isStCourier } from "@shared/erp-courier";
 import { isWorldFirstPartner } from "@shared/world-first";
 import { resolveBookingMethod } from "@shared/booking-engine";
+import { buildHubBookingPartnerTabs, matchHubBookingCourier } from "@shared/hub-booking-couriers";
 import {
   filledProducts,
   packageWeightSummary,
@@ -103,14 +115,22 @@ type WorldFirstStatus = {
   clientId?: string | null;
 };
 
+type ErpCourierStatus = {
+  st: { configured: boolean; origin?: string | null };
+  franch: { configured: boolean; origin?: string | null };
+};
+
 function shouldBookOnCreate(
   partner: CourierPartner | undefined,
   delhiveryStatus: DelhiveryStatus | undefined,
   worldFirstStatus?: WorldFirstStatus,
+  erpStatus?: ErpCourierStatus,
 ): boolean {
   if (!partner || resolveBookingMethod(partner) !== "api") return false;
   if (isDelhiveryPartner(partner.code, partner.name)) return !!delhiveryStatus?.configured;
   if (isWorldFirstPartner(partner.code, partner.name)) return !!worldFirstStatus?.configured;
+  if (isStCourier(partner.code, partner.name)) return !!erpStatus?.st.configured;
+  if (isFranchCourier(partner.code, partner.name)) return !!erpStatus?.franch.configured;
   return true;
 }
 
@@ -178,9 +198,19 @@ export default function NewBookingPage() {
   const [packagePhotos, setPackagePhotos] = useState<string[]>([]);
   const [extraPackages, setExtraPackages] = useState<ExtraPackageRow[]>([]);
 
-  const [partnerConfirmed, setPartnerConfirmed] = useState(false);
+  const [wfView, setWfView] = useState<"awb" | "day-end">(
+    () => (new URLSearchParams(window.location.search).get("view") === "day-end" ? "day-end" : "awb"),
+  );
+  const [selectedTabKey, setSelectedTabKey] = useState(
+    () =>
+      new URLSearchParams(window.location.search).get("view") === "day-end"
+        ? "world-first"
+        : new URLSearchParams(window.location.search).get("tab") || "",
+  );
   const [recordingSection, setRecordingSection] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const printedBookingNumberRef = useRef("");
+  const [printingLabel, setPrintingLabel] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const scanPhotosInputRef = useRef<HTMLInputElement>(null);
 
@@ -197,12 +227,16 @@ export default function NewBookingPage() {
   const { data: worldFirstStatus } = useQuery<WorldFirstStatus>({
     queryKey: ["/api/integrations/world-first/status"],
   });
+  const { data: erpCourierStatus } = useQuery<ErpCourierStatus>({
+    queryKey: ["/api/integrations/erp-courier/status"],
+  });
   const { data: branches } = useQuery<BranchWithServiceAreas[]>({
     queryKey: ["/api/branches"],
   });
   const { data: office } = useQuery<Office>({
     queryKey: ["/api/office"],
   });
+  const { store: operatingStore } = useOperatingStore();
 
   const form = useForm<BookingFormData>({
     resolver: zodResolver(hubBookingFormSchema),
@@ -220,8 +254,8 @@ export default function NewBookingPage() {
     const partnerId = params.get("courierPartnerId") || params.get("partner");
     if (partnerId) {
       form.setValue("courierPartnerId", partnerId, { shouldValidate: true });
-      setPartnerConfirmed(true);
     }
+    if (params.get("view") === "day-end") setWfView("day-end");
     const fromPin = params.get("from") || params.get("senderPincode");
     const toPin = params.get("to") || params.get("receiverPincode");
     if (fromPin && !params.get("senderPincode")) form.setValue("senderPincode", fromPin);
@@ -279,6 +313,43 @@ export default function NewBookingPage() {
   }, [form]);
 
   const selectedPartnerId = form.watch("courierPartnerId");
+  const bookingTabs = buildHubBookingPartnerTabs(partners || []);
+  const selectedTab = bookingTabs.find((tab) => tab.key === selectedTabKey) || null;
+  const comingSoon = selectedTab?.status === "coming-soon";
+
+  useEffect(() => {
+    if (!bookingTabs.length) return;
+    if (selectedTabKey) {
+      const tab = bookingTabs.find((row) => row.key === selectedTabKey);
+      if (tab?.status === "coming-soon") {
+        if (selectedPartnerId) form.setValue("courierPartnerId", "", { shouldValidate: true });
+        return;
+      }
+      if (tab?.status === "live" && tab.partner && tab.partner.id !== selectedPartnerId) {
+        form.setValue("courierPartnerId", tab.partner.id, { shouldValidate: true });
+      }
+      return;
+    }
+    if (selectedPartnerId) {
+      const current = partners?.find((partner) => partner.id === selectedPartnerId);
+      const match = current ? matchHubBookingCourier(current) : null;
+      if (match) {
+        setSelectedTabKey(match.key);
+        return;
+      }
+    }
+    const fromQuery = new URLSearchParams(window.location.search);
+    const preferred =
+      (fromQuery.get("view") === "day-end"
+        ? bookingTabs.find((tab) => tab.key === "world-first")
+        : undefined) ||
+      bookingTabs.find((tab) => tab.key === "world-first" && tab.status === "live") ||
+      bookingTabs.find((tab) => tab.status === "live");
+    if (preferred) {
+      setSelectedTabKey(preferred.key);
+      if (preferred.partner) form.setValue("courierPartnerId", preferred.partner.id, { shouldValidate: true });
+    }
+  }, [bookingTabs, form, partners, selectedPartnerId, selectedTabKey]);
   const serviceType = form.watch("serviceType");
   const shipmentType = form.watch("shipmentType");
   const weight = form.watch("weight");
@@ -295,10 +366,14 @@ export default function NewBookingPage() {
   const declaredValue = form.watch("declaredValue");
 
   useEffect(() => {
+    printedBookingNumberRef.current = "";
+  }, [selectedPartnerId, selectedTabKey, shipmentType]);
+
+  useEffect(() => {
     if (form.getValues("pickupLocationName")) return;
-    const primary = branches?.find((branch) => branch.isPrimary) || branches?.[0];
-    if (primary?.name) form.setValue("pickupLocationName", primary.name);
-  }, [branches, form]);
+    const hub = operatingStore || branches?.find((branch) => branch.isPrimary) || branches?.[0];
+    if (hub?.name) form.setValue("pickupLocationName", hub.name);
+  }, [branches, operatingStore, form]);
 
   const applyShipmentScope = (scope: HubShipmentScope) => {
     form.setValue("shipmentType", scope, { shouldValidate: true });
@@ -486,30 +561,42 @@ export default function NewBookingPage() {
   };
 
   const selectedPartner = partners?.find((p) => p.id === selectedPartnerId);
-  const worldFirstBooking = isWorldFirstPartner(selectedPartner?.code, selectedPartner?.name);
-  const delhiveryBooking = isDelhiveryPartner(selectedPartner?.code, selectedPartner?.name);
-  const bookOnCreate = shouldBookOnCreate(selectedPartner, delhiveryStatus, worldFirstStatus);
+  const worldFirstBooking = selectedTabKey === "world-first" && !comingSoon;
+  const delhiveryBooking = selectedTabKey === "delhivery" && !comingSoon;
+  const paperShipperBooking =
+    (selectedTabKey === "st" || selectedTabKey === "franch" || selectedTabKey === "tirupati") && !comingSoon;
+  const tirupatiBooking = selectedTabKey === "tirupati" && !comingSoon;
+  const bookOnCreate = shouldBookOnCreate(selectedPartner, delhiveryStatus, worldFirstStatus, erpCourierStatus);
 
   useEffect(() => {
-    if (!partnerConfirmed || !selectedPartner) return;
+    if (!selectedPartner) return;
     if (delhiveryBooking) {
       form.setValue("shipmentType", "domestic");
       form.setValue("receiverCountry", "India");
       if (delhiveryStatus?.pickupLocation && !form.getValues("pickupLocationName")) {
         form.setValue("pickupLocationName", delhiveryStatus.pickupLocation);
       }
-      const sellerName = delhiveryStatus?.clientName || office?.name;
+      const sellerName = delhiveryStatus?.clientName || operatingStore?.name || office?.name;
       if (sellerName && !form.getValues("senderName")) {
         form.setValue("senderName", sellerName);
       }
-      if (office?.address && !form.getValues("senderAddress")) {
-        form.setValue("senderAddress", office.address);
-        form.setValue("senderCity", office.city || "");
-        form.setValue("senderState", office.state || "");
-        form.setValue("senderPincode", office.pincode || "");
+      const shipFrom = operatingStore?.address ? operatingStore : office;
+      if (shipFrom?.address && !form.getValues("senderAddress")) {
+        form.setValue("senderAddress", shipFrom.address);
+        form.setValue("senderCity", shipFrom.city || "");
+        form.setValue("senderState", shipFrom.state || "");
+        form.setValue("senderPincode", shipFrom.pincode || "");
       }
       if (office?.phone && !form.getValues("senderPhone")) {
         form.setValue("senderPhone", office.phone);
+      }
+    }
+    if (paperShipperBooking) {
+      form.setValue("shipmentType", "domestic");
+      form.setValue("receiverCountry", "India");
+      form.setValue("senderCountry", "India");
+      if (form.getValues("paymentMode") === "credit") {
+        form.setValue("paymentMode", "cash");
       }
     }
     if (worldFirstBooking) {
@@ -540,7 +627,6 @@ export default function NewBookingPage() {
       form.setValue("gstin", office.gstNumber);
     }
   }, [
-    partnerConfirmed,
     selectedPartner,
     delhiveryBooking,
     worldFirstBooking,
@@ -951,6 +1037,9 @@ export default function NewBookingPage() {
   const createBookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
       const amount = data.manualAmount ? parseFloat(data.manualAmount) : calculatePrice();
+      const gst = paperShipperBooking ? parseFloat(data.gstAmount || "0") || 0 : 0;
+      const baseAmount = amount;
+      const totalAmount = paperShipperBooking ? amount + gst : amount;
       const productRows = filledProducts(data.products);
       const productValue = productsDeclaredValue(productRows);
       const productDesc = productsDescription(productRows);
@@ -978,8 +1067,9 @@ export default function NewBookingPage() {
         contentDescription: combinedDescription || productDesc || data.contentDescription || "",
         products: productRows,
         destinationCountry: data.shipmentType === "international" ? data.destinationCountry : null,
-        totalAmount: amount.toString(),
-        baseAmount: amount.toString(),
+        totalAmount: totalAmount.toString(),
+        baseAmount: baseAmount.toString(),
+        gstAmount: gst.toString(),
         packagePhotoUrls: data.packagePhotoUrls || [],
         packages: packageRows.map((row) => ({
           weight: row.weight || "",
@@ -990,12 +1080,16 @@ export default function NewBookingPage() {
           contentDescription: row.contentDescription || "",
           declaredValue: row.declaredValue || "",
         })),
-        ...(sourceBookingRequestId ? { bookingRequestId: sourceBookingRequestId } : {}),
+        ...(sourceBookingRequestId
+          ? { bookingRequestId: sourceBookingRequestId }
+          : { bookingChannel: "SR" as const }),
+        ...(printedBookingNumberRef.current ? { bookingNumber: printedBookingNumberRef.current } : {}),
+        ...(operatingStore?.id ? { branchId: operatingStore.id } : {}),
       };
       const createRes = await apiRequest("POST", "/api/shipments", payload);
       const shipment = (await createRes.json()) as { id: string };
       const partner = partners?.find((p) => p.id === data.courierPartnerId);
-      if (!shouldBookOnCreate(partner, delhiveryStatus, worldFirstStatus)) {
+      if (!shouldBookOnCreate(partner, delhiveryStatus, worldFirstStatus, erpCourierStatus)) {
         if (partner && resolveBookingMethod(partner) === "browser_automation") {
           try {
             await apiRequest("POST", `/api/shipments/${shipment.id}/booking/start`);
@@ -1047,10 +1141,10 @@ export default function NewBookingPage() {
         toast({
           title: `Booked on ${selectedPartner?.name || "courier"}`,
           description: job.awbNumber
-            ? `AWB ${job.awbNumber}. Print the customer bill to hand over.`
-            : "Shipment created and booked. Print the customer bill to hand over.",
+            ? `AWB ${job.awbNumber} saved${paperShipperBooking ? " on the courier portal" : ""}.`
+            : "Shipment created and booked.",
         });
-        setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
+        setLocation(`/shipments/${shipment.id}`);
         return;
       }
       if (autoBook) {
@@ -1063,10 +1157,12 @@ export default function NewBookingPage() {
         return;
       }
       toast({
-        title: "Booking Created",
-        description: "Print the customer bill to hand over immediately.",
+        title: tirupatiBooking ? "Tirupati booking saved" : "Booking Created",
+        description: tirupatiBooking
+          ? "This booking is in XGoo records only. No courier portal update."
+          : "Print the customer bill to hand over immediately.",
       });
-      setLocation(`/shipments/${shipment.id}/bill?autoprint=1`);
+      setLocation(tirupatiBooking ? `/shipments/${shipment.id}` : `/shipments/${shipment.id}/bill?autoprint=1`);
     },
     onError: (error: Error) => {
       toast({
@@ -1078,6 +1174,26 @@ export default function NewBookingPage() {
   });
 
   const onSubmit = (data: BookingFormData) => {
+    if (paperShipperBooking && !(data.awbNumber || "").trim()) {
+      toast({ title: "Shipper AWB required", description: "Type the AWB printed on the courier shipper.", variant: "destructive" });
+      return;
+    }
+    if (paperShipperBooking && !(data.contentDescription || "").trim()) {
+      toast({ title: "Item description required", description: "Enter what is inside the parcel.", variant: "destructive" });
+      return;
+    }
+    if (paperShipperBooking && !(data.declaredValue || "").trim()) {
+      toast({ title: "Item value required", description: "Enter the declared value of the items.", variant: "destructive" });
+      return;
+    }
+    if (paperShipperBooking && !(data.manualAmount || "").trim()) {
+      toast({ title: "Amount required", description: "Enter the amount charged without tax.", variant: "destructive" });
+      return;
+    }
+    if ((isStCourier(selectedPartner?.code, selectedPartner?.name) || isFranchCourier(selectedPartner?.code, selectedPartner?.name)) && !(data.packagePhotoUrls || []).length) {
+      toast({ title: "Parcel photos required", description: `${selectedPartner?.name} needs photos before Hub can update their portal.`, variant: "destructive" });
+      return;
+    }
     createBookingMutation.mutate(data);
   };
 
@@ -1129,8 +1245,94 @@ export default function NewBookingPage() {
 
   const currentWizard = BOOKING_WIZARD_STEPS[bookingWizardStepIndex(wizardStep)];
   const manualAmount = form.watch("manualAmount");
-  const chargedAmount = (manualAmount ? parseFloat(manualAmount || "0") || 0 : calculatePrice()).toFixed(2);
-  const partnerLayout = delhiveryBooking ? "delhivery" : worldFirstBooking ? "world-first" : "generic";
+  const gstAmountValue = form.watch("gstAmount");
+  const amountWithoutTax = manualAmount ? parseFloat(manualAmount || "0") || 0 : calculatePrice();
+  const gstAmountNumber = paperShipperBooking ? parseFloat(gstAmountValue || "0") || 0 : 0;
+  const chargedAmount = (paperShipperBooking ? amountWithoutTax + gstAmountNumber : amountWithoutTax).toFixed(2);
+
+  const printAftSlip = async () => {
+    const values = form.getValues();
+    if (!selectedPartnerId) {
+      toast({ title: "Select a courier first", variant: "destructive" });
+      return;
+    }
+    if (!printedBookingNumberRef.current) {
+      setPrintingLabel(true);
+      try {
+        const res = await apiRequest("POST", "/api/shipments/next-booking-number", {
+          bookingChannel: "SR",
+          shipmentType: values.shipmentType,
+          courierPartnerId: selectedPartnerId,
+        });
+        const data = (await res.json()) as { bookingNumber?: string };
+        if (!data.bookingNumber) throw new Error("No booking ID returned");
+        printedBookingNumberRef.current = data.bookingNumber;
+      } catch (error) {
+        toast({
+          title: "Could not allocate booking ID",
+          description: error instanceof Error ? error.message : "Try again",
+          variant: "destructive",
+        });
+        return;
+      } finally {
+        setPrintingLabel(false);
+      }
+    }
+    const bookingNumber = printedBookingNumberRef.current;
+    void printHubBookingLabel({
+      bookingNumber,
+      trackUrl: hubBookingTrackUrl(bookingNumber),
+      courierName: selectedPartner?.name || selectedTab?.name || "",
+      awbNumber: (values.awbNumber || "").trim(),
+      serviceType: values.serviceType,
+      officeName: office?.name || "",
+      officePhone: office?.phone || "",
+      from: {
+        name: values.senderName,
+        phone: values.senderPhone,
+        address: values.senderAddress,
+        addressLine2: values.senderAddressLine2,
+        city: values.senderCity,
+        state: values.senderState,
+        pincode: values.senderPincode,
+      },
+      to: {
+        name: values.receiverName,
+        phone: values.receiverPhone,
+        address: values.receiverAddress,
+        addressLine2: values.receiverAddressLine2,
+        city: values.receiverCity,
+        state: values.receiverState,
+        pincode: values.receiverPincode,
+      },
+      contents: values.contentDescription,
+      weight: values.weight,
+      pieces: values.numberOfPieces,
+      declaredValue: values.declaredValue,
+      paymentLabel: hubPaymentLabel(values.paymentMode),
+      chargedAmount,
+      printedAt: new Date().toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+    }).then((ok) => {
+      if (!ok) {
+        toast({
+          title: "Could not print",
+          description: "Hub could not open the print preview. Try again.",
+          variant: "destructive",
+        });
+      }
+    });
+  };
+  const partnerLayout = delhiveryBooking
+    ? "delhivery"
+    : worldFirstBooking
+      ? "world-first"
+      : paperShipperBooking
+        ? "paper"
+        : "generic";
   const partnerBoxRows = packageRows.map((row) => ({
     id: row.id,
     isPrimary: row.isPrimary,
@@ -1141,28 +1343,29 @@ export default function NewBookingPage() {
     numberOfPieces: row.numberOfPieces,
   }));
 
-  if (!partnerConfirmed) {
-    return (
-      <HubBookingPartnerGate
-        partners={partners}
-        selectedPartnerId={selectedPartnerId}
-        loading={partnersLoading}
-        onSelect={(partnerId) => form.setValue("courierPartnerId", partnerId, { shouldValidate: true })}
-        onContinue={() => {
-          if (!form.getValues("courierPartnerId")) {
-            toast({
-              title: "Select a courier partner",
-              description: "Choose who will move this shipment, then continue.",
-              variant: "destructive",
-            });
-            return;
-          }
-          setPartnerConfirmed(true);
-        }}
-        onCancel={() => setLocation(sourceBookingRequestId ? "/bookings" : "/shipments")}
-      />
-    );
-  }
+  const replaceBookingQuery = (patch: Record<string, string | null>) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(patch)) {
+      if (!value) params.delete(key);
+      else params.set(key, value);
+    }
+    const qs = params.toString();
+    setLocation(qs ? `/bookings/new?${qs}` : "/bookings/new");
+  };
+
+  const selectPartnerTab = (key: string) => {
+    setSelectedTabKey(key);
+    const tab = bookingTabs.find((row) => row.key === key);
+    const partnerId = tab?.status === "live" ? tab.partner?.id || "" : "";
+    form.setValue("courierPartnerId", partnerId, { shouldValidate: true });
+    const keepDayEnd = key === "world-first" && wfView === "day-end";
+    if (!keepDayEnd) setWfView("awb");
+    replaceBookingQuery({
+      tab: key,
+      courierPartnerId: partnerId || null,
+      view: keepDayEnd ? "day-end" : null,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -1171,40 +1374,70 @@ export default function NewBookingPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold">
-            {partnerLayout === "delhivery"
-              ? "Create New Order"
-              : partnerLayout === "world-first"
-                ? "AWB Entry"
-                : "New Booking"}
-          </h1>
+          <h1 className="text-2xl font-bold">New Booking</h1>
           <p className="text-muted-foreground">
-            {partnerLayout === "delhivery"
-              ? "Delhivery pickup, consignee, order, product, and box details."
-              : partnerLayout === "world-first"
-                ? "World First shipper, consignee, services, pieces, and performa."
-                : `Step ${bookingWizardStepIndex(wizardStep) + 1} of ${BOOKING_WIZARD_STEPS.length}: ${currentWizard.label}`}
+            {comingSoon
+              ? `${selectedTab?.name || "This courier"} booking is coming soon.`
+              : paperShipperBooking
+                ? "Review From and To, print the label, attach the shipper, then enter AWB, photos, and charges."
+              : partnerLayout === "delhivery"
+                ? "Delhivery pickup, consignee, order, product, and box details."
+                : partnerLayout === "world-first"
+                  ? wfView === "day-end"
+                    ? "World First pending AWB, manifest, and wallet."
+                    : "World First shipper, consignee, services, pieces, and performa."
+                  : currentWizard
+                    ? `Step ${bookingWizardStepIndex(wizardStep) + 1} of ${BOOKING_WIZARD_STEPS.length}: ${currentWizard.label}`
+                    : "Choose a courier tab, then fill that partner’s booking."}
           </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {selectedPartner ? (
-            <Badge variant="secondary" className="h-8 gap-1.5 px-3" data-testid="badge-selected-partner">
-              <Truck className="h-3.5 w-3.5" />
-              {selectedPartner.name} ({selectedPartner.code})
-            </Badge>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setPartnerConfirmed(false)}
-            data-testid="button-change-partner"
-          >
-            Change partner
-          </Button>
         </div>
       </div>
 
+      <HubBookingPartnerTabs
+        partners={partners}
+        selectedKey={selectedTabKey}
+        loading={partnersLoading}
+        onSelect={selectPartnerTab}
+      />
+
+      {worldFirstBooking ? (
+        <Tabs
+          value={wfView}
+          onValueChange={(value) => {
+            const next = value === "day-end" ? "day-end" : "awb";
+            setWfView(next);
+            replaceBookingQuery({
+              tab: "world-first",
+              courierPartnerId: selectedPartnerId || null,
+              view: next === "day-end" ? "day-end" : null,
+            });
+          }}
+        >
+          <TabsList data-testid="tabs-world-first-workspace">
+            <TabsTrigger value="awb" data-testid="tab-wf-awb">
+              AWB Entry
+            </TabsTrigger>
+            <TabsTrigger value="day-end" data-testid="tab-wf-day-end">
+              Day End
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      ) : null}
+
+      {comingSoon ? (
+        <Card data-testid="card-courier-coming-soon">
+          <CardHeader>
+            <CardTitle>{selectedTab?.name} is coming soon</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>Hub cannot book {selectedTab?.name} yet. This courier stays on the New Booking page so it is ready when booking opens.</p>
+            <p>Live booking is available on World First, Delhivery, ST Couriers, Franch Couriers, and Tirupati.</p>
+          </CardContent>
+        </Card>
+      ) : worldFirstBooking && wfView === "day-end" ? (
+        <WorldFirstDayEndPage embedded />
+      ) : (
+        <>
       {partnerLayout === "generic" ? (
         <BookingWizardStepper current={wizardStep} onSelect={(id) => void goToWizardStep(id)} />
       ) : null}
@@ -1238,6 +1471,41 @@ export default function NewBookingPage() {
               submitLabel={`Book in ${selectedPartner?.name || "Delhivery"}`}
               submitPendingLabel={bookOnCreate ? `Booking in ${selectedPartner?.name || "Delhivery"}...` : "Creating..."}
               onRefreshRate={updateCalculatedAmount}
+            />
+          ) : null}
+
+          {partnerLayout === "paper" ? (
+            <PaperShipperBookingForm
+              form={form}
+              partnerName={selectedPartner?.name || selectedTab?.name || "courier"}
+              tirupati={tirupatiBooking}
+              photos={packagePhotos}
+              onPhotosChange={(next) => {
+                setPackagePhotos(next);
+                form.setValue("packagePhotoUrls", next, { shouldDirty: true });
+              }}
+              chargedAmount={chargedAmount}
+              submitting={createBookingMutation.isPending}
+              customers={customers}
+              onCustomerSelect={handleCustomerSelect}
+              onPrintAft={printAftSlip}
+              printingLabel={printingLabel}
+              senderAi={{
+                text: sectionAiText.sender || "",
+                onText: (value) => setSectionAiText((prev) => ({ ...prev, sender: value })),
+                onFill: () => void handleSectionAiFill("sender"),
+                onVoice: () => void handleVoiceRecord("sender"),
+                loading: sectionAiLoading.sender,
+                recording: recordingSection === "sender",
+              }}
+              receiverAi={{
+                text: sectionAiText.receiver || "",
+                onText: (value) => setSectionAiText((prev) => ({ ...prev, receiver: value })),
+                onFill: () => void handleSectionAiFill("receiver"),
+                onVoice: () => void handleVoiceRecord("receiver"),
+                loading: sectionAiLoading.receiver,
+                recording: recordingSection === "receiver",
+              }}
             />
           ) : null}
 
@@ -1293,7 +1561,7 @@ export default function NewBookingPage() {
             </div>
           ) : null}
 
-          {wizardStep === "shipper" ? (
+          {partnerLayout === "generic" && wizardStep === "shipper" ? (
             <HubBookingPartySection
               form={form}
               party="sender"
@@ -1309,7 +1577,7 @@ export default function NewBookingPage() {
             />
           ) : null}
 
-          {wizardStep === "consignee" ? (
+          {partnerLayout === "generic" && wizardStep === "consignee" ? (
             <HubBookingPartySection
               form={form}
               party="receiver"
@@ -1323,7 +1591,7 @@ export default function NewBookingPage() {
             />
           ) : null}
 
-          {wizardStep === "package" ? (
+          {partnerLayout === "generic" && wizardStep === "package" ? (
             <div className="space-y-6">
               <Card className="border-dashed border-primary/30 bg-muted/30">
                 <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1475,7 +1743,7 @@ export default function NewBookingPage() {
             </div>
           ) : null}
 
-          {wizardStep === "goods" ? (
+          {partnerLayout === "generic" && wizardStep === "goods" ? (
             <div className="space-y-6">
               <HubBookingProductSection form={form} scope={shipmentType} partner={selectedPartner} />
               {shipmentType === "international" || worldFirstBooking ? (
@@ -1484,7 +1752,7 @@ export default function NewBookingPage() {
             </div>
           ) : null}
 
-          {wizardStep === "charge" ? (
+          {partnerLayout === "generic" && wizardStep === "charge" ? (
             <div className="space-y-6">
               <Card>
                 <CardHeader className="pb-3">
@@ -1569,9 +1837,13 @@ export default function NewBookingPage() {
                       name="awbNumber"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>AWB number</FormLabel>
+                          <FormLabel>{paperShipperBooking ? "Shipper AWB *" : "AWB number"}</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="Auto-generated or manual entry" data-testid="input-awb" />
+                            <Input
+                              {...field}
+                              placeholder={paperShipperBooking ? "AWB printed on the courier shipper" : "Auto-generated or manual entry"}
+                              data-testid="input-awb"
+                            />
                           </FormControl>
                         </FormItem>
                       )}
@@ -1650,14 +1922,28 @@ export default function NewBookingPage() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="cash">Cash</SelectItem>
-                              <SelectItem value="upi">UPI</SelectItem>
-                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="upi">{paperShipperBooking ? "QR" : "UPI"}</SelectItem>
+                              <SelectItem value="bank_transfer">{paperShipperBooking ? "Online" : "Bank Transfer"}</SelectItem>
                               <SelectItem value="credit">Credit</SelectItem>
                             </SelectContent>
                           </Select>
                         </FormItem>
                       )}
                     />
+                    {paperShipperBooking ? (
+                      <FormField
+                        control={form.control}
+                        name="gstAmount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tax (GST)</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="number" placeholder="0" data-testid="input-gst-amount" />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
                     <div>
                       <FormLabel>Calculated amount</FormLabel>
                       <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-[#FF4907]">
@@ -1680,23 +1966,52 @@ export default function NewBookingPage() {
                         </p>
                       ) : null}
                     </div>
+                    )}
                     <FormField
                       control={form.control}
                       name="manualAmount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Override amount</FormLabel>
+                          <FormLabel>{paperShipperBooking ? "Amount without tax *" : "Override amount"}</FormLabel>
                           <FormControl>
-                            <Input {...field} type="number" placeholder="Leave blank to use calculated" data-testid="input-manual-amount" />
+                            <Input
+                              {...field}
+                              type="number"
+                              placeholder={paperShipperBooking ? "Amount charged without tax" : "Leave blank to use calculated"}
+                              data-testid="input-manual-amount"
+                            />
                           </FormControl>
                         </FormItem>
                       )}
                     />
+                    {paperShipperBooking ? (
+                      <div>
+                        <FormLabel>Amount with tax</FormLabel>
+                        <div className="mt-2 text-2xl font-bold text-[#FF4907]">Rs. {chargedAmount}</div>
+                      </div>
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>
 
-              {bookOnCreate ? (
+              {paperShipperBooking ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void printAftSlip()}
+                    disabled={printingLabel}
+                    data-testid="button-print-aft"
+                  >
+                    {printingLabel ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                    Print label
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Print From–To, stick it on the parcel, attach the {selectedPartner?.name} shipper, then Book Shipment.
+                    {tirupatiBooking ? " Tirupati is saved in XGoo only." : " Hub will update the courier portal."}
+                  </p>
+                </div>
+              ) : bookOnCreate ? (
                 <p className="text-xs text-muted-foreground">
                   {selectedPartner?.name} API is connected. This creates the XGoo bill and books the AWB in one step.
                 </p>
@@ -1708,7 +2023,7 @@ export default function NewBookingPage() {
             <BookingWizardFooter
               current={wizardStep}
               submitting={createBookingMutation.isPending}
-              submitLabel={`Book in ${selectedPartner?.name || "partner"}`}
+              submitLabel={paperShipperBooking ? "Book Shipment" : `Book in ${selectedPartner?.name || "partner"}`}
               submitPendingLabel={bookOnCreate ? `Booking in ${selectedPartner?.name || "partner"}...` : "Creating..."}
               onBack={goBackStep}
               onNext={() => void goNextStep()}
@@ -1717,6 +2032,8 @@ export default function NewBookingPage() {
           ) : null}
         </form>
       </Form>
+        </>
+      )}
     </div>
   );
 }

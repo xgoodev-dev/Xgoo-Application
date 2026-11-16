@@ -1,4 +1,6 @@
 import { isDelhiveryPartner } from "./delhivery";
+import { isErpPortalCourier, isTirupatiCourier } from "./erp-courier";
+import { matchHubBookingCourier } from "./hub-booking-couriers";
 import { isWorldFirstPartner } from "./world-first";
 
 export const BOOKING_METHODS = [
@@ -69,17 +71,67 @@ export function resolveBookingMethod(partner: {
   code?: string | null;
   name?: string | null;
 }): BookingMethod {
-  if (isDelhiveryPartner(partner.code, partner.name) || isWorldFirstPartner(partner.code, partner.name)) {
+  if (isDelhiveryPartner(partner.code, partner.name) || isWorldFirstPartner(partner.code, partner.name) || isErpPortalCourier(partner.code, partner.name)) {
     if (partner.bookingMethod === "manual" || partner.bookingMethod === "disabled" || partner.bookingMethod === "email") {
       return partner.bookingMethod;
     }
     return "api";
+  }
+  if (isTirupatiCourier(partner.code, partner.name)) {
+    if (partner.bookingMethod === "disabled") return "disabled";
+    return "manual";
   }
   if (isBookingMethod(partner.bookingMethod)) return partner.bookingMethod;
   return "browser_automation";
 }
 
 export function defaultBookingMethodForPartner(code?: string | null, name?: string | null): BookingMethod {
-  if (isDelhiveryPartner(code, name) || isWorldFirstPartner(code, name)) return "api";
+  if (isDelhiveryPartner(code, name) || isWorldFirstPartner(code, name) || isErpPortalCourier(code, name)) return "api";
+  if (isTirupatiCourier(code, name)) return "manual";
   return "browser_automation";
+}
+
+export function bookingPartnerKey(partner: { code?: string | null; name?: string | null }): string {
+  return matchHubBookingCourier(partner)?.key || (partner.code || partner.name || "").trim().toUpperCase() || "other";
+}
+
+const METHOD_RANK: Record<BookingMethod, number> = {
+  api: 0,
+  browser_automation: 1,
+  email: 2,
+  manual: 3,
+  disabled: 4,
+};
+
+/** One tab per courier brand. Duplicate office rows collapse; API connectors win. */
+export function uniqueBookingPartners<T extends {
+  id: string;
+  code?: string | null;
+  name?: string | null;
+  isActive?: boolean | null;
+  bookingMethod?: string | null;
+}>(partners: T[]): T[] {
+  const chosen = new Map<string, T>();
+  for (const partner of partners) {
+    if (partner.isActive === false) continue;
+    const key = bookingPartnerKey(partner);
+    const existing = chosen.get(key);
+    if (!existing) {
+      chosen.set(key, partner);
+      continue;
+    }
+    if (METHOD_RANK[resolveBookingMethod(partner)] < METHOD_RANK[resolveBookingMethod(existing)]) {
+      chosen.set(key, partner);
+    }
+  }
+  const rank = (partner: T) => {
+    if (isWorldFirstPartner(partner.code, partner.name)) return 0;
+    if (isDelhiveryPartner(partner.code, partner.name)) return 1;
+    return 2;
+  };
+  return [...chosen.values()].sort((a, b) => {
+    const byKind = rank(a) - rank(b);
+    if (byKind !== 0) return byKind;
+    return (a.name || "").localeCompare(b.name || "");
+  });
 }

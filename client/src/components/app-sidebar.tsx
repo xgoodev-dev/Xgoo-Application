@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Users,
   Truck,
+  FileSpreadsheet,
   FileText,
   Settings,
   LogOut,
@@ -21,13 +22,13 @@ import {
   Gift,
   Store,
   Bot,
-  ClipboardCheck,
 } from "lucide-react";
 import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961.png";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useAuth } from "@/hooks/use-auth";
 import { clearOpsWorkspace } from "@/lib/ops-workspace";
+import { clearCommandStore } from "@/lib/command-store";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -52,7 +53,6 @@ const hubNavItems = [
   { title: "Rate estimator", url: "/rate-calculator", icon: Calculator },
   { title: "Bookings", url: "/bookings", icon: ClipboardList },
   { title: "Shipments", url: "/shipments", icon: Package },
-  { title: "Day End", url: "/world-first/day-end", icon: ClipboardCheck },
   { title: "Documents", url: "/documents", icon: Files },
   { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
@@ -62,11 +62,12 @@ const hubNavItems = [
 
 const commandControlItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Rate calculator", url: "/rate-calculator", icon: Calculator },
   { title: "Stores", url: "/stores", icon: Building2 },
   { title: "Pro accounts", url: "/pro-accounts", icon: Store },
   { title: "Referrals", url: "/referrals", icon: Gift },
   { title: "Staff", url: "/staff", icon: Users },
+  { title: "Courier Partners", url: "/partners", icon: Truck },
+  { title: "Rate cards", url: "/pricing", icon: FileSpreadsheet },
   { title: "Reports", url: "/reports", icon: FileText },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -79,6 +80,7 @@ function navIsActive(url: string, location: string) {
   }
   if (url === "/documents") return location.startsWith("/documents");
   if (url === "/bookings") return location === "/bookings" || location === "/booking-requests";
+  if (url === "/bookings/new") return location === "/bookings/new" || location.startsWith("/bookings/new?");
   if (url === "/enquiries") return location === "/enquiries";
   return location === url;
 }
@@ -140,14 +142,16 @@ function NavItem({
   );
 }
 
-const commandOpsItems = [
+const commandOpsItems: NavDef[] = [
   { title: "New Booking", url: "/bookings/new", icon: PackagePlus },
+  { title: "Rate estimator", url: "/rate-calculator", icon: Calculator },
   { title: "Bookings", url: "/bookings", icon: ClipboardList },
   { title: "Shipments", url: "/shipments", icon: Package },
+  { title: "Documents", url: "/documents", icon: Files },
   { title: "Enquiries", url: "/enquiries", icon: Inbox },
   { title: "Customers", url: "/customers", icon: Users },
-  { title: "Courier Partners", url: "/partners", icon: Truck },
-  { title: "Price Estimator", url: "/pricing", icon: Calculator },
+  { title: "Bot Assistant", url: "/bot-assistant", icon: Bot },
+  { title: "Store settings", url: "/hub-settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -222,6 +226,7 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     clearOpsWorkspace();
+    clearCommandStore();
     await logout();
     setLocation("/");
   };

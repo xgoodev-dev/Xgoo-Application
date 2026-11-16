@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
+
+/** react-native-webview 14 types collapse under RN 0.88 Strict TypeScript. */
+const WebView = RNWebView as unknown as ComponentType<Record<string, unknown>>;
 import {
   fetchGoogleStaticMapDataUri,
   getMapsPageOrigin,
@@ -151,7 +154,7 @@ export function ExpoGoGoogleMap({
   markerColor,
   onMapPress,
 }: Props) {
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<{ injectJavaScript?: (js: string) => void } | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [staticUri, setStaticUri] = useState('');
   const [loading, setLoading] = useState(true);
@@ -193,7 +196,7 @@ export function ExpoGoGoogleMap({
 
   useEffect(() => {
     if (staticUri || !apiKey || jsFailed) return;
-    webRef.current?.injectJavaScript(
+    webRef.current?.injectJavaScript?.(
       `window.__xgooSetCenter && window.__xgooSetCenter(${lat},${lng},${hasMarker ? 'true' : 'false'}); true;`,
     );
   }, [apiKey, jsFailed, staticUri, lat, lng, hasMarker]);

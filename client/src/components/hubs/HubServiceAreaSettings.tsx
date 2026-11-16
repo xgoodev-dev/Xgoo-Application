@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, MapPin } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -17,6 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 import { apiRequest } from "@/lib/queryClient";
 import { PickupLocationMap } from "@/components/customer/PickupLocationMap";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
@@ -27,7 +28,7 @@ import {
   parseCoord,
   parseServiceRadiusKm,
 } from "@shared/service-coverage";
-import type { Branch } from "@shared/schema";
+import type { Branch, StoreRelocationRequest } from "@shared/schema";
 
 const hubLocationSchema = z.object({
   name: z.string().min(1, "Hub name is required"),
@@ -112,6 +113,18 @@ export function HubServiceRangeInput({
 export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isCommandWorkspace } = useStaffAccess();
+  const { data: relocation } = useQuery<{ request: StoreRelocationRequest | null }>({
+    queryKey: ["/api/branches", branch.id, "relocation"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/branches/${branch.id}/relocation`);
+      return res.json();
+    },
+  });
+  const openRequest = relocation?.request || null;
+  const hasPin = Boolean(branch.lat && branch.lng);
+  const canEditLocation = isCommandWorkspace || !hasPin || openRequest?.status === "approved";
+  const [reason, setReason] = useState("");
   const form = useForm<HubLocationForm>({
     resolver: zodResolver(hubLocationSchema),
     defaultValues: {
@@ -153,6 +166,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
       }),
     onSuccess: () => {
       invalidateHubQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["/api/branches", branch.id, "relocation"] });
       toast({
         title: "Hub location saved",
         description: `${XGOO_MODULES.go.shortName} and ${XGOO_MODULES.pro.shortName} can book within this range.`,
@@ -165,6 +179,24 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
   const lat = parseCoord(form.watch("lat"));
   const lng = parseCoord(form.watch("lng"));
 
+  const requestMove = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/branches/${branch.id}/relocation`, {
+        reason,
+        proposedAddress: form.getValues("address") || branch.address || branch.name || "Current Hub location",
+        proposedCity: form.getValues("city") || branch.city || "",
+        proposedState: form.getValues("state") || branch.state || "",
+        proposedPincode: form.getValues("pincode") || branch.pincode || "",
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/branches", branch.id, "relocation"] });
+      setReason("");
+      toast({ title: "Relocation requested", description: "Command will review this move." });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Could not request relocation", description: error.message, variant: "destructive" }),
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -173,8 +205,11 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
           Hub location and service range
         </CardTitle>
         <CardDescription>
-          {XGOO_MODULES.go.name} and {XGOO_MODULES.pro.name} can book only around this Hub pin.
-          Default range is {DEFAULT_HUB_SERVICE_RADIUS_KM} km. Increase or decrease it here.
+          This Hub has one store location. {XGOO_MODULES.go.name} and {XGOO_MODULES.pro.name} book
+          around this pin.
+          {isCommandWorkspace
+            ? " Command can move this pin without a relocation request."
+            : " To move it, request a relocation and wait for Command approval."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -200,7 +235,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
                 <FormItem>
                   <FormLabel>Address</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="Street, area" />
+                    <Input {...field} placeholder="Street, area" disabled={!canEditLocation} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -214,7 +249,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
                   <FormItem>
                     <FormLabel>City</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input {...field} disabled={!canEditLocation} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -227,7 +262,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
                   <FormItem>
                     <FormLabel>State</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input {...field} disabled={!canEditLocation} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -240,7 +275,7 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
                   <FormItem>
                     <FormLabel>Pincode</FormLabel>
                     <FormControl>
-                      <Input {...field} maxLength={6} />
+                      <Input {...field} maxLength={6} disabled={!canEditLocation} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -272,25 +307,72 @@ export function HubServiceAreaSettings({ branch }: { branch: Branch }) {
             <div className="space-y-2">
               <p className="text-sm font-medium">Map pin</p>
               <p className="text-xs text-muted-foreground">
-                Search or drop a pin on the Hub. This is the centre of the service circle.
+                {canEditLocation
+                  ? "Search or drop a pin on the Hub. This is the centre of the service circle."
+                  : "Location is locked. Request a relocation below. After Command approves, you can move the pin once."}
               </p>
-              <PickupLocationMap
-                initialLat={lat ?? undefined}
-                initialLng={lng ?? undefined}
-                serviceRadiusKm={form.watch("serviceRadiusKm")}
-                onLocationSelect={(nextLat, nextLng, name) => {
-                  form.setValue("lat", String(nextLat), { shouldDirty: true });
-                  form.setValue("lng", String(nextLng), { shouldDirty: true });
-                  if (!form.getValues("address")) {
-                    form.setValue("address", name, { shouldDirty: true });
-                  }
-                }}
-              />
+              <div className={canEditLocation ? undefined : "pointer-events-none opacity-70"}>
+                <PickupLocationMap
+                  initialLat={lat ?? undefined}
+                  initialLng={lng ?? undefined}
+                  serviceRadiusKm={form.watch("serviceRadiusKm")}
+                  onLocationSelect={(nextLat, nextLng, name) => {
+                    if (!canEditLocation) return;
+                    form.setValue("lat", String(nextLat), { shouldDirty: true });
+                    form.setValue("lng", String(nextLng), { shouldDirty: true });
+                    if (!form.getValues("address")) {
+                      form.setValue("address", name, { shouldDirty: true });
+                    }
+                  }}
+                />
+              </div>
             </div>
-            <Button type="submit" disabled={save.isPending} data-testid="button-save-hub-service-area">
-              {save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save Hub location
-            </Button>
+            {openRequest?.status === "approved" && !isCommandWorkspace ? (
+              <p className="text-sm text-[#FF4907]">
+                Command approved this relocation. Save the new pin once. After that you must request
+                again to move.
+              </p>
+            ) : null}
+            {canEditLocation ? (
+              <Button type="submit" disabled={save.isPending} data-testid="button-save-hub-service-area">
+                {save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save Hub location
+              </Button>
+            ) : (
+              <>
+                <Button type="submit" disabled={save.isPending} data-testid="button-save-hub-service-area">
+                  {save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save Hub name and range
+                </Button>
+                <div className="space-y-3 rounded-md border p-3">
+                  {openRequest?.status === "pending" ? (
+                    <p className="text-sm text-muted-foreground">
+                      Relocation requested. Waiting for Command to approve before this pin can move.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium">Request relocation</p>
+                      <Input
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                        placeholder="Why does this Hub need to move?"
+                        data-testid="input-relocation-reason"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={requestMove.isPending || reason.trim().length < 8}
+                        onClick={() => requestMove.mutate()}
+                        data-testid="button-request-relocation"
+                      >
+                        {requestMove.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Request relocation
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </form>
         </Form>
       </CardContent>

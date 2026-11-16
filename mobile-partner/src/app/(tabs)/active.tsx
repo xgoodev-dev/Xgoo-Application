@@ -15,6 +15,7 @@ export default function ActiveScreen() {
   return (
     <JobList
       title="Active pickups"
+      subtitle="Pickups you have already accepted."
       jobs={jobs.data || []}
       refreshing={jobs.isFetching}
       onRefresh={() => void jobs.refetch()}

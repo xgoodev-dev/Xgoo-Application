@@ -2,13 +2,20 @@ import xgooLogo from "@assets/XGoo-Logo-Build_20251130_080529_0001_1770959369961
 import type { CourierPartner, TariffVersion } from "@shared/schema";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import type { TariffGridRow } from "@/components/pricing/types";
-import { XGOO_BRAND, XGOO_CONTACT } from "@/components/marketing/site-info";
+import { XGOO_BRAND, XGOO_BRAND_FOUNDATION, XGOO_CONTACT } from "@/components/marketing/site-info";
 
-type PricingExportOptions = {
+export type RateCardAudience = "customers" | "partners" | "collaborators";
+
+export type PricingExportOptions = {
   rows: TariffGridRow[];
   partners: CourierPartner[];
-  version: TariffVersion;
+  version: Pick<TariffVersion, "label"> & {
+    validFrom?: Date | string | null;
+    validTo?: Date | string | null;
+  };
   partnerId?: string;
+  audience?: RateCardAudience;
+  title?: string;
 };
 
 type PricingTableRow = {
@@ -21,7 +28,15 @@ type PricingTableRow = {
   transit: string;
 };
 
+const AUDIENCE_LABEL: Record<RateCardAudience, string> = {
+  customers: "For customers",
+  partners: "For courier and channel partners",
+  collaborators: "For XGoo stores and collaborators",
+};
+
 type PreparedPricingSheet = {
+  title: string;
+  audienceLabel: string;
   partnerLabel: string;
   partnerSlug: string;
   cycleSlug: string;
@@ -31,6 +46,7 @@ type PreparedPricingSheet = {
   body: string[][];
   tableRows: PricingTableRow[];
   validLabel: string;
+  purpose: string;
 };
 
 const IMAGE_ROWS_PER_PAGE = 22;
@@ -129,7 +145,7 @@ async function fadedImageDataUrl(
   });
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -143,6 +159,8 @@ function preparePricingSheet({
   partners,
   version,
   partnerId,
+  audience = "customers",
+  title = "XGoo Rate Card",
 }: PricingExportOptions): PreparedPricingSheet {
   const selectedPartner = partnerId
     ? partners.find((partner) => partner.id === partnerId)
@@ -224,15 +242,18 @@ function preparePricingSheet({
   ]);
 
   return {
+    title,
+    audienceLabel: AUDIENCE_LABEL[audience],
     partnerLabel,
     partnerSlug: safeFilename(selectedPartner?.name || "all-partners"),
-    cycleSlug: safeFilename(version.label || "pricing"),
+    cycleSlug: safeFilename(version.label || "rate-card"),
     routeLabel,
     includePartner,
     head,
     body,
     tableRows,
     validLabel: `Valid: ${date(version.validFrom)} to ${date(version.validTo)}`,
+    purpose: XGOO_BRAND_FOUNDATION.purpose.quote,
   };
 }
 
@@ -262,7 +283,7 @@ async function buildPricingPdf(options: PricingExportOptions) {
     pdf.setTextColor(255, 73, 7);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(18);
-    pdf.text("XGoo Pricing Sheet", logo ? 38 : 14, 13);
+    pdf.text(prepared.title, logo ? 38 : 14, 13);
 
     pdf.setTextColor(45, 45, 45);
     pdf.setFontSize(8);
@@ -278,11 +299,11 @@ async function buildPricingPdf(options: PricingExportOptions) {
     pdf.setFontSize(11);
     pdf.text(prepared.routeLabel, 14, 33);
     pdf.setFontSize(9);
-    pdf.text(`Courier partners: ${prepared.partnerLabel}`, 14, 39);
+    pdf.text(`${prepared.audienceLabel}    ·    ${prepared.partnerLabel}`, 14, 39);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8);
     pdf.text(
-      `Tariff cycle: ${options.version.label}    ${prepared.validLabel}    Generated: ${date(new Date())}`,
+      `${options.version.label}    ${prepared.validLabel}    Generated: ${date(new Date())}`,
       14,
       45,
     );
@@ -326,7 +347,7 @@ async function buildPricingPdf(options: PricingExportOptions) {
       pdf.setFontSize(7.5);
       pdf.setTextColor(100, 100, 100);
       pdf.text(
-        "Prices are subject to serviceability, chargeable weight, applicable surcharges and XGoo terms.",
+        `${prepared.purpose} Prices are subject to serviceability, chargeable weight, applicable surcharges and XGoo terms.`,
         14,
         pageHeight - 8,
       );
@@ -386,7 +407,7 @@ function createPricingSheetPageElement(args: {
   header.innerHTML = `
     <img src="${logoUrl}" alt="XGoo" style="width:72px;height:72px;object-fit:contain;" />
     <div style="flex:1;">
-      <div style="color:#FF4907;font-size:34px;font-weight:700;line-height:1.1;">XGoo Pricing Sheet</div>
+      <div style="color:#FF4907;font-size:34px;font-weight:700;line-height:1.1;">${prepared.title}</div>
       <div style="margin-top:6px;font-size:14px;">${XGOO_BRAND.attributionShort}</div>
       <div style="margin-top:4px;font-size:13px;color:#555;">
         ${XGOO_CONTACT.website} &nbsp;|&nbsp; ${XGOO_CONTACT.email} &nbsp;|&nbsp; ${XGOO_CONTACT.phone}
@@ -400,8 +421,8 @@ function createPricingSheetPageElement(args: {
     "position:relative;z-index:1;border-top:3px solid #FF4907;padding-top:12px;margin-bottom:16px;font-size:14px;line-height:1.5;";
   meta.innerHTML = `
     <div style="font-weight:700;font-size:18px;">${prepared.routeLabel}</div>
-    <div style="font-weight:700;font-size:15px;">Courier partners: ${prepared.partnerLabel}</div>
-    <div>Tariff cycle: ${versionLabel} &nbsp;&nbsp; ${prepared.validLabel} &nbsp;&nbsp; Generated: ${date(new Date())}</div>
+    <div style="font-weight:700;font-size:15px;">${prepared.audienceLabel} · ${prepared.partnerLabel}</div>
+    <div>${versionLabel} &nbsp;&nbsp; ${prepared.validLabel} &nbsp;&nbsp; Generated: ${date(new Date())}</div>
     <div style="color:#666;">Page ${pageNumber} of ${totalPages}</div>
   `;
   root.appendChild(meta);
@@ -449,7 +470,7 @@ function createPricingSheetPageElement(args: {
   footer.style.cssText =
     "position:relative;z-index:1;margin-top:16px;font-size:12px;color:#777;";
   footer.textContent =
-    "Prices are subject to serviceability, chargeable weight, applicable surcharges and XGoo terms.";
+    `${prepared.purpose} Prices are subject to serviceability, chargeable weight, applicable surcharges and XGoo terms.`;
   root.appendChild(footer);
 
   return root;
@@ -490,7 +511,7 @@ async function renderPricingSheetImages(options: PricingExportOptions): Promise<
         );
       });
       images.push({
-        filename: `xgoo-pricing-${prepared.partnerSlug}-${prepared.cycleSlug}-page-${pageNumber}.png`,
+        filename: `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}-page-${pageNumber}.png`,
         blob,
       });
     } finally {
@@ -503,7 +524,7 @@ async function renderPricingSheetImages(options: PricingExportOptions): Promise<
 
 export async function downloadTariffPricingPdf(options: PricingExportOptions): Promise<void> {
   const { pdf, prepared } = await buildPricingPdf(options);
-  pdf.save(`xgoo-pricing-${prepared.partnerSlug}-${prepared.cycleSlug}.pdf`);
+  pdf.save(`xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}.pdf`);
 }
 
 /**
@@ -529,7 +550,132 @@ export async function downloadTariffPricingImages(options: PricingExportOptions)
   const archive = await zip.generateAsync({ type: "blob" });
   triggerDownload(
     archive,
-    `xgoo-pricing-${prepared.partnerSlug}-${prepared.cycleSlug}-images.zip`,
+    `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}-images.zip`,
   );
   return { fileCount: images.length, archived: true };
+}
+
+export type RateCardFormat = "pdf" | "image" | "sheets";
+
+export type RateCardFile = {
+  blob: Blob;
+  filename: string;
+  mime: string;
+  prepared: PreparedPricingSheet;
+};
+
+async function buildRateCardWorkbook(options: PricingExportOptions) {
+  const prepared = preparePricingSheet(options);
+  const XLSX = await import("xlsx");
+  const headerRows = [
+    [prepared.title],
+    [XGOO_BRAND.attributionShort],
+    [`${XGOO_CONTACT.website}  |  ${XGOO_CONTACT.email}  |  ${XGOO_CONTACT.phone}`],
+    [prepared.purpose],
+    [prepared.routeLabel],
+    [`${prepared.audienceLabel}  ·  ${prepared.partnerLabel}`],
+    [`${options.version.label}  ·  ${prepared.validLabel}  ·  Generated ${date(new Date())}`],
+    [],
+    prepared.head,
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet([...headerRows, ...prepared.body]);
+  sheet["!cols"] = prepared.head.map((_, index) => ({
+    wch: index === prepared.head.length - 2 ? 22 : 18,
+  }));
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "XGoo Rate Card");
+  const how = XLSX.utils.aoa_to_sheet([
+    ["Book with XGoo"],
+    [XGOO_BRAND_FOUNDATION.mission.quote],
+    [],
+    ["Website", XGOO_CONTACT.website],
+    ["Email", XGOO_CONTACT.email],
+    ["Phone", XGOO_CONTACT.phone],
+    ["Address", XGOO_CONTACT.address],
+    ["Hours", XGOO_CONTACT.hours],
+    [],
+    ["Share this sheet with customers, partners, or collaborators. Prices stay subject to serviceability and XGoo terms."],
+  ]);
+  how["!cols"] = [{ wch: 16 }, { wch: 56 }];
+  XLSX.utils.book_append_sheet(book, how, "Book with XGoo");
+  const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  return {
+    prepared,
+    blob: new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+  };
+}
+
+export async function downloadTariffPricingSheets(options: PricingExportOptions): Promise<void> {
+  const { prepared, blob } = await buildRateCardWorkbook(options);
+  triggerDownload(blob, `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}.xlsx`);
+}
+
+export async function buildRateCardFile(
+  options: PricingExportOptions,
+  format: RateCardFormat,
+): Promise<RateCardFile> {
+  if (format === "pdf") {
+    const { pdf, prepared } = await buildPricingPdf(options);
+    const blob = pdf.output("blob");
+    return {
+      blob,
+      filename: `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}.pdf`,
+      mime: "application/pdf",
+      prepared,
+    };
+  }
+  if (format === "sheets") {
+    const { prepared, blob } = await buildRateCardWorkbook(options);
+    return {
+      blob,
+      filename: `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}.xlsx`,
+      mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      prepared,
+    };
+  }
+  const { prepared, images } = await renderPricingSheetImages(options);
+  if (images.length === 1) {
+    return {
+      blob: images[0].blob,
+      filename: images[0].filename,
+      mime: "image/png",
+      prepared,
+    };
+  }
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  for (const image of images) zip.file(image.filename, image.blob);
+  return {
+    blob: await zip.generateAsync({ type: "blob" }),
+    filename: `xgoo-rate-card-${prepared.partnerSlug}-${prepared.cycleSlug}-images.zip`,
+    mime: "application/zip",
+    prepared,
+  };
+}
+
+export function rateCardShareText(prepared: PreparedPricingSheet) {
+  return [
+    `${prepared.title} — ${prepared.audienceLabel}`,
+    prepared.routeLabel,
+    prepared.validLabel,
+    `${XGOO_CONTACT.website} · ${XGOO_CONTACT.email} · ${XGOO_CONTACT.phone}`,
+    prepared.purpose,
+  ].join("\n");
+}
+
+export async function shareRateCardFile(file: RateCardFile) {
+  const text = rateCardShareText(file.prepared);
+  const shared = new File([file.blob], file.filename, { type: file.mime });
+  const nav = navigator as Navigator & {
+    share?: (data: ShareData & { files?: File[] }) => Promise<void>;
+    canShare?: (data: ShareData & { files?: File[] }) => boolean;
+  };
+  if (nav.share && (!nav.canShare || nav.canShare({ files: [shared] }))) {
+    await nav.share({ title: file.prepared.title, text, files: [shared] });
+    return "shared";
+  }
+  triggerDownload(file.blob, file.filename);
+  return "downloaded";
 }

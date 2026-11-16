@@ -5,6 +5,11 @@ Allow: /contact
 Allow: /book
 Allow: /international-courier
 Allow: /domestic-courier
+Allow: /how-it-works
+Allow: /courier-services-hyderabad
+Allow: /international-courier-hyderabad
+Allow: /courier-pickup-from-home
+Allow: /international-courier-charges
 Allow: /courier-from-hyderabad-to-usa
 Allow: /courier-from-hyderabad-to-australia
 Allow: /courier-from-hyderabad-to-canada

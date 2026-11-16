@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Loader2 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,11 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { XGOO_MODULES } from "@/components/marketing/site-info";
+import { setCommandStoreId } from "@/lib/command-store";
 import { HubCounterQrCard } from "@/components/hubs/HubCounterQrCard";
 import { HubServiceRangeInput } from "@/components/hubs/HubServiceAreaSettings";
 import { parseServiceRadiusKm } from "@shared/service-coverage";
-import type { Office } from "@shared/schema";
+import type { Office, StoreRelocationRequest } from "@shared/schema";
 
 export type CommandStoreSummary = {
   id: string;
@@ -44,6 +45,7 @@ function money(value: string | number) {
 export function CommandStoreOverview({ compact = false }: { compact?: boolean }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const { data, isLoading } = useQuery<{ stores: CommandStoreSummary[] }>({
     queryKey: ["/api/command/stores"],
   });
@@ -64,8 +66,72 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
   });
 
   const stores = data?.stores || [];
+  const { data: relocationData } = useQuery<{ requests: StoreRelocationRequest[] }>({
+    queryKey: ["/api/command/relocation"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/command/relocation?status=pending");
+      return res.json();
+    },
+  });
+  const pendingMoves = relocationData?.requests || [];
+  const reviewMove = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "approved" | "rejected" }) =>
+      apiRequest("PATCH", `/api/command/relocation/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/command/relocation"] });
+      toast({ title: "Relocation updated" });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Could not review relocation", description: error.message, variant: "destructive" }),
+  });
 
   return (
+    <div className="space-y-4">
+    {pendingMoves.length > 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>Relocation requests</CardTitle>
+          <CardDescription>
+            Approve a move so the store manager can change that Hub pin once. They must request again after saving.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pendingMoves.map((request) => {
+            const store = stores.find((row) => row.id === request.branchId);
+            return (
+              <div key={request.id} className="rounded-md border p-3" data-testid={`card-relocation-${request.id}`}>
+                <p className="font-medium">{store?.name || "Hub"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {[request.proposedAddress, request.proposedCity, request.proposedPincode].filter(Boolean).join(", ")}
+                </p>
+                {request.reason ? <p className="mt-1 text-sm">{request.reason}</p> : null}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Requested by {request.requestedByName || "store manager"}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={reviewMove.isPending}
+                    onClick={() => reviewMove.mutate({ id: request.id, status: "approved" })}
+                    data-testid={`button-approve-relocation-${request.id}`}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={reviewMove.isPending}
+                    onClick={() => reviewMove.mutate({ id: request.id, status: "rejected" })}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    ) : null}
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -121,7 +187,18 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setCommandStoreId(store.id);
+                        setLocation("/bookings/new");
+                      }}
+                      data-testid={`button-operate-store-${store.id}`}
+                    >
+                      Operate store
+                    </Button>
                     <span className="text-xs text-muted-foreground">Store access</span>
                     <Switch
                       checked={store.isActive !== false}
@@ -168,5 +245,6 @@ export function CommandStoreOverview({ compact = false }: { compact?: boolean })
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

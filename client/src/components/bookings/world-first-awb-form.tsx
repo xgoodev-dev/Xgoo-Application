@@ -950,7 +950,7 @@ export function WorldFirstAwbForm({
                 />
               </CompactField>
               {destinationCountry && partnerVendor && partnerService ? (
-                <div className="rounded-lg border bg-zinc-50 px-3 py-2 text-xs" data-testid="wf-live-rate">
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs" data-testid="wf-live-rate">
                   {rateLoading ? (
                     <p className="flex items-center gap-1.5 text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, authFetch, buildTariffUploadPayload } from "@/lib/queryClient";
+import { apiRequest, authFetch } from "@/lib/queryClient";
+import {
+  TARIFF_UPLOAD_ACCEPT,
+  buildTariffUploadPayloadFromFiles,
+  fileFromBase64,
+  isTariffImageFile,
+} from "@/lib/tariff-upload";
 import type { CourierPartner, TariffVersion } from "@shared/schema";
 import { ImportPreviewDialog } from "./ImportPreviewDialog";
 import type { ImportPreviewItem } from "./types";
@@ -46,6 +52,8 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
   const [preview, setPreview] = useState<ImportPreviewItem[]>([]);
   const [previewSummary, setPreviewSummary] = useState<Record<string, number>>({});
   const [previewTotal, setPreviewTotal] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+  const [readingPhoto, setReadingPhoto] = useState(false);
 
   const handleDownloadTemplate = async () => {
     const res = await authFetch("/api/tariffs/template");
@@ -62,14 +70,17 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
     URL.revokeObjectURL(url);
   };
 
-  const runPreview = async (file: File) => {
+  const runPreview = async (files: File[]) => {
     if (!uploadLabel.trim()) {
       toast({ title: "Label required", description: "Enter a name for this tariff cycle.", variant: "destructive" });
       return;
     }
+    const usable = files.filter(Boolean);
+    if (usable.length === 0) return;
     setIsUploading(true);
+    setReadingPhoto(usable.some(isTariffImageFile));
     try {
-      const payload = await buildTariffUploadPayload(file, {
+      const payload = await buildTariffUploadPayloadFromFiles(usable, {
         label: uploadLabel,
         courierPartnerId: uploadPartnerId || undefined,
         compareVersionId: compareVersionId || undefined,
@@ -81,11 +92,20 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
         queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
       }
 
-      pendingFileRef.current = file;
+      pendingFileRef.current =
+        data.extracted?.fileData && data.extracted?.fileName
+          ? fileFromBase64(data.extracted.fileName, data.extracted.fileData)
+          : usable[0];
       setPreview(data.preview || []);
       setPreviewSummary(data.summary || {});
       setPreviewTotal(data.totalRows || 0);
       setPreviewOpen(true);
+      if (data.source === "image") {
+        toast({
+          title: "Rate card read",
+          description: `${data.totalRows || 0} tariff rows extracted from the photo. Review and confirm to import.`,
+        });
+      }
     } catch (e) {
       toast({
         title: "Preview failed",
@@ -94,6 +114,7 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
       });
     } finally {
       setIsUploading(false);
+      setReadingPhoto(false);
     }
   };
 
@@ -102,7 +123,7 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
     if (!file) return;
     setIsUploading(true);
     try {
-      const payload = await buildTariffUploadPayload(file, {
+      const payload = await buildTariffUploadPayloadFromFiles([file], {
         label: uploadLabel,
         courierPartnerId: uploadPartnerId || undefined,
         validFrom,
@@ -145,7 +166,7 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
         <CardHeader>
           <CardTitle className="text-base">Bulk tariff import</CardTitle>
           <CardDescription>
-            Upload CSV or Excel (.xlsx). Preview highlights new, updated, deleted, and duplicate rows before confirming.
+            Upload CSV, Excel, or a photo/scan of a rate card. Photos are converted into the tariff template and previewed before you confirm.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -198,17 +219,42 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
           </div>
 
           <div
-            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:bg-muted/50 transition-colors ${
+              dragActive ? "border-primary bg-muted/50" : ""
+            }`}
             onClick={() => fileInputRef.current?.click()}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragActive(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragActive(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragActive(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragActive(false);
+              const dropped = Array.from(e.dataTransfer.files || []);
+              if (dropped.length) runPreview(dropped);
+            }}
           >
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept={TARIFF_UPLOAD_ACCEPT}
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) runPreview(f);
+                const selected = Array.from(e.target.files || []);
+                if (selected.length) runPreview(selected);
               }}
             />
             {isUploading ? (
@@ -216,9 +262,15 @@ export function TariffUploadsTab({ partners, tariffs, onImported }: Props) {
             ) : (
               <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
             )}
-            <p className="mt-2 font-medium">Drop CSV / Excel here or click to preview import</p>
+            <p className="mt-2 font-medium">
+              {readingPhoto
+                ? "Reading rate card from photo…"
+                : isUploading
+                  ? "Preparing preview…"
+                  : "Drop CSV, Excel, or a rate-card photo here"}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Full column set supported — margins, charges, countries, transit days, and more.
+              JPG, PNG, WEBP, or GIF photos are converted to the tariff template. Spreadsheets still work as before.
             </p>
           </div>
         </CardContent>

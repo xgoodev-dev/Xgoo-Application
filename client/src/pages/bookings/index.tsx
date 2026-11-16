@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { format } from "date-fns";
 import { ClipboardList, Clock, Eye, Loader2, MapPin, PackagePlus, Search, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -88,11 +88,19 @@ function partyAddress(request: EnquiryWithQuote, party: "sender" | "receiver") {
   return [line1, line2, [city, state].filter(Boolean).join(", "), pin].filter(Boolean).join("\n");
 }
 
+function querySearchTerm(searchString: string): string {
+  const raw = searchString.startsWith("?") ? searchString.slice(1) : searchString;
+  return new URLSearchParams(raw).get("q")?.trim() || "";
+}
+
 export default function BookingsPage() {
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() =>
+    querySearchTerm(typeof window !== "undefined" ? window.location.search : ""),
+  );
   const [funnelFilter, setFunnelFilter] = useState<"all" | "go" | "pro" | "in_store" | "website">("all");
   const [partnerByRequest, setPartnerByRequest] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<EnquiryWithQuote | null>(null);
@@ -106,6 +114,11 @@ export default function BookingsPage() {
   const { data: partners } = useQuery<CourierPartner[]>({
     queryKey: ["/api/partners"],
   });
+
+  useEffect(() => {
+    const q = querySearchTerm(searchString);
+    if (q) setSearch(q);
+  }, [searchString]);
 
   const activePartners = (partners || []).filter((partner) => partner.isActive !== false);
 

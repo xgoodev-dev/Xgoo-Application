@@ -36,7 +36,9 @@ import {
 } from "@shared/rate-calculator";
 import type { Office } from "@shared/schema";
 import type { CommandStoreSummary } from "@/components/command/CommandStoreOverview";
+import { ShareRateCardDialog } from "@/components/command/ShareRateCardDialog";
 import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useOperatingStore } from "@/hooks/use-operating-store";
 
 type GeoHit = {
   displayName: string;
@@ -108,7 +110,7 @@ function PackageBox({
   height: string;
 }) {
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-dashed border-zinc-200 bg-zinc-50/80 px-4 py-3">
+    <div className="flex items-center gap-4 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3">
       <svg viewBox="0 0 88 72" className="h-16 w-20 shrink-0 text-zinc-400" aria-hidden>
         <polygon points="16,28 44,12 72,28 44,44" fill="#f4d7b0" stroke="#c4a574" strokeWidth="1.4" />
         <polygon points="16,28 44,44 44,64 16,48" fill="#e7c089" stroke="#c4a574" strokeWidth="1.4" />
@@ -249,7 +251,7 @@ function LocationSearchField({
         ) : null}
       </div>
       {value.pincode ? (
-        <p className="text-xs font-medium text-zinc-700">
+        <p className="text-xs font-medium text-foreground">
           {placeLabel(value) || (isFetching ? "Looking up city…" : hint) || value.pincode}
         </p>
       ) : hint ? (
@@ -375,7 +377,7 @@ function InternationalPostalField({
         ) : null}
       </div>
       {place ? (
-        <p className="text-xs font-medium text-zinc-700">{place}</p>
+        <p className="text-xs font-medium text-foreground">{place}</p>
       ) : value.query && isFetching ? (
         <p className="text-xs text-muted-foreground">Looking up city…</p>
       ) : value.query && shouldSearch && !isFetching && hits.length === 0 ? (
@@ -436,6 +438,7 @@ function bookingHref(input: {
 
 export function CommandRateCalculator() {
   const { isCommandWorkspace } = useStaffAccess();
+  const { store: operatingStore } = useOperatingStore();
   const [lane, setLane] = useState<"domestic" | "international">("domestic");
   const [pickup, setPickup] = useState<PlaceValue>(EMPTY_PLACE);
   const [delivery, setDelivery] = useState<PlaceValue>(EMPTY_PLACE);
@@ -472,7 +475,19 @@ export function CommandRateCalculator() {
   }, [destCountry, lane]);
 
   useEffect(() => {
-    if (!office?.pincode || pickup.pincode) return;
+    if (pickup.pincode) return;
+    if (operatingStore?.pincode) {
+      setPickupStoreId(operatingStore.id);
+      setPickup({
+        query: [operatingStore.name, operatingStore.city, operatingStore.pincode].filter(Boolean).join(", "),
+        pincode: operatingStore.pincode,
+        city: operatingStore.city || "",
+        state: operatingStore.state || "",
+        country: "IN",
+      });
+      return;
+    }
+    if (!office?.pincode) return;
     setPickup({
       query: [office.city, office.state, office.pincode].filter(Boolean).join(", "),
       pincode: office.pincode,
@@ -480,7 +495,7 @@ export function CommandRateCalculator() {
       state: office.state || "",
       country: "IN",
     });
-  }, [office, pickup.pincode]);
+  }, [office, operatingStore, pickup.pincode]);
 
   const applyStorePickup = (storeId: string) => {
     setPickupStoreId(storeId);
@@ -582,12 +597,15 @@ export function CommandRateCalculator() {
           </p>
         </div>
         {isCommandWorkspace ? (
-          <Button variant="outline" size="sm" className="gap-1.5" asChild>
-            <Link href="/pricing">
-              <CircleHelp className="h-3.5 w-3.5" />
-              Tariff sheets
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <ShareRateCardDialog compact triggerLabel="Share rate card" />
+            <Button variant="outline" size="sm" className="gap-1.5" asChild>
+              <Link href="/pricing">
+                <CircleHelp className="h-3.5 w-3.5" />
+                Tariff sheets
+              </Link>
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -779,8 +797,8 @@ export function CommandRateCalculator() {
           </Card>
         </div>
 
-        <Card className="overflow-hidden bg-amber-50/40">
-          <CardHeader className="border-b bg-white/70 pb-3">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/40 pb-3">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <CardTitle className="text-base">Courier comparison</CardTitle>
@@ -814,13 +832,13 @@ export function CommandRateCalculator() {
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
             {!canCalculate ? (
-              <p className="rounded-lg border border-dashed bg-white p-4 text-sm text-muted-foreground">
+              <p className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground">
                 {lane === "domestic"
                   ? "Enter pickup and destination pincodes plus weight to see partner rates and transit days."
                   : "Enter a pickup pincode, destination country, postal / ZIP code, and weight to compare international couriers."}
               </p>
             ) : mutation.isPending && !result ? (
-              <div className="flex items-center gap-2 rounded-lg bg-white p-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 rounded-lg bg-card p-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Checking serviceability and rates…
               </div>
@@ -829,7 +847,7 @@ export function CommandRateCalculator() {
                 {mutation.error instanceof Error ? mutation.error.message : "Could not calculate rates"}
               </p>
             ) : quotes.length === 0 ? (
-              <p className="rounded-lg border bg-white p-4 text-sm text-muted-foreground">
+              <p className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
                 No live Delhivery or World First result for this lane.
               </p>
             ) : (
@@ -849,7 +867,7 @@ export function CommandRateCalculator() {
                   <div
                     key={quote.quoteKey || `${quote.courierPartnerId}-${quote.serviceType}`}
                     className={cn(
-                      "rounded-xl border bg-white p-4 shadow-sm",
+                      "rounded-xl border bg-card p-4 shadow-sm",
                       quote.popular && quote.serviceable && "ring-1 ring-[#FF4907]/40",
                       !quote.serviceable && "opacity-70",
                     )}
@@ -858,9 +876,9 @@ export function CommandRateCalculator() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2">
                         {quote.serviceType === "air" ? (
-                          <Plane className="h-4 w-4 text-zinc-700" />
+                          <Plane className="h-4 w-4 text-foreground" />
                         ) : (
-                          <Truck className="h-4 w-4 text-zinc-700" />
+                          <Truck className="h-4 w-4 text-foreground" />
                         )}
                         <div>
                           <p className="text-sm font-semibold leading-tight">

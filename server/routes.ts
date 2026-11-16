@@ -11,7 +11,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db, verifyDatabaseConnection, databaseHost } from "./db";
 import { isOpenAiConfigured, resolveOpenAiApiKey } from "./openai-config";
-import { shipments, offices, bookingRequests } from "@shared/schema";
+import { shipments, offices, bookingRequests, type BookingRequest, type ShipmentWithRelations } from "@shared/schema";
 import { sql, eq, desc } from "drizzle-orm";
 import { mergeHsnItems, searchHsnCatalog, type HsnCatalogItem } from "@shared/hsn-catalog";
 import { searchWorldFirstItems } from "@shared/world-first-hsn";
@@ -28,7 +28,9 @@ import {
   fetchGoogleStaticMap,
 } from "./geocode";
 import { parseInteractiveMapQuery, renderGoogleMapsInteractivePage } from "./maps-interactive";
-import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
+import { parseRouteViewQuery, renderPickupRoutePage } from "./maps-route-view";
+import { parseTariffSheetRows, parseTariffSheetBuffer, parsedRowsToInsert, parsedRowsToCsv, buildImportPreview, rowsToCsv, resolvePartnerId } from "./pricing";
+import { parseTariffUploadBuffer } from "./tariff-image";
 import { runRateCalculator, rateCalculatorRequestSchema } from "./rate-calculator";
 import { calculateCustomerPrice } from "@shared/tariff-pricing";
 import { TARIFF_CSV_TEMPLATE } from "@shared/pricing";
@@ -39,6 +41,7 @@ import {
   packageWeightSummary,
   parseNum,
 } from "@shared/hub-booking";
+import { bookingChannelFromSource, parseBookingChannel } from "@shared/booking-number";
 import { mergePickupSettings, pickupSettingsSchema } from "@shared/pickup-settings";
 import { appBannerSettingsSchema, publishedAppBanners } from "@shared/app-banners";
 import { buildPartnerSyncPayload, PARTNER_SYNC_STATUSES } from "@shared/partner-sync";
@@ -60,6 +63,7 @@ import {
   trackWorldFirstShipment,
   worldFirstConfigPublicStatus,
 } from "./integrations/world-first";
+import { erpCourierPublicStatus } from "./integrations/erp-courier-portal";
 import {
   formatWorldFirstDay,
   generateWorldFirstManifest,
@@ -78,7 +82,6 @@ import {
   testPartnerConnection,
   validateBooking,
 } from "./booking/service";
-import { mapPartnerFormFields } from "./booking/map-partner-fields";
 import { BOOKING_METHODS, defaultBookingMethodForPartner } from "@shared/booking-engine";
 import {
   CUSTOMER_OTP_TEMPLATE_NAME,
@@ -404,9 +407,13 @@ const shipmentCreateSchema = z.object({
   serviceType: z.enum(["air", "surface"]),
   paymentMode: z.enum(["cash", "upi", "bank_transfer", "credit"]),
   baseAmount: z.string().optional(),
+  gstAmount: z.string().optional(),
   totalAmount: z.string().min(1),
   bookingRequestId: z.string().uuid().optional(),
   xgooOrderId: z.string().max(32).optional().nullable(),
+  bookingNumber: z.string().max(50).optional().nullable(),
+  bookingChannel: z.enum(["PO", "GO", "SR"]).optional(),
+  branchId: z.string().uuid().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.shipmentType === "international" && !(data.destinationCountry || "").trim()) {
     ctx.addIssue({
@@ -703,6 +710,95 @@ function trackingFromBookingRequest(
   );
 }
 
+const HUB_CUSTOMER_BOOKING_SOURCES = new Set([
+  "mobile_android",
+  "mobile_ios",
+  "mobile_app",
+  "customer_portal",
+  "b2b_daily",
+  "in_store",
+  "staff_portal",
+  "hub_qr",
+  "hub_kiosk",
+  "website",
+]);
+
+type HubSearchHit = {
+  kind: "shipment" | "request";
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+};
+
+function isHubCustomerBookingOrder(request: Pick<BookingRequest, "source" | "customerUserId">): boolean {
+  if (request.source === "legacy") return Boolean(request.customerUserId);
+  return HUB_CUSTOMER_BOOKING_SOURCES.has(request.source || "");
+}
+
+function hubRequestFunnelLabel(source?: string | null): string {
+  switch (source) {
+    case "b2b_daily":
+      return "XGoo Pro";
+    case "in_store":
+    case "staff_portal":
+    case "hub_qr":
+    case "hub_kiosk":
+      return "In Store";
+    case "website":
+      return "Store link";
+    default:
+      return "XGoo Go";
+  }
+}
+
+function hubSearchHrefForRequest(request: BookingRequest): string {
+  if (request.convertedShipmentId) return `/shipments/${request.convertedShipmentId}`;
+  const q = encodeURIComponent(request.requestNumber);
+  return isHubCustomerBookingOrder(request) ? `/bookings?q=${q}` : `/enquiries?q=${q}`;
+}
+
+function buildHubSearchHits(
+  foundShipments: ShipmentWithRelations[],
+  foundRequests: BookingRequest[],
+): HubSearchHit[] {
+  const shipmentIds = new Set(foundShipments.map((row) => row.id));
+  const hits: HubSearchHit[] = foundShipments.map((row) => ({
+    kind: "shipment",
+    id: row.id,
+    label: row.bookingNumber,
+    detail: [
+      row.awbNumber ? `AWB ${row.awbNumber}` : row.externalAwb ? `AWB ${row.externalAwb}` : null,
+      row.xgooOrderId && row.xgooOrderId !== row.bookingNumber ? row.xgooOrderId : null,
+      row.senderName,
+      row.receiverName,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    href: `/shipments/${row.id}`,
+  }));
+
+  for (const request of foundRequests) {
+    if (request.convertedShipmentId && shipmentIds.has(request.convertedShipmentId)) continue;
+    hits.push({
+      kind: "request",
+      id: request.id,
+      label: request.requestNumber,
+      detail: [
+        hubRequestFunnelLabel(request.source),
+        request.xgooOrderId && request.xgooOrderId !== request.requestNumber ? request.xgooOrderId : null,
+        request.senderName,
+        request.receiverName,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      href: hubSearchHrefForRequest(request),
+    });
+  }
+
+  return hits.slice(0, 8);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -737,7 +833,7 @@ export async function registerRoutes(
 
   const tariffUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
+    limits: { fileSize: 15 * 1024 * 1024 },
   });
 
   function isMultipartRequest(req: any): boolean {
@@ -765,9 +861,22 @@ export async function registerRoutes(
   const tariffJsonFileSchema = z.object({
     fileName: z.string().min(1),
     fileData: z.string().min(1),
+    extraFiles: z
+      .array(
+        z.object({
+          fileName: z.string().min(1),
+          fileData: z.string().min(1),
+        }),
+      )
+      .max(4)
+      .optional(),
   });
 
-  function readTariffFileBuffer(req: any): { buffer: Buffer; fileName: string } | null {
+  function readTariffFileBuffer(req: any): {
+    buffer: Buffer;
+    fileName: string;
+    extraFiles?: Array<{ buffer: Buffer; fileName: string }>;
+  } | null {
     if (req.file?.buffer) {
       return {
         buffer: req.file.buffer,
@@ -779,7 +888,17 @@ export async function registerRoutes(
       try {
         const buffer = Buffer.from(jsonResult.data.fileData, "base64");
         if (buffer.length === 0) return null;
-        return { buffer, fileName: jsonResult.data.fileName };
+        const extraFiles = (jsonResult.data.extraFiles || [])
+          .map((f) => ({
+            buffer: Buffer.from(f.fileData, "base64"),
+            fileName: f.fileName,
+          }))
+          .filter((f) => f.buffer.length > 0);
+        return {
+          buffer,
+          fileName: jsonResult.data.fileName,
+          extraFiles: extraFiles.length ? extraFiles : undefined,
+        };
       } catch {
         return null;
       }
@@ -1342,6 +1461,42 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching Command store summaries:", error);
       res.status(500).json({ message: "Failed to load store revenue" });
+    }
+  });
+
+  app.get("/api/command/relocation", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const status = typeof req.query.status === "string" ? req.query.status : "pending";
+      res.json({ requests: await storage.listRelocationRequests(office.id, status) });
+    } catch (error) {
+      console.error("Error listing relocation requests:", error);
+      res.status(500).json({ message: "Failed to load relocation requests" });
+    }
+  });
+
+  app.patch("/api/command/relocation/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const office = await requireSuperAdmin(req, res);
+      if (!office) return;
+      const existing = await storage.getRelocationRequest(req.params.id);
+      if (!existing || existing.officeId !== office.id) {
+        return res.status(404).json({ message: "Relocation request not found" });
+      }
+      if (existing.status !== "pending") {
+        return res.status(400).json({ message: "This request has already been reviewed." });
+      }
+      const status = req.body?.status === "rejected" ? "rejected" : "approved";
+      const updated = await storage.updateRelocationRequest(existing.id, {
+        status,
+        reviewedByUserId: req.user.id,
+        reviewedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error reviewing relocation:", error);
+      res.status(500).json({ message: "Failed to review relocation" });
     }
   });
 
@@ -2410,6 +2565,70 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/branches/:id/relocation", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const existing = await storage.getBranch(req.params.id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json({ request: (await storage.getOpenRelocationRequest(req.params.id)) || null });
+    } catch (error) {
+      console.error("Error fetching relocation:", error);
+      res.status(500).json({ message: "Failed to load relocation request" });
+    }
+  });
+
+  const relocationRequestSchema = z.object({
+    reason: z.string().trim().min(8, "Explain why this Hub needs to move").max(1000),
+    proposedAddress: z.string().trim().min(3).max(500),
+    proposedCity: z.string().trim().max(100).optional().or(z.literal("")),
+    proposedState: z.string().trim().max(100).optional().or(z.literal("")),
+    proposedPincode: z.string().trim().max(10).optional().or(z.literal("")),
+  });
+
+  app.post("/api/branches/:id/relocation", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const existing = await storage.getBranch(req.params.id);
+      if (!existing || existing.officeId !== officeId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!hubStaffCanEditBranch(req, existing) && !isSuperAdmin(req)) {
+        return res.status(403).json({ message: "Only the store manager can request a relocation." });
+      }
+      const open = await storage.getOpenRelocationRequest(req.params.id);
+      if (open) {
+        return res.status(400).json({
+          message:
+            open.status === "approved"
+              ? "Command already approved a relocation. Save the new Hub location first."
+              : "A relocation request is already waiting for Command.",
+        });
+      }
+      const parsed = relocationRequestSchema.parse(req.body);
+      const created = await storage.createRelocationRequest({
+        officeId,
+        branchId: existing.id,
+        requestedByUserId: req.user.id,
+        requestedByName: req.user.name || req.user.email || "Store manager",
+        reason: parsed.reason,
+        proposedAddress: parsed.proposedAddress,
+        proposedCity: parsed.proposedCity || null,
+        proposedState: parsed.proposedState || null,
+        proposedPincode: parsed.proposedPincode || null,
+        status: "pending",
+      });
+      res.json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Validation error" });
+      }
+      console.error("Error creating relocation request:", error);
+      res.status(500).json({ message: "Failed to request relocation" });
+    }
+  });
+
   app.patch("/api/branches/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -2441,7 +2660,29 @@ export async function registerRoutes(
       const patch = Object.fromEntries(
         Object.entries(validated).filter(([, value]) => value !== undefined),
       );
+      const locationKeys = ["address", "city", "state", "pincode", "lat", "lng"] as const;
+      const locationChanged = locationKeys.some(
+        (key) => patch[key] !== undefined && String(patch[key] ?? "") !== String((existing as any)[key] ?? ""),
+      );
+      const hasPin = Boolean(existing.lat && existing.lng);
+      if (locationChanged && hasPin && !isSuperAdmin(req)) {
+        const open = await storage.getOpenRelocationRequest(id);
+        if (open?.status !== "approved") {
+          return res.status(403).json({
+            message: "This Hub location is locked. Request a relocation from Settings, then wait for Command approval.",
+          });
+        }
+      }
       const branch = await storage.updateBranch(id, patch);
+      if (locationChanged && hasPin && !isSuperAdmin(req)) {
+        const open = await storage.getOpenRelocationRequest(id);
+        if (open?.status === "approved") {
+          await storage.updateRelocationRequest(open.id, {
+            status: "completed",
+            reviewedAt: open.reviewedAt || new Date(),
+          });
+        }
+      }
       res.json(branch);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2572,6 +2813,16 @@ export async function registerRoutes(
         markerColor: typeof req.query.color === "string" ? req.query.color : "#FF4907",
       }),
     );
+  });
+
+  app.get("/api/maps/route-view", (req: Request, res: Response) => {
+    const parsed = parseRouteViewQuery(req.query as Record<string, unknown>);
+    if (parsed.destLat < -90 || parsed.destLat > 90 || parsed.destLng < -180 || parsed.destLng > 180) {
+      return res.status(400).type("html").send("Invalid map coordinates");
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(renderPickupRoutePage(parsed));
   });
 
   app.get("/api/maps/static", async (req: Request, res: Response) => {
@@ -2915,7 +3166,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.id;
       const officeId = await getOrCreateOffice(userId);
-      const partners = await storage.getPartnersByOffice(officeId);
+      const partners = await storage.ensureHubBookingPartners(officeId);
       res.json(partners);
     } catch (error) {
       console.error("Error fetching partners:", error);
@@ -3061,6 +3312,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching tariffs:", error);
       res.status(500).json({ message: "Failed to fetch tariffs" });
+    }
+  });
+
+  app.get("/api/tariffs/rate-card", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const card = await storage.getConsolidatedRateCard(officeId);
+      res.json({
+        rowCount: card.rows.length,
+        sheetCount: card.versions.length,
+        sheets: card.versions.map((version) => ({
+          id: version.id,
+          label: version.label,
+          status: version.status,
+          validFrom: version.validFrom,
+          validTo: version.validTo,
+          partnerName: version.partnerName || null,
+        })),
+        rows: card.rows,
+        validFrom: card.versions
+          .map((version) => version.validFrom)
+          .filter(Boolean)
+          .sort((a, b) => new Date(a as Date).getTime() - new Date(b as Date).getTime())[0] || null,
+        validTo: card.versions
+          .map((version) => version.validTo)
+          .filter(Boolean)
+          .sort((a, b) => new Date(b as Date).getTime() - new Date(a as Date).getTime())[0] || null,
+      });
+    } catch (error) {
+      console.error("Error building rate card:", error);
+      res.status(500).json({ message: "Failed to build the XGoo rate card" });
     }
   });
 
@@ -3260,10 +3542,18 @@ export async function registerRoutes(
         : undefined;
 
       let parsed;
+      let source: "image" | "sheet" = "sheet";
       try {
-        parsed = parseTariffSheetBuffer(fileInfo.buffer, fileInfo.fileName, defaultPartner?.code);
+        const result = await parseTariffUploadBuffer(
+          fileInfo.buffer,
+          fileInfo.fileName,
+          defaultPartner?.code,
+          fileInfo.extraFiles,
+        );
+        parsed = result.rows;
+        source = result.source;
       } catch (parseErr) {
-        const detail = parseErr instanceof Error ? parseErr.message : "Could not read spreadsheet";
+        const detail = parseErr instanceof Error ? parseErr.message : "Could not read file";
         return res.status(400).json({
           message: `Could not read file: ${detail}`,
         });
@@ -3272,7 +3562,9 @@ export async function registerRoutes(
       if (parsed.length === 0) {
         return res.status(400).json({
           message:
-            "No valid rows found. Ensure columns include partner_code (or set default partner), service_type, weight range, and tariff_amount / partner_rate.",
+            source === "image"
+              ? "No rates could be read from the photo. Use a clearer shot of the full rate card, set a default partner, or upload CSV/Excel."
+              : "No valid rows found. Ensure columns include partner_code (or set default partner), service_type, weight range, and tariff_amount / partner_rate.",
         });
       }
 
@@ -3303,6 +3595,10 @@ export async function registerRoutes(
       }
 
       const preview = buildImportPreview(rows, existingRows);
+      const extractedCsv = source === "image" ? parsedRowsToCsv(parsed) : undefined;
+      const extractedName = path
+        .basename(fileInfo.fileName, path.extname(fileInfo.fileName) || "")
+        .replace(/[^\w.-]+/g, "-") || "tariff";
       res.json({
         preview: preview.rows.slice(0, 500).map(({ data: _data, ...rest }) => rest),
         summary: preview.summary,
@@ -3310,6 +3606,13 @@ export async function registerRoutes(
         parseErrors: errors,
         parsedRows: rows.slice(0, 100),
         createdPartners: ensured.createdCodes,
+        source,
+        extracted: extractedCsv
+          ? {
+              fileName: `${extractedName}-from-photo.csv`,
+              fileData: Buffer.from(extractedCsv, "utf8").toString("base64"),
+            }
+          : undefined,
       });
     } catch (error) {
       console.error("Error previewing tariff:", error);
@@ -3396,11 +3699,30 @@ export async function registerRoutes(
         ? partners.find((p) => p.id === meta.courierPartnerId)
         : undefined;
 
-      const parsed = parseTariffSheetBuffer(fileInfo.buffer, fileInfo.fileName, defaultPartner?.code);
+      let parsed;
+      let source: "image" | "sheet" = "sheet";
+      try {
+        const result = await parseTariffUploadBuffer(
+          fileInfo.buffer,
+          fileInfo.fileName,
+          defaultPartner?.code,
+          fileInfo.extraFiles,
+        );
+        parsed = result.rows;
+        source = result.source;
+      } catch (parseErr) {
+        const detail = parseErr instanceof Error ? parseErr.message : "Could not read file";
+        return res.status(400).json({
+          message: `Could not read file: ${detail}`,
+        });
+      }
 
       if (parsed.length === 0) {
         return res.status(400).json({
-          message: "No valid tariff rows found. Use the CSV template with partner_code, service_type, weight range, and tariff_amount columns.",
+          message:
+            source === "image"
+              ? "No rates could be read from the photo. Use a clearer shot of the full rate card, set a default partner, or upload CSV/Excel."
+              : "No valid tariff rows found. Use the CSV template with partner_code, service_type, weight range, and tariff_amount columns.",
         });
       }
 
@@ -3409,16 +3731,20 @@ export async function registerRoutes(
 
       const validFrom = meta.validFrom ? new Date(meta.validFrom) : new Date();
       const validTo = meta.validTo ? new Date(meta.validTo) : new Date(validFrom.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const storedOriginalName =
+        source === "image"
+          ? `${path.basename(fileInfo.fileName, path.extname(fileInfo.fileName) || "") || "tariff"}-from-photo.csv`
+          : fileInfo.fileName;
       const storedFilename = persistUploadedFile({
-        buffer: fileInfo.buffer,
-        originalname: fileInfo.fileName,
+        buffer: source === "image" ? Buffer.from(parsedRowsToCsv(parsed), "utf8") : fileInfo.buffer,
+        originalname: storedOriginalName,
       } as Express.Multer.File);
 
       const version = await storage.createTariffVersion({
         officeId,
         courierPartnerId: meta.courierPartnerId || null,
         label: meta.label,
-        fileName: fileInfo.fileName,
+        fileName: storedOriginalName,
         fileUrl: `/objects/${storedFilename}`,
         validFrom,
         validTo,
@@ -3552,6 +3878,22 @@ export async function registerRoutes(
   });
 
   // Shipment routes
+  app.get("/api/shipments/search", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const q = String(req.query.q || "").trim();
+      if (q.length < 2) return res.json([]);
+      const [foundShipments, foundRequests] = await Promise.all([
+        storage.searchShipments(officeId, q),
+        storage.searchBookingRequests(officeId, q),
+      ]);
+      res.json(buildHubSearchHits(foundShipments, foundRequests));
+    } catch (error) {
+      console.error("Error searching shipments:", error);
+      res.status(500).json({ message: "Failed to search bookings" });
+    }
+  });
+
   app.get("/api/shipments", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -3581,6 +3923,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/shipments/next-booking-number", isAuthenticated, async (req: any, res) => {
+    try {
+      const officeId = await getOrCreateOffice(req.user.id);
+      const courierPartnerId = String(req.body?.courierPartnerId || "");
+      const partner = courierPartnerId ? await storage.getPartner(courierPartnerId) : undefined;
+      if (!partner || partner.officeId !== officeId) {
+        return res.status(400).json({ message: "Select a courier partner first" });
+      }
+      const bookingNumber = await storage.allocateBookingNumber({
+        channel: parseBookingChannel(req.body?.bookingChannel) || "SR",
+        shipmentType: req.body?.shipmentType === "international" ? "international" : "domestic",
+        partnerCode: partner.code,
+        partnerName: partner.name,
+      });
+      res.json({ bookingNumber });
+    } catch (error) {
+      console.error("Error allocating booking ID:", error);
+      res.status(500).json({ message: "Failed to allocate booking ID" });
+    }
+  });
+
   app.post("/api/shipments", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -3602,7 +3965,15 @@ export async function registerRoutes(
         }
       }
 
-      const { paymentMode, bookingRequestId, xgooOrderId: bodyXgooOrderId, ...shipmentFields } = validated;
+      const {
+        paymentMode,
+        bookingRequestId,
+        xgooOrderId: bodyXgooOrderId,
+        bookingNumber: bodyBookingNumber,
+        bookingChannel: bodyBookingChannel,
+        branchId: bodyBranchId,
+        ...shipmentFields
+      } = validated;
       const weights = packageWeightSummary({
         actualKg: parseNum(shipmentFields.weight),
         length: parseNum(shipmentFields.length),
@@ -3615,9 +3986,21 @@ export async function registerRoutes(
       const linkedBooking = bookingRequestId
         ? await storage.getBookingRequest(bookingRequestId)
         : undefined;
+      const bookingChannel =
+        parseBookingChannel(bodyBookingChannel) ||
+        bookingChannelFromSource(linkedBooking?.source) ||
+        "SR";
+      let branchId = bodyBranchId || req.staffMember?.branchId || linkedBooking?.branchId || null;
+      if (branchId) {
+        const store = await storage.getBranch(branchId);
+        if (!store || store.officeId !== officeId) {
+          return res.status(400).json({ message: "Invalid store" });
+        }
+      }
       const shipment = await storage.createShipment({
         ...shipmentFields,
         officeId,
+        branchId,
         customerId: validated.customerId || null,
         xgooOrderId: linkedBooking?.xgooOrderId || bodyXgooOrderId || null,
         destinationCountry: isInternational ? blankToNull(shipmentFields.destinationCountry) : null,
@@ -3655,7 +4038,7 @@ export async function registerRoutes(
         ioss: isInternational ? blankToNull(shipmentFields.ioss) : null,
         eori: isInternational ? blankToNull(shipmentFields.eori) : null,
         shipmentPurpose: isInternational ? blankToNull(shipmentFields.shipmentPurpose) : null,
-      });
+      }, bodyBookingNumber, bookingChannel);
 
       // Create payment record
       if (validated.paymentMode !== "credit") {
@@ -3857,6 +4240,10 @@ export async function registerRoutes(
       console.error("World First column ensure failed:", error);
     }
     res.json(worldFirstConfigPublicStatus());
+  });
+
+  app.get("/api/integrations/erp-courier/status", isAuthenticated, async (_req: any, res) => {
+    res.json(erpCourierPublicStatus());
   });
 
   app.get("/api/shipments/:id/world-first-track", isAuthenticated, async (req: any, res) => {
@@ -4312,27 +4699,6 @@ export async function registerRoutes(
       }
       console.error("Error resuming booking:", error);
       res.status(500).json({ message: "Failed to resume booking" });
-    }
-  });
-
-  app.post("/api/public/extension/map-fields", async (req, res) => {
-    try {
-      const result = await mapPartnerFormFields(req.body);
-      res.json(result);
-    } catch (error) {
-      if (error instanceof BookingEngineError) {
-        return res.status(error.httpStatus).json({
-          message: error.message,
-          code: error.code,
-          mappings: [],
-          usedAi: false,
-        });
-      }
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid mapping request", mappings: [], usedAi: false });
-      }
-      console.error("Extension map-fields error:", error);
-      res.status(500).json({ message: "Failed to map partner fields", mappings: [], usedAi: false });
     }
   });
 

@@ -124,6 +124,36 @@ export const branchServiceAreasRelations = relations(branchServiceAreas, ({ one 
   }),
 }));
 
+export const storeRelocationRequests = pgTable("store_relocation_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  officeId: varchar("office_id").notNull().references(() => offices.id, { onDelete: "cascade" }),
+  branchId: varchar("branch_id").notNull().references(() => branches.id, { onDelete: "cascade" }),
+  requestedByUserId: varchar("requested_by_user_id").notNull(),
+  requestedByName: varchar("requested_by_name", { length: 255 }),
+  reason: text("reason"),
+  proposedAddress: text("proposed_address"),
+  proposedCity: varchar("proposed_city", { length: 100 }),
+  proposedState: varchar("proposed_state", { length: 100 }),
+  proposedPincode: varchar("proposed_pincode", { length: 10 }),
+  proposedLat: decimal("proposed_lat", { precision: 10, scale: 7 }),
+  proposedLng: decimal("proposed_lng", { precision: 10, scale: 7 }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  reviewedByUserId: varchar("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_relocation_office").on(table.officeId),
+  index("idx_relocation_branch").on(table.branchId),
+  index("idx_relocation_status").on(table.status),
+]);
+
+export const bookingNumberSequences = pgTable("booking_number_sequences", {
+  prefix: varchar("prefix", { length: 32 }).primaryKey(),
+  nextSeq: integer("next_seq").notNull().default(1),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Customers table
 export const customers = pgTable("customers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1211,6 +1241,13 @@ export const insertBranchServiceAreaSchema = createInsertSchema(branchServiceAre
   createdAt: true,
 });
 
+export const insertStoreRelocationRequestSchema = createInsertSchema(storeRelocationRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  reviewedAt: true,
+});
+
 export const insertCustomerSchema = createInsertSchema(customers).omit({
   id: true,
   createdAt: true,
@@ -1366,6 +1403,9 @@ export type InsertBranchServiceArea = z.infer<typeof insertBranchServiceAreaSche
 export type BranchWithServiceAreas = Branch & {
   serviceAreas: BranchServiceArea[];
 };
+
+export type StoreRelocationRequest = typeof storeRelocationRequests.$inferSelect;
+export type InsertStoreRelocationRequest = z.infer<typeof insertStoreRelocationRequestSchema>;
 
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;

@@ -20,6 +20,9 @@ const COMPANY_LINKS: FooterLink[] = [
   { label: "Book a Parcel", href: "/book" },
   { label: "International Courier", href: INTERNATIONAL_COURIER_PATH },
   { label: "Domestic Courier", href: DOMESTIC_COURIER_PATH },
+  { label: "Courier Services in Hyderabad", href: "/courier-services-hyderabad" },
+  { label: "Courier Pickup from Home", href: "/courier-pickup-from-home" },
+  { label: "How It Works", href: "/how-it-works" },
   { label: "About Us", href: "/about" },
   { label: "Refer and earn", href: "/refer" },
   { label: "Contact", href: "/contact" },
@@ -122,6 +125,14 @@ export function MarketingFooter() {
             <nav className="mt-4 flex flex-col gap-2.5">
               <FooterNavLink
                 link={{ label: "International Courier", href: INTERNATIONAL_COURIER_PATH }}
+                onNavigate={go}
+              />
+              <FooterNavLink
+                link={{ label: "International Courier in Hyderabad", href: "/international-courier-hyderabad" }}
+                onNavigate={go}
+              />
+              <FooterNavLink
+                link={{ label: "International Courier Charges", href: "/international-courier-charges" }}
                 onNavigate={go}
               />
               {listPublishedCourierRoutes().map((route) => (

@@ -16,6 +16,7 @@ import {
 } from "./shipment-notifications";
 import { triggerPickupPartnerNotification } from "./pickup-notifications";
 import { storage } from "./storage";
+import { bookingChannelFromSource } from "@shared/booking-number";
 import { creditReferralCommission } from "./referral";
 
 async function officeById(officeId: string) {
@@ -427,7 +428,7 @@ export async function raisePickupShipmentAtHub(job: PickupJob) {
     gstAmount: quotation.gstAmount,
     totalAmount: quotation.totalAmount,
     status: "booked",
-  });
+  }, null, bookingChannelFromSource(request.source));
 
   const existingPayment =
     (await storage.getPaymentByQuotation(quotation.id)) ||

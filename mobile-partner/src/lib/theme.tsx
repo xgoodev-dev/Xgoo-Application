@@ -14,11 +14,11 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 const palettes = {
   light: {
     mode: 'light' as const,
-    background: '#F6F7F9',
+    background: '#F7F7F8',
     surface: '#FFFFFF',
     surfaceRaised: '#FFFFFF',
-    surfaceMuted: '#F0F1F3',
-    text: '#161719',
+    surfaceMuted: '#F4F4F5',
+    text: '#18181B',
     textMuted: '#71717A',
     border: '#E4E4E7',
     accent: '#FF4907',
@@ -27,6 +27,7 @@ const palettes = {
     info: '#0284C7',
     danger: '#DC2626',
     tab: '#FFFFFF',
+    ink: '#18181B',
     shadow: '#000000',
   },
   dark: {
@@ -44,6 +45,7 @@ const palettes = {
     info: '#38BDF8',
     danger: '#F87171',
     tab: '#151619',
+    ink: '#0E0F11',
     shadow: '#000000',
   },
 };

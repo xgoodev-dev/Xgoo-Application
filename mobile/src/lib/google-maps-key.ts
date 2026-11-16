@@ -96,7 +96,7 @@ export async function fetchGoogleStaticMapDataUri(input: {
     }`,
   ];
 
-  const headerSets = [
+  const headerSets: Record<string, string>[] = [
     { Accept: 'image/*', Referer: `${MAPS_PAGE_ORIGIN}/` },
     { Accept: 'image/*' },
   ];

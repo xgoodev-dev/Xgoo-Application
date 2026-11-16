@@ -1,12 +1,11 @@
 import { useFieldArray, type UseFormReturn } from "react-hook-form";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, Loader2, Plus, Trash2, Truck } from "lucide-react";
-import { Link } from "wouter";
-import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BOOKING_METHOD_LABELS, resolveBookingMethod } from "@shared/booking-engine";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { buildHubBookingPartnerTabs } from "@shared/hub-booking-couriers";
 import { isDelhiveryPartner } from "@shared/delhivery";
 import { isWorldFirstPartner } from "@shared/world-first";
 import type { CourierPartner } from "@shared/schema";
@@ -71,115 +70,45 @@ function ScopeFields({
   }
 }
 
-export function HubBookingPartnerGate({
+export function HubBookingPartnerTabs({
   partners,
-  selectedPartnerId,
+  selectedKey,
   loading,
   onSelect,
-  onContinue,
-  onCancel,
 }: {
   partners: CourierPartner[] | undefined;
-  selectedPartnerId: string;
+  selectedKey: string;
   loading?: boolean;
-  onSelect: (partnerId: string) => void;
-  onContinue: () => void;
-  onCancel: () => void;
+  onSelect: (key: string) => void;
 }) {
-  const activePartners = (partners || []).filter((partner) => partner.isActive !== false);
-  const canContinue = Boolean(selectedPartnerId);
-
+  const rows = buildHubBookingPartnerTabs(partners || []);
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onCancel} data-testid="button-back">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">New Booking</h1>
-          <p className="text-muted-foreground">Select a courier partner before you fill this booking</p>
+    <div className="space-y-2">
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading courier partners…
         </div>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Courier partner</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Every new booking starts here. Choose who will move this shipment, then continue to the form.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading courier partners…
-            </div>
-          ) : activePartners.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
-              <p className="text-sm text-muted-foreground">Add a courier partner before Hub can book.</p>
-              <Button asChild>
-                <Link href="/partners" data-testid="link-add-partners">
-                  Open Partners
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {activePartners.map((partner) => {
-                const selected = partner.id === selectedPartnerId;
-                const method = resolveBookingMethod(partner);
-                return (
-                  <button
-                    key={partner.id}
-                    type="button"
-                    onClick={() => onSelect(partner.id)}
-                    onDoubleClick={() => {
-                      onSelect(partner.id);
-                      onContinue();
-                    }}
-                    data-testid={`button-select-partner-${partner.code}`}
-                    className={`rounded-xl border p-4 text-left transition-colors ${
-                      selected
-                        ? "border-primary bg-primary/5 ring-2 ring-primary"
-                        : "border-border hover:border-primary/50 hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold">{partner.name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{partner.code}</p>
-                      </div>
-                      {selected ? (
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                          <Check className="h-3.5 w-3.5" />
-                        </span>
-                      ) : (
-                        <Truck className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <Badge variant="secondary" className="mt-3 text-[10px]">
-                      {BOOKING_METHOD_LABELS[method]}
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel-partner-gate">
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={!canContinue}
-              onClick={onContinue}
-              data-testid="button-continue-booking"
+      ) : null}
+      <Tabs value={selectedKey || rows[0]?.key} onValueChange={onSelect}>
+        <TabsList className="flex h-auto min-h-10 w-full flex-wrap justify-start gap-1" data-testid="tabs-booking-partners">
+          {rows.map((row) => (
+            <TabsTrigger
+              key={row.key}
+              value={row.key}
+              className="gap-1.5"
+              data-testid={`tab-booking-partner-${row.codes[0]}`}
             >
-              Continue to booking
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              {row.name}
+              {row.status === "coming-soon" ? (
+                <span className="rounded bg-muted-foreground/15 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Soon
+                </span>
+              ) : null}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
     </div>
   );
 }
@@ -198,7 +127,7 @@ export function HubBookingScopeToggle({
         role="tab"
         aria-selected={value === "domestic"}
         className={`rounded-md px-4 py-1.5 text-sm font-medium ${
-          value === "domestic" ? "bg-white text-[#FF4907] shadow-sm" : "text-muted-foreground"
+          value === "domestic" ? "bg-background text-[#FF4907] shadow-sm" : "text-muted-foreground"
         }`}
         onClick={() => onChange("domestic")}
         data-testid="tab-booking-domestic"
@@ -210,7 +139,7 @@ export function HubBookingScopeToggle({
         role="tab"
         aria-selected={value === "international"}
         className={`rounded-md px-4 py-1.5 text-sm font-medium ${
-          value === "international" ? "bg-white text-[#FF4907] shadow-sm" : "text-muted-foreground"
+          value === "international" ? "bg-background text-[#FF4907] shadow-sm" : "text-muted-foreground"
         }`}
         onClick={() => onChange("international")}
         data-testid="tab-booking-international"

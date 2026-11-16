@@ -17,6 +17,12 @@ export type MapCoordinate = {
   label?: string;
 };
 
+export type FleetMapMarker = MapCoordinate & {
+  id?: string;
+  color?: string;
+  letter?: string;
+};
+
 export type GoogleMapCanvasProps = {
   center?: MapCoordinate;
   zoom?: number;
@@ -27,6 +33,9 @@ export type GoogleMapCanvasProps = {
   onMarkerDragEnd?: (coords: { lat: number; lng: number }) => void;
   pickup?: MapCoordinate | null;
   destination?: MapCoordinate | null;
+  fleetMarkers?: FleetMapMarker[];
+  selectedMarkerId?: string | null;
+  onMarkerSelect?: (id: string) => void;
   showRoute?: boolean;
   circleRadiusKm?: number | null;
   circleCenter?: MapCoordinate | null;
@@ -180,6 +189,9 @@ export function GoogleMapCanvas({
   onMarkerDragEnd,
   pickup,
   destination,
+  fleetMarkers,
+  selectedMarkerId,
+  onMarkerSelect,
   showRoute = true,
   circleRadiusKm,
   circleCenter,
@@ -197,6 +209,7 @@ export function GoogleMapCanvas({
   const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const circleRef = useRef<google.maps.Circle | null>(null);
+  const fleetMarkersRef = useRef<google.maps.Marker[]>([]);
 
   const [engine, setEngine] = useState<MapEngine>("js");
   const [loading, setLoading] = useState(true);
@@ -280,6 +293,8 @@ export function GoogleMapCanvas({
       if (destinationMarkerRef.current) destinationMarkerRef.current.setMap(null);
       if (routePolylineRef.current) routePolylineRef.current.setMap(null);
       if (circleRef.current) circleRef.current.setMap(null);
+      fleetMarkersRef.current.forEach((pin) => pin.setMap(null));
+      fleetMarkersRef.current = [];
       mapInstanceRef.current = null;
     };
   }, [engine, disableDefaultUI, useStaticMap]);
@@ -495,6 +510,48 @@ export function GoogleMapCanvas({
     }
   }, [circleRadiusKm, circleCenter?.lat, circleCenter?.lng, marker?.lat, marker?.lng, pickup?.lat, pickup?.lng]);
 
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const g = (window as unknown as { google?: typeof google }).google;
+    if (!map || !g?.maps) return;
+
+    fleetMarkersRef.current.forEach((pin) => pin.setMap(null));
+    fleetMarkersRef.current = [];
+
+    if (!fleetMarkers?.length) return;
+
+    const bounds = new g.maps.LatLngBounds();
+    for (const pin of fleetMarkers) {
+      const selected = Boolean(pin.id && pin.id === selectedMarkerId);
+      const next = new g.maps.Marker({
+        position: { lat: pin.lat, lng: pin.lng },
+        map,
+        title: pin.label,
+        icon: createGoogleMapPinSvg({
+          color: selected ? DESTINATION_COLOR : pin.color || PICKUP_COLOR,
+          letter: pin.letter || "",
+          size: selected ? 42 : 36,
+        }),
+      });
+      if (pin.id && onMarkerSelect) {
+        next.addListener("click", () => onMarkerSelect(pin.id!));
+      }
+      fleetMarkersRef.current.push(next);
+      bounds.extend({ lat: pin.lat, lng: pin.lng });
+    }
+
+    if (fleetMarkers.length === 1) {
+      focusMapOn(map, { lat: fleetMarkers[0].lat, lng: fleetMarkers[0].lng }, zoom);
+    } else {
+      map.fitBounds(bounds, 48);
+    }
+
+    return () => {
+      fleetMarkersRef.current.forEach((pin) => pin.setMap(null));
+      fleetMarkersRef.current = [];
+    };
+  }, [fleetMarkers, selectedMarkerId, onMarkerSelect, zoom]);
+
   const handleRefresh = useCallback(() => {
     if (engine === "static") {
       setRefreshKey((value) => value + 1);
@@ -507,16 +564,20 @@ export function GoogleMapCanvas({
       return;
     }
     g.maps.event.trigger(map, "resize");
-    if (pickup && destination) {
+    if (fleetMarkers && fleetMarkers.length > 1) {
+      const bounds = new g.maps.LatLngBounds();
+      fleetMarkers.forEach((pin) => bounds.extend({ lat: pin.lat, lng: pin.lng }));
+      map.fitBounds(bounds, 48);
+    } else if (pickup && destination) {
       const bounds = new g.maps.LatLngBounds();
       bounds.extend({ lat: pickup.lat, lng: pickup.lng });
       bounds.extend({ lat: destination.lat, lng: destination.lng });
       map.fitBounds(bounds, 50);
-    } else if (marker || pickup || circleCenter || center) {
-      const p = marker || pickup || circleCenter || center!;
+    } else if (marker || pickup || circleCenter || center || fleetMarkers?.[0]) {
+      const p = marker || pickup || circleCenter || center || fleetMarkers![0];
       focusMapOn(map, { lat: p.lat, lng: p.lng }, zoom);
     }
-  }, [engine, marker, pickup, destination, circleCenter, center, zoom, useStaticMap]);
+  }, [engine, marker, pickup, destination, circleCenter, center, fleetMarkers, zoom, useStaticMap]);
 
   return (
     <div
@@ -528,7 +589,7 @@ export function GoogleMapCanvas({
         <div ref={containerRef} className="absolute inset-0 h-full w-full" />
       ) : (
         <GoogleMapFallback
-          marker={marker}
+          marker={marker || fleetMarkers?.[0] || null}
           pickup={pickup}
           destination={destination}
           circleCenter={circleCenter}

@@ -47,6 +47,9 @@ type MarketingHeaderProps = {
 const SERVICE_HUB_LINKS = [
   { label: "International Courier", href: INTERNATIONAL_COURIER_PATH },
   { label: "Domestic Courier", href: DOMESTIC_COURIER_PATH },
+  { label: "Courier Pickup from Home", href: "/courier-pickup-from-home" },
+  { label: "International Courier Charges", href: "/international-courier-charges" },
+  { label: "How It Works", href: "/how-it-works" },
 ] as const;
 
 export function MarketingHeader(_props: MarketingHeaderProps = {}) {
@@ -68,8 +71,7 @@ export function MarketingHeader(_props: MarketingHeaderProps = {}) {
   const isActive = (path: string) => pathOnly === path;
   const routePages = listPublishedCourierRoutes();
   const isServicesActive =
-    pathOnly === INTERNATIONAL_COURIER_PATH ||
-    pathOnly === DOMESTIC_COURIER_PATH ||
+    SERVICE_HUB_LINKS.some((link) => link.href === pathOnly) ||
     pathOnly.startsWith(COURIER_ROUTE_PREFIX);
 
   const goTo = (path: string) => {

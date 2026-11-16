@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout } from "@/components/marketing/MarketingLayout";
 import { PageSeo } from "@/components/seo/PageSeo";
+import { COURIER_ROUTE_SEO } from "@shared/seo-pages";
 import { ServicesHero } from "@/components/marketing/ServicesHero";
 import { XGOO_CONTACT } from "@/components/marketing/site-info";
 import { CourierRouteFaqs } from "@/components/marketing/courier-routes/CourierRouteFaqs";
@@ -99,6 +100,7 @@ export default function CourierRoutePage() {
         title={route.seoTitle}
         description={route.metaDescription}
         path={path}
+        imageAlt={COURIER_ROUTE_SEO[route.slug]?.imageAlt}
         keywords={route.keywords}
         jsonLd={[
           buildLocalBusinessJsonLd(),

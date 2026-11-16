@@ -1,4 +1,5 @@
 import { XGOO_BRAND, XGOO_CONTACT, XGOO_BRAND_VOICE, XGOO_ORIGIN } from "@/components/marketing/site-info";
+import { PUBLIC_PAGE_SEO } from "@shared/seo-pages";
 
 /** Canonical production site — override with VITE_SITE_URL when needed. */
 export const SITE_URL =
@@ -18,16 +19,17 @@ export type PageSeoConfig = {
   /** noindex for staff/auth or private flows */
   noIndex?: boolean;
   image?: string;
+  /** og:image:alt */
+  imageAlt?: string;
+  /** og:title / twitter:title when it should differ from <title> */
+  ogTitle?: string;
   type?: "website" | "article";
   keywords?: string[];
 };
 
 export const SEO_PAGES = {
   home: {
-    path: "/",
-    title: "XGoo | Book Courier Online — Send It. Delivered.",
-    description:
-      "Book parcel pickups online with XGoo, an NSGroup product. Doorstep pickup, live tracking, and trusted courier networks. Movement creates progress.",
+    ...PUBLIC_PAGE_SEO.home,
     keywords: [
       "courier booking",
       "book parcel online",
@@ -40,10 +42,7 @@ export const SEO_PAGES = {
     ],
   },
   about: {
-    path: "/about",
-    title: "About XGoo | From Courier Point, Kondapur (2021)",
-    description:
-      "XGoo began in 2021 as Courier Point, a small store in Kondapur, Hyderabad, founded by S Krishna Murthy. Learn our story, purpose, vision, and mission.",
+    ...PUBLIC_PAGE_SEO.about,
     keywords: [
       "about XGoo",
       "Courier Point Hyderabad",
@@ -54,23 +53,15 @@ export const SEO_PAGES = {
     ],
   },
   contact: {
-    path: "/contact",
-    title: "Contact XGoo | Support & Enquiries",
-    description: `Contact XGoo at ${XGOO_CONTACT.email}, phone ${XGOO_CONTACT.phone}, or WhatsApp ${XGOO_CONTACT.whatsappDisplay}. ${XGOO_CONTACT.hours}. ${XGOO_CONTACT.address}.`,
+    ...PUBLIC_PAGE_SEO.contact,
     keywords: ["contact XGoo", "courier support", "WhatsApp courier"],
   },
   track: {
-    path: "/track",
-    title: "Track Shipment | XGoo Go",
-    description:
-      "Track an XGoo shipment with your request number, booking number, or AWB. Open XGoo Go if the app is installed, or track on the website.",
+    ...PUBLIC_PAGE_SEO.track,
     keywords: ["track shipment", "track courier", "AWB tracking", "XGoo Go"],
   },
   book: {
-    path: "/book",
-    title: "Book a Parcel Online | XGoo Courier",
-    description:
-      "Book a courier pickup in minutes with XGoo. Enter sender, receiver, and parcel details — track your shipment with booking or AWB number.",
+    ...PUBLIC_PAGE_SEO.book,
     keywords: ["book parcel", "courier pickup", "online booking", "XGoo book"],
   },
   refer: {
@@ -121,10 +112,7 @@ export const SEO_PAGES = {
     noIndex: true,
   },
   internationalCourier: {
-    path: "/international-courier",
-    title: "International Courier from Hyderabad | XGoo Courier Services",
-    description:
-      "International courier service in Hyderabad with XGoo. Send documents and parcels abroad with pickup, tracking, and a quote before you book.",
+    ...PUBLIC_PAGE_SEO.internationalCourier,
     keywords: [
       "international courier Hyderabad",
       "international courier service in Hyderabad",
@@ -133,10 +121,7 @@ export const SEO_PAGES = {
     ],
   },
   domesticCourier: {
-    path: "/domestic-courier",
-    title: "Domestic Courier in Hyderabad | XGoo Courier Services",
-    description:
-      "Domestic courier service in Hyderabad with XGoo. Book doorstep pickup and send documents or parcels across India. Get a quote or book online.",
+    ...PUBLIC_PAGE_SEO.domesticCourier,
     keywords: [
       "domestic courier Hyderabad",
       "courier service in Hyderabad",
@@ -144,12 +129,18 @@ export const SEO_PAGES = {
       "send parcel from Hyderabad",
     ],
   },
+  howItWorks: PUBLIC_PAGE_SEO.howItWorks,
+  courierServicesHyderabad: PUBLIC_PAGE_SEO.courierServicesHyderabad,
+  internationalCourierHyderabad: PUBLIC_PAGE_SEO.internationalCourierHyderabad,
+  courierPickupFromHome: PUBLIC_PAGE_SEO.courierPickupFromHome,
+  internationalCourierCharges: PUBLIC_PAGE_SEO.internationalCourierCharges,
 } satisfies Record<string, PageSeoConfig>;
 
 export function absoluteUrl(path: string): string {
   if (path.startsWith("http")) return path;
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return `${SITE_URL}${normalized === "/" ? "" : normalized}` || SITE_URL;
+  // Homepage canonical is "https://www.xgoo.in/" (with trailing slash), per the SEO brief.
+  return `${SITE_URL}${normalized}`;
 }
 
 export function buildOrganizationJsonLd() {

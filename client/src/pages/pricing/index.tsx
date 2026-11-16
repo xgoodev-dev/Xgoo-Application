@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Calculator, FileSpreadsheet, History, Table2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CourierPartner, TariffVersion } from "@shared/schema";
+import { ShareRateCardDialog } from "@/components/command/ShareRateCardDialog";
 import { TariffUploadsTab } from "@/components/pricing/TariffUploadsTab";
 import { TariffTableTab } from "@/components/pricing/TariffTableTab";
 import { PriceEstimatorTab } from "@/components/pricing/PriceEstimatorTab";
@@ -34,11 +35,14 @@ export default function PricingPage() {
 
   return (
     <div className="space-y-6 max-w-[1600px]">
-      <div>
-        <h1 className="text-2xl font-bold">Shipping Price Estimator</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Manage tariff cycles, edit rates in an Excel-like table, compare versions, and quote bookings from live data.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">XGoo rate cards</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Keep tariff sheets current, then share one branded XGoo rate card with customers, partners, and collaborators.
+          </p>
+        </div>
+        <ShareRateCardDialog />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>

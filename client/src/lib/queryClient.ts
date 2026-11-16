@@ -104,6 +104,7 @@ export type TariffUploadPayload = {
   label: string;
   fileName: string;
   fileData: string;
+  extraFiles?: { fileName: string; fileData: string }[];
   courierPartnerId?: string;
   compareVersionId?: string;
   validFrom?: string;

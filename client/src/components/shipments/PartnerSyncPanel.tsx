@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
@@ -29,8 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { copyPartnerPayload, notifyExtension, waitForExtensionStored } from "@/lib/partner-sync-client";
-import { useXgooExtension } from "@/hooks/use-xgoo-extension";
+import { copyPartnerPayload } from "@/lib/partner-sync-client";
 import {
   PARTNER_SYNC_STATUSES,
   PARTNER_SYNC_STATUS_LABELS,
@@ -90,7 +89,6 @@ interface PartnerSyncPanelProps {
 export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { installed: extensionInstalled, checking: extensionChecking } = useXgooExtension();
   const syncStatus = (shipment.partnerSyncStatus ?? "pending") as PartnerSyncStatus;
 
   const [externalAwb, setExternalAwb] = useState(shipment.externalAwb ?? "");
@@ -119,11 +117,6 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
       xgooOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
     };
   }, [shipment, partner, booking?.autofillToken]);
-
-  useEffect(() => {
-    if (!payload.shipmentId || !payload.partnerCode) return;
-    notifyExtension(payload);
-  }, [payload]);
 
   const resolvedPortalUrl = payload.portalUrl ?? resolvePartnerPortalUrl(partner ?? undefined);
   const portalConfigured = !!resolvedPortalUrl;
@@ -325,10 +318,6 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
   });
 
   const openPartnerPortal = async () => {
-    notifyExtension(payload);
-
-    const storedPromise = waitForExtensionStored(payload.shipmentId);
-
     try {
       await copyPartnerPayload(payload);
     } catch {
@@ -346,16 +335,10 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
       /* toast handled in mutation */
     }
 
-    const stored = extensionInstalled ? await storedPromise : false;
-
     toast({
       title: url ? "Partner portal opened" : "Booking data ready",
       description: url
-        ? stored
-          ? "Extension received the booking — click Autofill on the partner site banner."
-          : extensionInstalled
-            ? "Portal opened. Use the Autofill banner on the partner booking form."
-            : "Install the XGoo extension (extension/ folder) for autofill, or use Copy payload."
+        ? "Portal opened. Complete booking there, then paste the partner AWB here."
         : "Set a portal URL on the courier partner in Partners, then try again.",
     });
   };
@@ -384,9 +367,8 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
   };
 
   const copyPayloadOnly = async () => {
-    notifyExtension(payload);
     await copyPartnerPayload(payload);
-    toast({ title: "Payload copied", description: "JSON copied for extension or manual use." });
+    toast({ title: "Payload copied", description: "Booking JSON copied for the partner form." });
   };
 
   const actionDisabled =
@@ -458,20 +440,6 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
             </Badge>
           </div>
         </div>
-        {!extensionChecking && needsBrowserAssist && (
-          <Badge
-            variant="outline"
-            className={cn(
-              "text-xs font-normal",
-              extensionInstalled
-                ? "border-green-600 text-green-700 dark:text-green-400"
-                : "border-muted-foreground/40 text-muted-foreground",
-            )}
-            data-testid="badge-extension-status"
-          >
-            {extensionInstalled ? "Extension connected" : "Extension not detected"}
-          </Badge>
-        )}
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-wrap gap-2">
@@ -553,7 +521,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
                 Invoice
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/world-first/day-end">Day End</Link>
+                <Link href="/bookings/new?view=day-end">Day End</Link>
               </Button>
             </>
           ) : null}
@@ -725,17 +693,6 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
           </div>
         )}
 
-        {needsBrowserAssist && !extensionInstalled && !extensionChecking && (
-          <div className="flex gap-2 rounded-none border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              Load the <strong>XGoo Partner Sync</strong> extension from the{" "}
-              <code className="text-xs">extension/</code> folder in Chrome → Extensions → Load
-              unpacked. Reload this page after installing.
-            </p>
-          </div>
-        )}
-
         {needsBrowserAssist && !partnersLoading && !portalConfigured && (
           <div className="flex gap-2 rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -853,11 +810,7 @@ export function PartnerSyncPanel({ shipment }: PartnerSyncPanelProps) {
               ? "API booking creates the World First AWB from this screen. Download Vendor AWB and Invoice here, then use Day End to view pending AWBs and manifest."
               : "API booking creates the Delhivery AWB from this screen, then requests pickup. MCP in Cursor is separate and read-only."
             : needsBrowserAssist
-              ? extensionInstalled
-                ? isWorldFirst
-                  ? "Open Xpresion, click Login if your password is saved (OTP is optional), then Autofill on AWB Entry. AI maps shipper, consignee, pieces, and content — review catalog fields before Save."
-                  : "Open the partner portal, log in if needed, then click Autofill on the orange XGoo banner."
-                : "Install the browser extension for autofill, or use Copy payload and enter the partner AWB manually."
+              ? "Open the partner portal, complete the booking, then paste the AWB here."
               : "Book with the partner, then paste the AWB here. Automated website login is not used."}
         </p>
       </CardContent>

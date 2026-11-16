@@ -1,3 +1,4 @@
+import { COURIER_ROUTE_SEO } from "@shared/seo-pages";
 import type { CourierRoute, CourierRouteBenefit } from "./types";
 
 const ORIGIN_CITY = "Hyderabad";
@@ -60,9 +61,8 @@ export const COURIER_ROUTES: CourierRoute[] = [
     countryName: "USA",
     countryCode: "US",
     destinationPhrase: "the USA",
-    seoTitle: "Courier from Hyderabad to USA | XGoo Courier Services",
-    metaDescription:
-      "Send parcels and documents from Hyderabad to the USA with XGoo Courier Services. Get a quote for international courier pickup and delivery.",
+    seoTitle: COURIER_ROUTE_SEO.usa.title,
+    metaDescription: COURIER_ROUTE_SEO.usa.description,
     h1: "Courier Service from Hyderabad to USA",
     heroSupport:
       "Send documents and parcels from Hyderabad to the USA with XGoo's international courier service. Pickup from Hyderabad, door-to-door delivery, and tracking once your booking is confirmed.",
@@ -160,9 +160,8 @@ export const COURIER_ROUTES: CourierRoute[] = [
     countryName: "Australia",
     countryCode: "AU",
     destinationPhrase: "Australia",
-    seoTitle: "Courier from Hyderabad to Australia | XGoo Courier Services",
-    metaDescription:
-      "Book international courier from Hyderabad to Australia with XGoo. Send documents and parcels to Sydney, Melbourne, and other cities — get a pickup quote.",
+    seoTitle: COURIER_ROUTE_SEO.australia.title,
+    metaDescription: COURIER_ROUTE_SEO.australia.description,
     h1: "Courier Service from Hyderabad to Australia",
     heroSupport:
       "Send documents and parcels from Hyderabad to Australia with XGoo's international courier service. Pickup in Hyderabad, door-to-door delivery, and tracking after confirmation.",
@@ -258,9 +257,8 @@ export const COURIER_ROUTES: CourierRoute[] = [
     countryName: "Canada",
     countryCode: "CA",
     destinationPhrase: "Canada",
-    seoTitle: "Courier from Hyderabad to Canada | XGoo Courier Services",
-    metaDescription:
-      "Send parcels and documents from Hyderabad to Canada with XGoo Courier Services. Request a quote for pickup and door-to-door international delivery.",
+    seoTitle: COURIER_ROUTE_SEO.canada.title,
+    metaDescription: COURIER_ROUTE_SEO.canada.description,
     h1: "Courier Service from Hyderabad to Canada",
     heroSupport:
       "Send documents and parcels from Hyderabad to Canada with XGoo's international courier service. Pickup locally, delivery to Canadian addresses, and tracking after your booking is accepted.",
@@ -358,9 +356,8 @@ export const COURIER_ROUTES: CourierRoute[] = [
     countryName: "UK",
     countryCode: "GB",
     destinationPhrase: "the UK",
-    seoTitle: "Courier from Hyderabad to UK | XGoo Courier Services",
-    metaDescription:
-      "Send parcels and documents from Hyderabad to the UK with XGoo Courier Services. Get a quote for international pickup to London, Birmingham, Manchester, and more.",
+    seoTitle: COURIER_ROUTE_SEO.uk.title,
+    metaDescription: COURIER_ROUTE_SEO.uk.description,
     h1: "Courier Service from Hyderabad to UK",
     heroSupport:
       "Send documents and parcels from Hyderabad to the UK with XGoo's international courier service. Local pickup, door-to-door delivery, and tracking after confirmation.",
@@ -458,9 +455,8 @@ export const COURIER_ROUTES: CourierRoute[] = [
     countryName: "UAE",
     countryCode: "AE",
     destinationPhrase: "the UAE",
-    seoTitle: "Courier from Hyderabad to UAE | XGoo Courier Services",
-    metaDescription:
-      "Send parcels and documents from Hyderabad to the UAE with XGoo Courier Services. Get a quote for courier pickup to Dubai, Abu Dhabi, Sharjah, and more.",
+    seoTitle: COURIER_ROUTE_SEO.uae.title,
+    metaDescription: COURIER_ROUTE_SEO.uae.description,
     h1: "Courier Service from Hyderabad to UAE",
     heroSupport:
       "Send documents and parcels from Hyderabad to the UAE with XGoo's international courier service. Pickup from Hyderabad and door-to-door delivery to Dubai, Abu Dhabi, and other emirates.",

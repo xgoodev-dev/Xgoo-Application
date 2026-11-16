@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Gauge, Timer } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { AppButton, Card, Field, Screen } from '@/components/ui';
+import { ProgressCard } from '@/components/progress-card';
+import { AppButton, Card, Field, PageHeader, Screen } from '@/components/ui';
 import { pickupApi, type PickupFuelClaim, type PickupShift } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { startDutyTracking, stopDutyTracking } from '@/lib/duty-tracker';
@@ -32,6 +33,12 @@ export default function FuelScreen() {
     queryKey: ['pickup-duty', token],
     enabled: Boolean(token),
     queryFn: () => pickupApi.duty(token!),
+    refetchInterval: 20_000,
+  });
+  const stats = useQuery({
+    queryKey: ['pickup-stats', token],
+    enabled: Boolean(token),
+    queryFn: () => pickupApi.stats(token!),
     refetchInterval: 20_000,
   });
 
@@ -84,11 +91,11 @@ export default function FuelScreen() {
 
   return (
     <Screen keyboard>
-      <Text style={[styles.title, { color: colors.text }]}>Duty & fuel</Text>
-      <Text style={[styles.copy, { color: colors.textMuted }]}>
-        Working hours start when you sign in. Kilometres are tracked until you sign out, then you can
-        request fuel cost.
-      </Text>
+      <PageHeader
+        title="Duty & fuel"
+        subtitle="Hours and kilometres start when you sign in. Request fuel after you sign out."
+      />
+      <ProgressCard stats={stats.data} />
 
       <Card style={styles.card}>
         <View style={styles.row}>
@@ -267,9 +274,7 @@ function ShiftClaimCard({
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 28, fontWeight: '900', marginTop: 8 },
-  copy: { fontSize: 13, lineHeight: 19, marginTop: 6, marginBottom: 16 },
-  card: { padding: 14, gap: 10, marginBottom: 12, elevation: 0, shadowOpacity: 0 },
+  card: { padding: 16, gap: 10, marginBottom: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 16, fontWeight: '800' },
   hint: { fontSize: 12, lineHeight: 17 },

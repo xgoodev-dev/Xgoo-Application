@@ -351,7 +351,6 @@ export default function DashboardPage() {
               bgClassName="from-amber-500/25 to-amber-500/5 border-amber-500/25"
               iconClassName="text-amber-500"
             />
-            {!isCommandWorkspace ? (
             <QuickActionIcon
               href="/bot-assistant"
               icon={Bot}
@@ -360,17 +359,14 @@ export default function DashboardPage() {
               bgClassName="from-orange-500/25 to-orange-500/5 border-orange-500/25"
               iconClassName="text-[#FF4907]"
             />
-            ) : null}
-            {isCommandWorkspace ? (
             <QuickActionIcon
               href="/rate-calculator"
               icon={Calculator}
-              label="Rate calculator"
+              label={isCommandWorkspace ? "Rate calculator" : "Rate estimator"}
               testId="button-quick-rate-calculator"
               bgClassName="from-rose-500/25 to-rose-500/5 border-rose-500/25"
               iconClassName="text-rose-500"
             />
-            ) : null}
             <QuickActionIcon
               href="/documents"
               icon={Files}

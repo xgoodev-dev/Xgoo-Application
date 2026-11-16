@@ -51,11 +51,14 @@ import {
 import { CourierFormulaBuilder } from "@/components/pricing/CourierFormulaBuilder";
 import { TariffSheetTabs } from "@/components/pricing/TariffSheetTabs";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, authFetch, buildTariffUploadPayload } from "@/lib/queryClient";
+import { apiRequest, authFetch } from "@/lib/queryClient";
+import { TARIFF_UPLOAD_ACCEPT, buildTariffUploadPayloadFromFiles } from "@/lib/tariff-upload";
 import {
   downloadTariffPricingImages,
   downloadTariffPricingPdf,
+  downloadTariffPricingSheets,
 } from "@/lib/tariff-pricing-pdf";
+import { ShareRateCardDialog } from "@/components/command/ShareRateCardDialog";
 import type { CourierPartner, TariffVersion } from "@shared/schema";
 import { TariffGrid, createEmptyRow } from "./TariffGrid";
 import { TariffRowDrawer } from "./TariffRowDrawer";
@@ -120,6 +123,7 @@ export function TariffTableTab({ partners, tariffs, initialVersionId }: Props) {
   ]);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [isImageGenerating, setIsImageGenerating] = useState(false);
+  const [isSheetGenerating, setIsSheetGenerating] = useState(false);
 
   useEffect(() => {
     if (initialVersionId) {
@@ -662,6 +666,27 @@ export function TariffTableTab({ partners, tariffs, initialVersionId }: Props) {
     }
   };
 
+  const handlePricingSheets = async () => {
+    const options = exportOptions();
+    if (!options) return;
+    setIsSheetGenerating(true);
+    try {
+      await downloadTariffPricingSheets(options);
+      toast({
+        title: "Rate card sheet downloaded",
+        description: "Excel / Google Sheets file with XGoo branding.",
+      });
+    } catch (error) {
+      toast({
+        title: "Sheet download failed",
+        description: error instanceof Error ? error.message : "Could not generate the rate card sheet",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSheetGenerating(false);
+    }
+  };
+
   const handlePricingImages = async () => {
     const options = exportOptions();
     if (!options) return;
@@ -691,7 +716,7 @@ export function TariffTableTab({ partners, tariffs, initialVersionId }: Props) {
   const handleImportFile = async (file: File) => {
     if (!selectedVersion) return;
     try {
-      const payload = await buildTariffUploadPayload(file, {
+      const payload = await buildTariffUploadPayloadFromFiles([file], {
         label: selectedVersion.label,
         compareVersionId: versionId,
       });
@@ -1049,42 +1074,56 @@ export function TariffTableTab({ partners, tariffs, initialVersionId }: Props) {
         </Accordion>
 
         <div className="flex flex-wrap gap-2">
-          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => {
+          <input ref={fileRef} type="file" accept={TARIFF_UPLOAD_ACCEPT} className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleImportFile(f);
             e.target.value = "";
           }} />
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
-            <Upload className="h-4 w-4 mr-1" /> Import Excel
+            <Upload className="h-4 w-4 mr-1" /> Import Excel / photo
           </Button>
           <Button size="sm" variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" /> Export Excel
           </Button>
+          <ShareRateCardDialog compact triggerLabel="Share consolidated card" />
           <Button
             size="sm"
             variant="outline"
             onClick={handlePricingPdf}
-            disabled={isPdfGenerating || isImageGenerating}
+            disabled={isPdfGenerating || isImageGenerating || isSheetGenerating}
           >
             {isPdfGenerating ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
               <Download className="h-4 w-4 mr-1" />
             )}
-            Download pricing PDF
+            Download PDF
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={handlePricingImages}
-            disabled={isPdfGenerating || isImageGenerating}
+            disabled={isPdfGenerating || isImageGenerating || isSheetGenerating}
           >
             {isImageGenerating ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
             ) : (
               <Download className="h-4 w-4 mr-1" />
             )}
-            Download pricing images
+            Download image
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePricingSheets}
+            disabled={isPdfGenerating || isImageGenerating || isSheetGenerating}
+          >
+            {isSheetGenerating ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-1" />
+            )}
+            Download sheet
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

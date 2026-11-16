@@ -20,7 +20,7 @@ export const BOOKING_WIZARD_STEP_FIELDS: Record<BookingWizardStepId, (keyof HubB
   consignee: ["receiverName", "receiverPhone", "receiverAddress"],
   package: ["weight"],
   goods: ["products"],
-  charge: ["courierPartnerId", "serviceType", "paymentMode", "orderPaymentType", "collectableAmount"],
+  charge: ["courierPartnerId", "serviceType", "paymentMode", "orderPaymentType", "collectableAmount", "awbNumber"],
 };
 
 export function bookingWizardStepIndex(id: BookingWizardStepId): number {

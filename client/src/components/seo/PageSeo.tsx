@@ -54,6 +54,8 @@ export function PageSeo({
   path,
   noIndex = false,
   image = DEFAULT_OG_IMAGE,
+  imageAlt,
+  ogTitle,
   type = "website",
   keywords,
   jsonLd,
@@ -62,6 +64,7 @@ export function PageSeo({
 
   useEffect(() => {
     const url = absoluteUrl(path);
+    const socialTitle = ogTitle || title;
     document.title = title;
 
     upsertMeta("name", "description", description);
@@ -72,16 +75,17 @@ export function PageSeo({
 
     upsertLink("canonical", url);
 
-    upsertMeta("property", "og:title", title);
+    upsertMeta("property", "og:title", socialTitle);
     upsertMeta("property", "og:description", description);
     upsertMeta("property", "og:type", type);
     upsertMeta("property", "og:url", url);
     upsertMeta("property", "og:image", image);
+    upsertMeta("property", "og:image:alt", imageAlt || "XGoo");
     upsertMeta("property", "og:site_name", "XGoo");
     upsertMeta("property", "og:locale", "en_IN");
 
     upsertMeta("name", "twitter:card", "summary_large_image");
-    upsertMeta("name", "twitter:title", title);
+    upsertMeta("name", "twitter:title", socialTitle);
     upsertMeta("name", "twitter:description", description);
     upsertMeta("name", "twitter:image", image);
 
@@ -94,7 +98,7 @@ export function PageSeo({
     return () => {
       blocks.forEach((_, index) => removeJsonLd(`xgoo-jsonld-${index}`));
     };
-  }, [title, description, path, noIndex, image, type, keywords, jsonLdKey]);
+  }, [title, ogTitle, description, path, noIndex, image, imageAlt, type, keywords, jsonLdKey]);
 
   return null;
 }

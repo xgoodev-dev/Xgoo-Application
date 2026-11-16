@@ -20,17 +20,12 @@ export const DEFAULT_PARTNER_PORTALS: Record<string, string> = {
   WORLDFIRST: "https://xpresion.worldfirst.in/",
   "WORLD FIRST": "https://xpresion.worldfirst.in/",
   ICL: "https://www.indiancourier.net/",
-  ST: "https://stcourier.com/",
-  STC: "https://stcourier.com/",
-  FRANCH: "https://www.franchcourier.com/",
+  ST: "https://erpstcourier.com/indexnew.php",
+  STC: "https://erpstcourier.com/indexnew.php",
+  FRANCH: "https://erpfranchexpress.com/indexnew.php",
   DTDC: "https://www.dtdc.in/",
   BD: "https://www.bluedart.com/",
 };
-
-export const XGOO_EXTENSION_MESSAGE_TYPE = "XGOO_PARTNER_SYNC_V1";
-export const XGOO_EXTENSION_PING = "XGOO_EXTENSION_PING";
-export const XGOO_EXTENSION_PONG = "XGOO_EXTENSION_PONG";
-export const XGOO_EXTENSION_STORED = "XGOO_EXTENSION_STORED";
 
 export interface PartnerPayloadAddress {
   name: string;

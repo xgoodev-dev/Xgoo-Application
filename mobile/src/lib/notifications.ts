@@ -19,7 +19,7 @@ function isStandaloneNativeApp() {
   return (
     Constants.executionEnvironment === ExecutionEnvironment.Standalone ||
     Constants.executionEnvironment === ExecutionEnvironment.Bare ||
-    Constants.appOwnership === 'standalone'
+    String(Constants.appOwnership) === 'standalone'
   );
 }
 

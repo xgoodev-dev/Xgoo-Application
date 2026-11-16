@@ -553,3 +553,50 @@ export function rowsToCsv(rows: Array<TariffRateRow & { partnerCode?: string; pa
   }
   return lines.join("\n");
 }
+
+function csvCell(value: string | number | undefined | null): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Convert extracted / parsed tariff rows into the import CSV template. */
+export function parsedRowsToCsv(rows: ParsedTariffRow[]): string {
+  const headers = [
+    "partner_code", "service_type", "shipment_type", "origin_country", "destination_country",
+    "origin_pincode", "destination_pincode", "origin_zone", "destination_zone",
+    "weight_min", "weight_max", "tariff_amount", "fixed_margin", "percentage_margin",
+    "affiliate_margin", "offer_discount", "fuel_charge", "handling_charge",
+    "insurance_charge", "remote_area_charge", "gst", "transit_days", "active", "notes",
+  ];
+  const lines = [headers.join(",")];
+  for (const r of rows) {
+    lines.push([
+      csvCell(r.partnerCode),
+      csvCell(r.serviceType),
+      csvCell(r.shipmentType || "domestic"),
+      csvCell(r.originCountry || "IN"),
+      csvCell(r.destinationCountry || ""),
+      csvCell(r.originPincode || ""),
+      csvCell(r.destinationPincode || ""),
+      csvCell(r.originZone || ""),
+      csvCell(r.destinationZone || ""),
+      csvCell(r.weightMin),
+      csvCell(r.weightMax),
+      csvCell(r.tariffAmount),
+      csvCell(r.fixedMargin ?? 0),
+      csvCell(r.percentageMargin ?? 0),
+      csvCell(r.affiliateMargin ?? 0),
+      csvCell(r.offerDiscount ?? 0),
+      csvCell(r.fuelCharge ?? 0),
+      csvCell(r.handlingCharge ?? 0),
+      csvCell(r.insuranceCharge ?? 0),
+      csvCell(r.remoteAreaCharge ?? 0),
+      csvCell(r.gst ?? 0),
+      csvCell(r.transitDays ?? ""),
+      csvCell(r.isActive === false ? "false" : "true"),
+      csvCell(r.notes || ""),
+    ].join(","));
+  }
+  return lines.join("\n");
+}

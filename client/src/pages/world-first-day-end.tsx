@@ -50,7 +50,7 @@ function cell(row: PendingRow, keys: string[]): string {
   return "—";
 }
 
-export default function WorldFirstDayEndPage() {
+export default function WorldFirstDayEndPage({ embedded = false }: { embedded?: boolean }) {
   const { toast } = useToast();
   const [fromDate, setFromDate] = useState(todayInput);
   const [toDate, setToDate] = useState(todayInput);
@@ -137,15 +137,22 @@ export default function WorldFirstDayEndPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className={embedded ? "space-y-5" : "mx-auto max-w-6xl space-y-5"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">World First Day End</h1>
+        {embedded ? (
           <p className="text-sm text-muted-foreground">
             After booking, check account balance, view pending AWBs, then manifest to generate invoice and
             manifest documents.
           </p>
-        </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">World First Day End</h1>
+            <p className="text-sm text-muted-foreground">
+              After booking, check account balance, view pending AWBs, then manifest to generate invoice and
+              manifest documents.
+            </p>
+          </div>
+        )}
         <WorldFirstWalletBar />
       </div>
 
